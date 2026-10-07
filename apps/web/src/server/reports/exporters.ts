@@ -6,6 +6,7 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { formatBRL, formatBrDate, formatBrDateTime } from '@siow/shared';
 import type { ReportResult } from '../services/reports.js';
+import { LOGO_PNG } from './logo.js';
 
 function cell(value: string | number | null, type?: string): string {
   if (value === null || value === undefined || value === '') return '';
@@ -76,9 +77,19 @@ export function toPdf(r: ReportResult): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    doc.fontSize(16).text(r.title, { continued: false });
-    doc.fontSize(9).fillColor('#555').text(`Período de referência: ${r.period}`).text(`Gerado em: ${formatBrDateTime(r.generatedAt)}`);
-    doc.moveDown(0.8).fillColor('#000');
+    // Cabeçalho no padrão do protótipo: faixa em gradiente com a logo, título, empresa, período e data de geração.
+    const bandH = 70;
+    const grad = doc.linearGradient(0, 0, doc.page.width, bandH);
+    grad.stop(0, '#0f2a5a').stop(1, '#3b1f8a');
+    doc.rect(0, 0, doc.page.width, bandH).fill(grad);
+    doc.image(LOGO_PNG, doc.page.margins.left, 14, { height: 42 });
+    const textX = doc.page.margins.left + 118;
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(15).text(r.title, textX, 18, { width: doc.page.width - textX - 190 });
+    doc.font('Helvetica').fontSize(8.5).fillColor('#dbe4ff').text('Siow System Tecnologia · Módulo Financeiro', textX, 40);
+    doc.fontSize(8).text(`Período: ${r.period}`, doc.page.width - 200, 22, { width: 164, align: 'right' }).text(`Gerado em ${formatBrDateTime(r.generatedAt)}`, doc.page.width - 200, 36, { width: 164, align: 'right' });
+    doc.fillColor('#000').font('Helvetica');
+    doc.y = bandH + 18;
+    doc.x = doc.page.margins.left;
 
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const colWidth = pageWidth / Math.max(1, r.columns.length);

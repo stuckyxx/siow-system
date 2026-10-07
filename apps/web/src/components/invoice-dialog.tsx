@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { COLLECTION_STATUSES, COLLECTION_STATUS_LABELS, INVOICE_STATUS_LABELS, MESSAGE_CHANNEL_LABELS, formatBRL, formatBrDate, formatBrDateTime, formatCompetence, type CollectionStatus, type InvoiceStatus } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -20,10 +20,11 @@ interface InvoiceDetail {
 const EVENT_LABEL: Record<string, string> = { CREATED: 'Cadastrada', STATUS_CHANGED: 'Status alterado', FIELD_CHANGED: 'Campo alterado', MISSING_FROM_SOURCE: 'Sumiu da fonte', REAPPEARED: 'Voltou à fonte', MANUAL_OVERRIDE: 'Alteração manual', RECONCILED: 'Verificada', CONFLICT_DETECTED: 'Conflito detectado', CONFLICT_RESOLVED: 'Conflito resolvido', NOTE: 'Observação' };
 const ORIGIN_LABEL: Record<string, string> = { SYNC: 'sincronização automática', MANUAL: 'manual', IMPORT: 'importação', SYSTEM: 'sistema' };
 
-export function InvoiceDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+export function InvoiceDialog({ id, onClose, initialTab = 'overview' }: { id: string | null; onClose: () => void; initialTab?: 'overview' | 'collection' | 'documents' | 'history' }) {
   const { can } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState<string>(initialTab);
+  useEffect(() => { if (id) setTab(initialTab); }, [id, initialTab]);
   const { data, refetch } = useQuery({ queryKey: ['invoice', id], queryFn: () => api<InvoiceDetail>(`/financeiro/invoices/${id}`), enabled: Boolean(id) });
   const capture = useMutation({ mutationFn: () => api(`/financeiro/invoices/${id}/capture-document`, { method: 'POST' }) });
   const download = async (docId: string): Promise<void> => {
@@ -47,8 +48,8 @@ export function InvoiceDialog({ id, onClose }: { id: string | null; onClose: () 
             <Info label="Cobrança" value={<CollectionStatusBadge status={data.collectionCase?.status ?? null} />} />
           </div>
           {data.description && <p className="rounded-md bg-surface p-3 text-sm text-ink-2">{data.description}</p>}
-          {data.needsReconciliation && <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"><strong>Precisa de verificação:</strong> {data.reconciliationNote}{data.missingSince && ` (desde ${formatBrDateTime(data.missingSince)})`}</div>}
-          {data.manualOverride && <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"><strong>Alteração manual protegida</strong>{data.overriddenBy && ` por ${data.overriddenBy.name}`}: {data.overrideJustification}</div>}
+          {data.needsReconciliation && <div className="alert crit"><strong>Precisa de verificação:</strong> {data.reconciliationNote}{data.missingSince && ` (desde ${formatBrDateTime(data.missingSince)})`}</div>}
+          {data.manualOverride && <div className="alert info"><strong>Alteração manual protegida</strong>{data.overriddenBy && ` por ${data.overriddenBy.name}`}: {data.overrideJustification}</div>}
           {data.conflicts.filter((c) => c.status === 'OPEN').map((c) => <ConflictCard key={c.id} invoiceId={data.id} conflict={c} onDone={invalidate} canResolve={can('invoices.reconcile')} />)}
 
           <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Ações' }, { key: 'collection', label: 'Cobrança', count: data.collectionCase?.attempts.length }, { key: 'documents', label: 'Documentos', count: data.documents.length }, { key: 'history', label: 'Histórico', count: data.events.length }]} />

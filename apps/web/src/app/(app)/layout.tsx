@@ -1,68 +1,78 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Bell, Building2, CalendarDays, FileBadge, FileText, Gauge, HandCoins, LayoutDashboard, ListChecks, RefreshCw, ScrollText, Settings } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { Building2, FileBadge, FileBarChart, LayoutDashboard, RefreshCw, Settings } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { GlobalSearch } from '@/components/global-search';
+import { QuickSearch } from '@/components/quick-search';
 
-const NAV = [
-  { href: '/financeiro', label: 'Dashboard', icon: LayoutDashboard, perm: 'dashboard.read' },
-  { href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perm: 'entities.read' },
-  { href: '/financeiro/notas', label: 'Notas fiscais', icon: FileText, perm: 'invoices.read' },
-  { href: '/financeiro/contratos', label: 'Contratos', icon: ScrollText, perm: 'contracts.read' },
-  { href: '/financeiro/agenda', label: 'Agenda', icon: CalendarDays, perm: 'tasks.read' },
-  { href: '/financeiro/cobrancas', label: 'Cobranças', icon: HandCoins, perm: 'collections.read' },
-  { href: '/financeiro/ordens-de-servico', label: 'Ordens de serviço', icon: ListChecks, perm: 'service_orders.read' },
-  { href: '/financeiro/certidoes', label: 'Certidões', icon: FileBadge, perm: 'certificates.read' },
-  { href: '/financeiro/relatorios', label: 'Relatórios', icon: Gauge, perm: 'reports.read' },
-  { href: '/financeiro/sincronizacao', label: 'Sincronização', icon: RefreshCw, perm: 'sync.read' },
-  { href: '/admin', label: 'Administração', icon: Settings, perm: 'users.manage' },
+/** Menu horizontal do protótipo aprovado: somente estes 6 itens, cada um filtrado por permissão. */
+const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean }> = [
+  { href: '/financeiro', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/financeiro' },
+  {
+    href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'],
+    match: (p) => ['/financeiro/entidades', '/financeiro/notas', '/financeiro/contratos', '/financeiro/agenda', '/financeiro/cobrancas', '/financeiro/ordens-de-servico'].some((x) => p.startsWith(x)),
+  },
+  { href: '/financeiro/certidoes', label: 'Certidões', icon: FileBadge, perms: ['certificates.read'], match: (p) => p.startsWith('/financeiro/certidoes') },
+  { href: '/financeiro/relatorios', label: 'Relatórios', icon: FileBarChart, perms: ['reports.read'], match: (p) => p.startsWith('/financeiro/relatorios') },
+  { href: '/financeiro/sincronizacao', label: 'Sincronização', icon: RefreshCw, perms: ['sync.read'], match: (p) => p.startsWith('/financeiro/sincronizacao') },
+  { href: '/admin', label: 'Administração', icon: Settings, perms: ['users.manage', 'settings.manage', 'templates.manage', 'audit.read'], match: (p) => p.startsWith('/admin') },
 ];
+
+/** Intervalo da função agendada da Netlify (apps/web/netlify.toml → scheduled-sync). */
+const SYNC_EVERY_MIN = 20;
+
+interface SyncOverview { sources: Array<{ lastSyncAt: string | null }> }
+
+function SyncIndicator() {
+  const { data } = useQuery({ queryKey: ['sync-overview-top'], queryFn: () => api<SyncOverview>('/financeiro/sync/overview'), refetchInterval: 60_000 });
+  const last = data?.sources.map((s) => s.lastSyncAt).filter((x): x is string => Boolean(x)).sort().at(-1);
+  return (
+    <span className="demo" title="A sincronização com o Portal do Cliente roda em segundo plano">
+      Sincronização automática · a cada {SYNC_EVERY_MIN} min{last ? ` · última ${new Date(last).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}` : ''}
+    </span>
+  );
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { user, can, logout } = useAuth();
   const pathname = usePathname();
-  const { data: notifications } = useQuery({ queryKey: ['notifications', 'unread'], queryFn: () => api<Array<{ id: string; title: string }>>('/notifications', { query: { unread: true } }), refetchInterval: 60_000 });
+  const router = useRouter();
+  const allowed = (perms: string[]): boolean => perms.some(can);
+  const isHome = pathname === '/financeiro';
+  const goBack = (): void => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+    else router.push('/financeiro');
+  };
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-card md:flex">
-        <div className="px-5 py-4">
-          <div className="text-base font-semibold">Siow System</div>
-          <div className="text-xs text-ink-3">Módulo Financeiro</div>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <header className="top">
+        <Link href="/financeiro" className="brand" title="Siow System — Dashboard">
+          <img className="logo" src="/logo.png" alt="Siow System" />
+          <small>Módulo Financeiro</small>
+        </Link>
+        <GlobalSearch />
+        {can('sync.read') && <SyncIndicator />}
+        <div className="user" style={{ marginLeft: 'auto' }}>
+          <div className="who"><b>{user?.name}</b><span>{user?.roles.join(', ')}</span></div>
+          <Link href="/alterar-senha" className="btn sm" title="Alterar senha">Senha</Link>
+          <button className="btn sm" onClick={() => void logout()}>Sair</button>
         </div>
-        <nav className="flex-1 space-y-0.5 px-2">
-          {NAV.filter((n) => can(n.perm)).map((n) => {
-            const active = n.href === '/financeiro' ? pathname === n.href : pathname.startsWith(n.href);
-            return (
-              <Link key={n.href} href={n.href} className={cn('flex items-center gap-2 rounded-md px-3 py-2 text-sm', active ? 'bg-brand/10 font-medium text-brand' : 'text-ink-2 hover:bg-surface')}>
-                <n.icon className="h-4 w-4" /> {n.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="border-t border-line px-4 py-3 text-xs text-ink-3">
-          <div className="truncate font-medium text-ink">{user?.name}</div>
-          <div className="truncate">{user?.roles.join(', ')}</div>
-          <div className="mt-2 flex gap-3">
-            <Link href="/alterar-senha" className="text-brand hover:underline">Alterar senha</Link>
-            <button onClick={logout} className="text-brand hover:underline">Sair</button>
-          </div>
-        </div>
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 items-center justify-between border-b border-line bg-card px-4 md:px-6">
-          <div className="text-sm text-ink-3 md:hidden">Siow System</div>
-          <div className="ml-auto flex items-center gap-4">
-            <Link href="/notificacoes" className="relative text-ink-2" aria-label="Notificações">
-              <Bell className="h-5 w-5" />
-              {notifications && notifications.length > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-critical px-1 text-[10px] text-white">{notifications.length}</span>}
-            </Link>
-          </div>
-        </header>
-        <main className="flex-1 p-4 md:p-6">{children}</main>
-      </div>
+      </header>
+      <nav className="hnav" aria-label="Menu principal">
+        {NAV.filter((n) => allowed(n.perms)).map((n) => (
+          <Link key={n.href} href={n.href} className={n.match(pathname) ? 'on' : ''}>
+            <n.icon strokeWidth={1.8} /> {n.label}
+          </Link>
+        ))}
+      </nav>
+      <main className="content">
+        {!isHome && <button className="back" onClick={goBack}>← Voltar</button>}
+        {children}
+      </main>
+      <QuickSearch />
     </div>
   );
 }

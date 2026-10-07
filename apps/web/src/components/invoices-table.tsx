@@ -11,8 +11,8 @@ import { Badge, Button, Card, Empty, Input, Pagination, Select, Table, Td, Th } 
 export type InvoiceQuery = Record<string, string | number | boolean | undefined>;
 
 /** Tabela de notas (spec §11) — usada na tela geral e na ficha da entidade. */
-export function InvoicesTable({ base, showEntity = true }: { base?: InvoiceQuery; showEntity?: boolean }) {
-  const [status, setStatus] = useState<'PENDING' | 'PAID' | 'ALL'>('PENDING');
+export function InvoicesTable({ base, showEntity = true, initialOpenId }: { base?: InvoiceQuery; showEntity?: boolean; initialOpenId?: string | null }) {
+  const [status, setStatus] = useState<'PENDING' | 'PAID' | 'ALL'>(initialOpenId ? 'ALL' : 'PENDING');
   const [q, setQ] = useState('');
   const [month, setMonth] = useState('');
   const [year, setYear] = useState('');
@@ -21,7 +21,7 @@ export function InvoicesTable({ base, showEntity = true }: { base?: InvoiceQuery
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('issueDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(initialOpenId ?? null);
 
   const query: InvoiceQuery = { ...base, status, q: q || undefined, month: month || undefined, year: year || undefined, competenceFrom: from || undefined, competenceTo: to || undefined, page, pageSize: 25, sortBy, sortDir };
   const { data, isLoading, refetch } = useQuery({ queryKey: ['invoices', query], queryFn: () => api<Paginated<InvoiceRow> & { totals: { amount: string; count: number } }>('/financeiro/invoices', { query }) });
@@ -34,9 +34,9 @@ export function InvoicesTable({ base, showEntity = true }: { base?: InvoiceQuery
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-md border border-line bg-card p-0.5">
+        <div className="seg">
           {(['PENDING', 'PAID', 'ALL'] as const).map((s) => (
-            <button key={s} onClick={() => { setStatus(s); setPage(1); }} className={`rounded px-3 py-1 text-sm ${status === s ? 'bg-brand text-white' : 'text-ink-2 hover:bg-surface'}`}>{s === 'PENDING' ? 'Pendentes' : s === 'PAID' ? 'Pagas' : 'Todas'}</button>
+            <button key={s} onClick={() => { setStatus(s); setPage(1); }} className={status === s ? 'on' : ''}>{s === 'PENDING' ? 'Pendentes' : s === 'PAID' ? 'Pagas' : 'Todas'}</button>
           ))}
         </div>
         {showEntity && <Input placeholder="Buscar nº da nota, entidade, contrato" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} className="w-64" />}

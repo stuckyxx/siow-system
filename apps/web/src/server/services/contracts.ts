@@ -132,7 +132,11 @@ export async function addAmendment(ctx: Ctx, contractId: string, input: z.infer<
     });
     // Aditivo aplica seus efeitos ao contrato (histórico fica no aditivo)
     const patch: Prisma.ContractUpdateInput = {};
-    if (created.newEndDate) patch.endDate = created.newEndDate;
+    if (created.newEndDate) {
+      patch.endDate = created.newEndDate;
+      // Aditivo de prazo com nova vigência futura reativa contrato vencido/encerrado (protótipo aprovado).
+      if (created.newEndDate >= new Date(new Date().toISOString().slice(0, 10)) && (contract.status === 'EXPIRED' || contract.status === 'TERMINATED')) patch.status = 'ACTIVE';
+    }
     if (created.newMonthlyValue) patch.monthlyValue = created.newMonthlyValue;
     if (created.newObject) patch.object = created.newObject;
     if (Object.keys(patch).length) await tx.contract.update({ where: { id: contractId }, data: { ...patch, origin: 'MANUAL' } });

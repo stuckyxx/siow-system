@@ -1,123 +1,100 @@
 'use client';
 import * as React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
+/*
+ * Primitivas de interface no visual "aurora" do protótipo aprovado (classes em globals.css).
+ * A API (props) é a mesma de antes, para que todas as telas herdem o tema sem reescrita.
+ */
+
 // ---------------------------------------------------------------- Button
-const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:pointer-events-none disabled:opacity-50 whitespace-nowrap',
-  {
-    variants: {
-      variant: {
-        default: 'bg-brand text-white hover:bg-brand-strong',
-        secondary: 'bg-card border border-line text-ink hover:bg-surface',
-        ghost: 'hover:bg-surface text-ink-2',
-        danger: 'bg-critical text-white hover:opacity-90',
-        link: 'text-brand underline-offset-4 hover:underline px-0',
-      },
-      size: { sm: 'h-8 px-3 text-xs', md: 'h-9 px-4', lg: 'h-10 px-6', icon: 'h-8 w-8' },
-    },
-    defaultVariants: { variant: 'default', size: 'md' },
-  },
-);
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
+type ButtonVariant = 'default' | 'secondary' | 'ghost' | 'danger' | 'link';
+type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
+const VARIANT: Record<ButtonVariant, string> = { default: 'btn p', secondary: 'btn', ghost: 'btn ghost', danger: 'btn danger', link: 'link' };
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant | null;
+  size?: ButtonSize | null;
+}
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ className, variant, size, type = 'button', ...props }, ref) => (
-  <button ref={ref} type={type} className={cn(buttonVariants({ variant, size }), className)} {...props} />
+  <button ref={ref} type={type} className={cn(VARIANT[variant ?? 'default'], size === 'sm' || size === 'icon' ? 'sm' : '', className)} {...props} />
 ));
 Button.displayName = 'Button';
 
 // ---------------------------------------------------------------- Card
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('rounded-lg border border-line bg-card shadow-sm', className)} {...props} />;
+  return <div className={cn('card', className)} {...props} />;
 }
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex items-center justify-between gap-3 px-5 pt-4 pb-2', className)} {...props} />;
+  return <div className={cn('hd', className)} {...props} />;
 }
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn('text-sm font-semibold text-ink', className)} {...props} />;
+  return <h2 className={className} {...props} />;
 }
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('px-5 pb-5', className)} {...props} />;
+  return <div className={cn('bd', className)} {...props} />;
 }
 
-// ---------------------------------------------------------------- Inputs
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(({ className, ...props }, ref) => (
-  <input ref={ref} className={cn('h-9 w-full rounded-md border border-line bg-card px-3 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-brand', className)} {...props} />
+// ---------------------------------------------------------------- Inputs (estilo base em globals.css)
+export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(({ className, type, ...props }, ref) => (
+  <input ref={ref} type={type} className={cn(type === 'checkbox' || type === 'radio' ? '' : 'w-full', className)} {...props} />
 ));
 Input.displayName = 'Input';
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(({ className, ...props }, ref) => (
-  <textarea ref={ref} className={cn('w-full rounded-md border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-brand', className)} {...props} />
+  <textarea ref={ref} className={cn('w-full', className)} {...props} />
 ));
 Textarea.displayName = 'Textarea';
 
 export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(({ className, children, ...props }, ref) => (
-  <select ref={ref} className={cn('h-9 w-full rounded-md border border-line bg-card px-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand', className)} {...props}>
+  <select ref={ref} className={cn('w-full', className)} {...props}>
     {children}
   </select>
 ));
 Select.displayName = 'Select';
 
 export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={cn('mb-1 block text-xs font-medium text-ink-2', className)} {...props} />;
+  return <label className={cn('mb-1 block text-[11px] uppercase tracking-[.06em] text-ink-2', className)} {...props} />;
 }
 
 export function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={className}>
-      <Label>{label}</Label>
+    <label className={cn('f', className)}>
+      {label}
       {children}
-    </div>
+    </label>
   );
 }
 
-// ---------------------------------------------------------------- Badge
-const badgeVariants = cva('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium', {
-  variants: {
-    tone: {
-      neutral: 'border-line bg-surface text-ink-2',
-      info: 'border-blue-200 bg-blue-50 text-blue-800',
-      good: 'border-green-200 bg-green-50 text-green-800',
-      warn: 'border-amber-200 bg-amber-50 text-amber-800',
-      serious: 'border-orange-200 bg-orange-50 text-orange-800',
-      critical: 'border-red-200 bg-red-50 text-red-800',
-    },
-  },
-  defaultVariants: { tone: 'neutral' },
-});
-export function Badge({ className, tone, ...props }: React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>) {
-  return <span className={cn(badgeVariants({ tone }), className)} {...props} />;
+// ---------------------------------------------------------------- Badge (pill)
+type Tone = 'neutral' | 'info' | 'good' | 'warn' | 'serious' | 'critical';
+const TONE: Record<Tone, string> = { neutral: 'n', info: 'info', good: 'good', warn: 'warn', serious: 'warn', critical: 'crit' };
+export function Badge({ className, tone, ...props }: React.HTMLAttributes<HTMLSpanElement> & { tone?: Tone | null }) {
+  return <span className={cn('pill', TONE[tone ?? 'neutral'], className)} {...props} />;
 }
 
 // ---------------------------------------------------------------- Table
 export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-x-auto">
-      <table className={cn('w-full text-sm', className)} {...props} />
+    <div className="tbl">
+      <table className={className} {...props} />
     </div>
   );
 }
 export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn('border-b border-line px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink-3', className)} {...props} />;
+  return <th className={className} {...props} />;
 }
 export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn('border-b border-line px-3 py-2 align-middle text-ink', className)} {...props} />;
+  return <td className={className} {...props} />;
 }
 
-// ---------------------------------------------------------------- Tabs (sem dependências)
+// ---------------------------------------------------------------- Tabs (centralizadas, sublinhado em gradiente)
 export function Tabs({ tabs, value, onChange }: { tabs: Array<{ key: string; label: string; count?: number }>; value: string; onChange: (k: string) => void }) {
   return (
-    <div role="tablist" className="flex flex-wrap gap-1 border-b border-line">
+    <div role="tablist" className="tabs">
       {tabs.map((t) => (
-        <button
-          key={t.key}
-          role="tab"
-          aria-selected={value === t.key}
-          onClick={() => onChange(t.key)}
-          className={cn('-mb-px border-b-2 px-3 py-2 text-sm', value === t.key ? 'border-brand font-medium text-brand' : 'border-transparent text-ink-2 hover:text-ink')}
-        >
+        <button key={t.key} role="tab" aria-selected={value === t.key} onClick={() => onChange(t.key)} className={value === t.key ? 'on' : ''}>
           {t.label}
-          {t.count !== undefined && <span className="ml-1 rounded-full bg-surface px-1.5 text-xs text-ink-3">{t.count}</span>}
+          {t.count !== undefined && <span className="ml-1 text-ink-3">({t.count})</span>}
         </button>
       ))}
     </div>
@@ -134,43 +111,55 @@ export function Dialog({ open, onClose, title, children, wide }: { open: boolean
     if (!open && d.open) d.close();
   }, [open]);
   return (
-    <dialog ref={ref} onClose={onClose} className={cn('rounded-lg border border-line bg-card p-0 text-ink shadow-xl backdrop:bg-black/40 w-[min(96vw,var(--w))]', wide ? '[--w:900px]' : '[--w:560px]')}>
-      <div className="flex items-center justify-between border-b border-line px-5 py-3">
-        <h2 className="text-base font-semibold">{title}</h2>
-        <button aria-label="Fechar" onClick={onClose} className="text-ink-3 hover:text-ink">✕</button>
+    <dialog ref={ref} onClose={onClose} style={{ ['--w' as string]: wide ? '900px' : '620px' }}>
+      <div className="dh">
+        <b>{title}</b>
+        <button aria-label="Fechar" onClick={onClose} className="btn sm">✕</button>
       </div>
-      <div className="max-h-[80vh] overflow-y-auto px-5 py-4">{open && children}</div>
+      <div className="db">{open && children}</div>
     </dialog>
   );
 }
 
 // ---------------------------------------------------------------- misc
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-md bg-line', className)} />;
+  return <div className={cn('card animate-pulse', className)} />;
 }
 export function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-md border border-dashed border-line p-8 text-center text-sm text-ink-3">{children}</div>;
+  return <div className="empty">{children}</div>;
 }
-export function Stat({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: string; tone?: 'good' | 'warn' | 'critical' }) {
-  const color = tone === 'good' ? 'text-good' : tone === 'warn' ? 'text-warn' : tone === 'critical' ? 'text-critical' : 'text-ink';
-  return (
-    <Card className="px-4 py-3">
-      <div className="text-xs font-medium text-ink-3">{label}</div>
-      <div className={cn('mt-1 text-xl font-semibold tabular-nums', color)}>{value}</div>
-      {hint && <div className="mt-0.5 text-xs text-ink-3">{hint}</div>}
-    </Card>
+export function Stat({ label, value, hint, tone, onClick, small }: { label: string; value: React.ReactNode; hint?: React.ReactNode; tone?: 'good' | 'warn' | 'critical' | 'info'; onClick?: () => void; small?: boolean }) {
+  const cls = tone === 'critical' ? 'crit' : tone ?? '';
+  const inner = (
+    <>
+      <div className="l">{label}</div>
+      <div className={cn('v', cls)} style={small ? { fontSize: 16 } : undefined}>{value}</div>
+      {hint && <div className="h">{hint}</div>}
+    </>
   );
+  return onClick ? <button type="button" className="card stat" onClick={onClick}>{inner}</button> : <div className="card stat">{inner}</div>;
 }
 export function Pagination({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (p: number) => void }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   return (
-    <div className="flex items-center justify-between py-2 text-xs text-ink-3">
+    <div className="row between small muted" style={{ padding: '8px 12px' }}>
       <span>{total} registro(s)</span>
-      <div className="flex items-center gap-2">
+      <div className="row">
         <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => onPage(page - 1)}>Anterior</Button>
         <span>página {page} de {pages}</span>
         <Button size="sm" variant="secondary" disabled={page >= pages} onClick={() => onPage(page + 1)}>Próxima</Button>
       </div>
     </div>
   );
+}
+/** Mensagem flutuante breve (substitui alert()). */
+export function useToast(): [React.ReactNode, (msg: string) => void] {
+  const [msg, setMsg] = React.useState<string | null>(null);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const show = React.useCallback((m: string) => {
+    setMsg(m);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setMsg(null), 2800);
+  }, []);
+  return [msg ? <div className="toast" role="status">{msg}</div> : null, show];
 }

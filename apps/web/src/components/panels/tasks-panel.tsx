@@ -17,13 +17,13 @@ export function useAssignees() {
 }
 
 /** Agenda financeira — geral (spec §14/15) ou por entidade (§16). */
-export function TasksPanel({ entityId, compact }: { entityId?: string; compact?: boolean }) {
+export function TasksPanel({ entityId, compact, autoCreate }: { entityId?: string; compact?: boolean; autoCreate?: boolean }) {
   const { can, user } = useAuth();
   const qc = useQueryClient();
   const { data: assignees } = useAssignees();
   const [assignee, setAssignee] = useState<string>('');
   const [status, setStatus] = useState<string>(compact ? 'PENDING' : '');
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(Boolean(autoCreate));
   const [editing, setEditing] = useState<TaskRow | null>(null);
   const query = { entityId, assigneeUserId: assignee || undefined, status: status || undefined, pageSize: compact ? 8 : 100, sortDir: 'asc' as const };
   const { data } = useQuery({ queryKey: ['tasks', query], queryFn: () => api<Paginated<TaskRow>>('/financeiro/tasks', { query }) });
