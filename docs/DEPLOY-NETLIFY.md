@@ -1,22 +1,58 @@
-# Publicando na Netlify (banco Neon) — o que já está pronto e o que falta
+# Publicando na Netlify (banco Neon) — estado atual e o que falta
 
-## Já feito (pelo assistente, via conexões Neon e Netlify)
+_Atualizado em 07/10/2026._
 
-- **Neon** — projeto `siowsystem` (`dark-sound-41190359`, região us-east-2): as 33 tabelas, índices, chaves estrangeiras e a trava de auditoria foram criadas; permissões (30), papéis (4), modelos de mensagem (3), configurações (6) e o usuário **admin@siowsystem.com.br** já estão gravados (senha provisória entregue no chat; troca obrigatória no 1º acesso).
-- **Netlify** — projeto `siow-system` no time *Siow System* → https://siow-system.netlify.app (painel: https://app.netlify.com/projects/siow-system). Variáveis de ambiente já definidas: `DATABASE_URL`, `DIRECT_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CRON_SECRET`, `COOKIE_SECURE`, `SYNC_BUDGET_MS=8000`, `SYNC_CONCURRENCY=2`, `APP_URL`. Acesso público liberado (sem login do time Netlify).
-- **Código** — `apps/web/netlify.toml` (plugin Next.js, Node 22), `apps/web/netlify/functions/scheduled-sync.mts` (sincroniza a cada 20 min) e `scheduled-daily.mts` (alertas diários), arquivos em **Netlify Blobs** (privados, servidos pela rota autenticada).
+## Já feito
 
-## O que falta (3 passos no navegador)
+- **Neon** — projeto `siowsystem` (`dark-sound-41190359`, região us-east-2): 33 tabelas, índices, chaves estrangeiras e trava de auditoria; permissões (30), papéis (4), modelos de mensagem (3), configurações (6) e o usuário **admin@siowsystem.com.br** (senha provisória entregue no chat; troca obrigatória no 1º acesso). Conferido em 07/10: 33 tabelas, 1 usuário, 30 permissões, 0 entidades.
+- **Código no GitHub** — `stuckyxx/siow-system`, branch `main`, com `pnpm-lock.yaml` commitado.
+- **Compilação** — `pnpm install`, `pnpm typecheck` (monorepo inteiro), `pnpm test` (12 testes do parser) e `pnpm --filter @siow/web build` passam.
+- **Netlify** — projeto `siow-system` (`0ae957d4-ff21-47c2-a755-17b1d2dcaae7`) → https://siow-system.netlify.app. O build do Next.js roda e publica (deploy enviado pela integração Netlify, sem repositório ligado).
 
-1. **Código no GitHub**: no repositório `stuckyxx/siow-system` (ou outro privado), envie a pasta inteira do projeto. Sem Git instalado: na página do repositório → **Add file → Upload files**, arraste **o conteúdo** da pasta `siow-system` (todas as subpastas), escreva uma mensagem e **Commit**. Repita se o GitHub reclamar do limite de 100 arquivos por vez (arraste pasta por pasta: `apps`, `packages`, `docs`, `infra`, arquivos da raiz).
-2. **Ligar a Netlify ao repositório**: https://app.netlify.com/projects/siow-system → **Project configuration → Build & deploy → Continuous deployment → Link repository** → GitHub → escolha o repositório → em **Base directory** digite `apps/web` → Save. A Netlify lê o `netlify.toml` e começa o primeiro build (5–8 min).
-3. **Acompanhar o build** em **Deploys**. Se falhar, clique em **Why did it fail?** e me envie o texto — corrijo e você sobe de novo (ou eu te mando o arquivo alterado).
+## Correções aplicadas para compilar e publicar
 
-Depois do primeiro deploy bem-sucedido:
+| Problema | Correção |
+|---|---|
+| `json()`/`parseQuery()` (web) e `ZodPipe` (api) tipavam entrada = saída do Zod → 16 erros em schemas com `.default()`/`.transform()` | tipar pelo `output<S>` do schema |
+| Next 15.5 recusa handler com 2º argumento opcional (`rp?: RouteParams`) | argumento obrigatório em `route()` |
+| `noUncheckedIndexedAccess` no `COUNT(*)` cru de entidades | `countRows[0]?.count ?? 0` |
+| cheerio 1.2 não exporta mais o tipo `AnyNode` | importado de `domhandler` (dependência declarada em `@siow/integrations`) |
+| `@vercel/blob` `put` não aceita `Uint8Array` | conversão para `Buffer` |
+| `ioredis` default import sob NodeNext (`packages/queue`) | `import { Redis } from 'ioredis'` |
+| relatório `forecast` sem rótulo no `apps/api` | rótulo adicionado (a API Docker não implementa o relatório; cai no caso padrão vazio) |
+| lint do build: imports não usados / `import type` | corrigidos |
+| CI fixava pnpm 10.28 em conflito com `packageManager` 9.15.4 | CI usa a versão do `packageManager` |
+| Netlify ignorava `apps/web/netlify.toml` (site sem *base directory*) → o 1º deploy publicou o repositório como arquivos estáticos | `netlify.toml` na raiz com `base = "apps/web"` (já substituído por deploy correto) |
+| Prisma sem engine para o runtime das funções (Amazon Linux) | `binaryTargets = ["native", "rhel-openssl-3.0.x"]` |
 
-- Abra https://siow-system.netlify.app → entre com `admin@siowsystem.com.br` + senha provisória → troque a senha.
-- Administração → Usuários: cadastre a equipe. Entidades → Importar: `docs/samples/entidades-exemplo.csv` (41 entidades). Clique **Sincronizar** em uma entidade para testar; a sincronização automática roda a cada 20 min (≈2 entidades por vez — limite de 10 s por função no plano Free; em 24 h todas ficam atualizadas).
-- Domínio próprio: **Domain management → Add a domain**.
+## Pendente — bloqueia o sistema
+
+**Variáveis de ambiente ausentes na Netlify.** Hoje o site só tem `APP_URL`, `COOKIE_SECURE`, `SYNC_BUDGET_MS` e `SYNC_CONCURRENCY`. Faltam (por isso `/api/health` responde `{"ok":false,"db":"error"}` — erro confirmado: `Environment variable not found: DATABASE_URL`):
+
+| Nome | Valor |
+|---|---|
+| `DATABASE_URL` | string **pooled** do Neon (Console Neon → `siowsystem` → *Connect* → *Connection pooling* ligado), terminando em `?sslmode=require&pgbouncer=true&connect_timeout=15` (como em `apps/web/.env.example`) |
+| `DIRECT_URL` | mesma string **sem** pooling (host sem `-pooler`) |
+| `JWT_ACCESS_SECRET` | segredo aleatório ≥ 32 caracteres |
+| `JWT_REFRESH_SECRET` | outro segredo ≥ 32 caracteres |
+| `CRON_SECRET` | outro segredo ≥ 16 caracteres |
+
+Onde: https://app.netlify.com/projects/siow-system → **Project configuration → Environment variables → Add a variable** (escopo: todos; marque *Contains secret values*). Gerar segredos: `openssl rand -base64 48`.
+
+Depois, **é preciso um novo deploy** (as funções só leem as variáveis no deploy). Recomendado: **Project configuration → Build & deploy → Link repository** → GitHub → `stuckyxx/siow-system`, branch `main` (o `netlify.toml` da raiz já define a base `apps/web`; não preencha *Base directory*). Cada push na `main` passa a publicar sozinho.
+
+## Pendente — validação (após o banco conectar)
+
+1. `GET https://siow-system.netlify.app/api/health` → `{"ok":true,…,"db":"ok"}`.
+2. Login `admin@siowsystem.com.br` + senha provisória → troca de senha.
+3. Entidades → Importar → `docs/samples/entidades-exemplo.csv` (41 entidades).
+4. Sincronizar CM Bom Lugar → 20 notas, 7 pendentes de R$ 1.320,00 (MAR–SET/2026), débito R$ 9.240,00, contrato `070201001/2025` 1º aditivo até 31/12/2026 (seção 9 do PROMPT-MESTRE).
+
+## Outras pendências conhecidas
+
+- Testes de `sync-core` (aplicação de snapshot), permissões efetivas e autenticação exigidos pela seção 8 do PROMPT-MESTRE ainda não existem (só o parser tem testes).
+- `docs/prototipo-siow-financeiro.html` citado no handoff não está no repositório.
+- O workflow `.github/workflows/sync-cron.yml` (cron via GitHub Actions, pensado para a Vercel) é redundante com as funções agendadas da Netlify; sem os segredos `APP_URL`/`CRON_SECRET` no GitHub ele falha a cada execução — desative-o ou configure os segredos.
 
 ## Limites do plano Free da Netlify que afetam o sistema
 
@@ -25,4 +61,4 @@ Depois do primeiro deploy bem-sucedido:
 
 ## Atualizar o sistema
 
-Qualquer alteração enviada ao GitHub gera um novo deploy automaticamente. Para mudar segredos: **Environment variables** no painel do projeto.
+Com o repositório ligado, qualquer push na `main` gera deploy. Para mudar segredos: **Environment variables** no painel do projeto (e refazer o deploy).
