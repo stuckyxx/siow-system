@@ -1,0 +1,49 @@
+{
+  "name": "@siow/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "prisma generate --schema=../../packages/db/prisma/schema.prisma && next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "db:push": "prisma db push --schema=../../packages/db/prisma/schema.prisma",
+    "db:generate": "prisma generate --schema=../../packages/db/prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "@siow/db": "workspace:*",
+    "@siow/integrations": "workspace:*",
+    "@siow/shared": "workspace:*",
+    "@siow/sync-core": "workspace:*",
+    "@tanstack/react-query": "^5.62.11",
+    "@netlify/blobs": "^8.1.0",
+    "@netlify/functions": "^3.0.0",
+    "@vercel/blob": "^0.27.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.469.0",
+    "next": "^15.1.4",
+    "nodemailer": "^6.9.16",
+    "pdfkit": "^0.15.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.0",
+    "@types/nodemailer": "^6.4.17",
+    "@types/pdfkit": "^0.13.8",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "prisma": "^6.2.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.3"
+  }
+}

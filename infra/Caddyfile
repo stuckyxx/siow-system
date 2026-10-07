@@ -1,0 +1,18 @@
+# Proxy reverso com TLS automático (Let's Encrypt). DOMAIN vem do .env.
+{$DOMAIN} {
+	encode gzip zstd
+
+	# API (NestJS) — prefixo /api
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+
+	# Frontend (Next.js)
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		-Server
+	}
+}

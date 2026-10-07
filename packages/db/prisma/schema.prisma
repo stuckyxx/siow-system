@@ -1,0 +1,1042 @@
+// =====================================================================
+//  Gestão Financeira de Contratos e Recebimentos — modelo de dados
+//  Convenções:
+//   - Valores monetários: Decimal(14,2)
+//   - Datas "de negócio" (competência, vencimento): DateTime @db.Date
+//   - Exclusões são LÓGICAS (deletedAt) nos recursos de negócio
+//   - Tudo que é crítico gera AuditLog (append-only) e/ou *Event
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------
+//  Usuários, papéis e permissões (RBAC granular)
+// ---------------------------------------------------------------------
+
+model User {
+  id               String    @id @default(uuid())
+  name             String
+  email            String    @unique
+  passwordHash     String
+  isActive         Boolean   @default(true)
+  lastLoginAt      DateTime?
+  twoFactorEnabled Boolean   @default(false)
+  twoFactorSecret  String? // reservado para 2FA (TOTP) — cifrado na aplicação
+  /// Obriga a troca de senha no próximo login (ex.: admin criado pelo seed).
+  mustChangePassword Boolean @default(false)
+  /// Bloqueio por tentativas de login falhas (5 falhas → 15 min).
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  roles                UserRole[]
+  sessions             Session[]
+  auditLogs            AuditLog[]
+  assignedTasks        FinancialTask[]      @relation("TaskAssignee")
+  createdTasks         FinancialTask[]      @relation("TaskCreator")
+  responsibleEntities  Entity[]
+  responsibleContracts Contract[]
+  collectionAttempts   CollectionAttempt[]
+  collectionCases      CollectionCase[]
+  outboundMessages     OutboundMessage[]
+  notifications        Notification[]
+  invoiceEvents        InvoiceEvent[]
+  overriddenInvoices   Invoice[]            @relation("InvoiceOverriddenBy")
+  resolvedConflicts    SyncConflict[]
+  syncRuns             SyncRun[]
+  uploadedDocuments    Document[]
+  taskEvents           TaskEvent[]
+  serviceOrderEvents   ServiceOrderEvent[]
+  signatureRequests    SignatureRequest[]
+  settingsUpdated      Setting[]
+  certificateVersions  CertificateVersion[]
+
+  @@index([email])
+  @@map("users")
+  userPermissions UserPermission[]
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // ADMINISTRADOR, FINANCEIRO, GESTOR, CONSULTA, ...
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  code        String  @unique // ex.: invoices.override
+  description String?
+
+  roles RolePermission[]
+
+  @@map("permissions")
+  userPermissions UserPermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Sessão = refresh token rotativo (hash) com rastreio de dispositivo.
+model Session {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  replacedById     String?
+  ip               String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Ajuste individual de permissão (além do papel): granted=true concede, false remove.
+model UserPermission {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  granted      Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, permissionId])
+}
+
+// ---------------------------------------------------------------------
+//  Entidades (clientes públicos) e fontes de dados
+// ---------------------------------------------------------------------
+
+enum EntityType {
+  PM // Prefeitura Municipal
+  CM // Câmara Municipal
+  AUTARQUIA
+  FUNDO
+  INSTITUTO
+  CONSORCIO
+  OUTRO
+}
+
+model Entity {
+  id                String     @id @default(uuid())
+  type              EntityType
+  name              String // Ex.: "CÂMARA MUNICIPAL DE BOM LUGAR"
+  shortName         String? // Ex.: "CM BOM LUGAR"
+  municipality      String // Ex.: "Bom Lugar"
+  uf                String     @db.Char(2)
+  cnpj              String?
+  logoUrl           String?
+  notes             String?
+  isActive          Boolean    @default(true)
+  responsibleUserId String?
+  responsibleUser   User?      @relation(fields: [responsibleUserId], references: [id])
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  deletedAt         DateTime?
+
+  dataSources     DataSource[]
+  contracts       Contract[]
+  invoices        Invoice[]
+  contacts        Contact[]
+  documents       Document[]
+  tasks           FinancialTask[]
+  collectionCases CollectionCase[]
+  serviceOrders   ServiceOrder[]
+  syncRuns        SyncRun[]
+  messages        OutboundMessage[]
+  notifications   Notification[]
+  certificates    Certificate[]
+
+  @@unique([type, municipality, uf])
+  @@index([municipality])
+  @@index([uf])
+  @@map("entities")
+}
+
+enum DataSourceProvider {
+  ASSESI_PORTAL
+  ASSESI_API
+  MANUAL
+}
+
+enum SyncStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+  SKIPPED
+}
+
+/// Uma entidade pode ter uma ou mais fontes (ex.: link do Portal do Cliente).
+model DataSource {
+  id                  String             @id @default(uuid())
+  entityId            String
+  entity              Entity             @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  provider            DataSourceProvider @default(ASSESI_PORTAL)
+  url                 String
+  externalEntityCode  String? // codEntidade no portal (ex.: 12422)
+  externalEntityType  String? // tipoEntidade no portal (ex.: 1)
+  label               String?
+  isActive            Boolean            @default(true)
+  syncEnabled         Boolean            @default(true)
+  /// Config específica do provider (ex.: {"fetchInvoiceDocuments": false})
+  config              Json?
+  lastSyncAt          DateTime?
+  lastSyncStatus      SyncStatus?
+  lastSyncRunId       String?
+  lastSuccessAt       DateTime?
+  consecutiveFailures Int                @default(0)
+  /// Circuit breaker: enquanto no futuro, a fonte não é sincronizada automaticamente.
+  circuitOpenUntil    DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deletedAt           DateTime?
+
+  syncRuns SyncRun[]
+  invoices Invoice[]
+
+  @@unique([provider, url])
+  @@index([entityId])
+  @@map("data_sources")
+}
+
+enum SyncTrigger {
+  SCHEDULED
+  MANUAL
+  BULK
+  RETRY
+}
+
+model SyncRun {
+  id                String      @id @default(uuid())
+  dataSourceId      String
+  dataSource        DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  entityId          String
+  entity            Entity      @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  trigger           SyncTrigger
+  status            SyncStatus  @default(QUEUED)
+  requestedByUserId String?
+  requestedBy       User?       @relation(fields: [requestedByUserId], references: [id])
+  jobId             String?
+  attempt           Int         @default(1)
+  queuedAt          DateTime    @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  durationMs        Int?
+  /// Estatísticas: { invoicesSeen, invoicesCreated, invoicesUpdated, statusChanges, certificates, contracts, conflicts, missing }
+  stats             Json?
+  errorMessage      String?
+  errorDetails      String?
+  warnings          Json?
+
+  invoiceEvents InvoiceEvent[]
+  conflicts     SyncConflict[]
+
+  @@index([dataSourceId, queuedAt])
+  @@index([entityId, queuedAt])
+  @@index([status])
+  @@map("sync_runs")
+}
+
+// ---------------------------------------------------------------------
+//  Contratos e aditivos
+// ---------------------------------------------------------------------
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  TERMINATED
+}
+
+enum RecordOrigin {
+  SYNC
+  MANUAL
+  IMPORT
+  SYSTEM
+}
+
+model Contract {
+  id                String         @id @default(uuid())
+  entityId          String
+  entity            Entity         @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  number            String // Ex.: "070201001/2025"
+  externalCode      String? // id do contrato no portal (ex.: 20153373)
+  object            String?
+  description       String?
+  monthlyValue      Decimal?       @db.Decimal(14, 2)
+  totalValue        Decimal?       @db.Decimal(14, 2)
+  startDate         DateTime?      @db.Date
+  endDate           DateTime?      @db.Date
+  status            ContractStatus @default(ACTIVE)
+  /// Se true, o sistema espera uma nota por competência (usado na conta corrente)
+  expectsMonthlyBilling Boolean    @default(true)
+  responsibleUserId String?
+  responsibleUser   User?          @relation(fields: [responsibleUserId], references: [id])
+  origin            RecordOrigin   @default(MANUAL)
+  notes             String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+
+  amendments    ContractAmendment[]
+  invoices      Invoice[]
+  documents     Document[]
+  tasks         FinancialTask[]
+  serviceOrders ServiceOrder[]
+
+  @@unique([entityId, number])
+  @@index([entityId])
+  @@index([endDate])
+  @@map("contracts")
+}
+
+enum AmendmentKind {
+  TERM // prazo/vigência
+  VALUE // valor
+  OBJECT // objeto
+  MIXED
+  OTHER
+}
+
+model ContractAmendment {
+  id              String        @id @default(uuid())
+  contractId      String
+  contract        Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  sequence        Int // 1, 2, 3...
+  label           String? // Ex.: "6º ADT", "1º Ad"
+  kind            AmendmentKind @default(OTHER)
+  description     String?
+  signedAt        DateTime?     @db.Date
+  effectiveFrom   DateTime?     @db.Date
+  newEndDate      DateTime?     @db.Date
+  newMonthlyValue Decimal?      @db.Decimal(14, 2)
+  newObject       String?
+  origin          RecordOrigin  @default(MANUAL)
+  documentId      String?
+  document        Document?     @relation(fields: [documentId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([contractId, sequence])
+  @@map("contract_amendments")
+}
+
+// ---------------------------------------------------------------------
+//  Notas fiscais, histórico e reconciliação
+// ---------------------------------------------------------------------
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  CANCELLED
+  UNKNOWN
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  entityId        String
+  entity          Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  contractId      String?
+  contract        Contract?     @relation(fields: [contractId], references: [id])
+  dataSourceId    String?
+  dataSource      DataSource?   @relation(fields: [dataSourceId], references: [id])
+  number          String // Ex.: "50616"
+  externalId      String? // id interno no portal (ex.: 64771)
+  competenceMonth Int // 1..12
+  competenceYear  Int
+  amount          Decimal       @db.Decimal(14, 2)
+  issueDate       DateTime?     @db.Date
+  status          InvoiceStatus @default(UNKNOWN)
+  /// Status como veio da fonte (texto original), útil para diagnóstico
+  sourceStatusRaw String?
+  paidAt          DateTime?     @db.Date
+  paidAmount      Decimal?      @db.Decimal(14, 2)
+  description     String?
+  documentUrl     String? // URL da NF na origem
+  receiptUrl      String? // URL do recibo na origem
+  origin          RecordOrigin  @default(SYNC)
+
+  // ---- rastreio de presença na fonte ----
+  firstSeenAt         DateTime  @default(now())
+  lastSeenAt          DateTime  @default(now())
+  missingSince        DateTime?
+  needsReconciliation Boolean   @default(false)
+  reconciliationNote  String?
+
+  // ---- alteração manual protegida ----
+  manualOverride       Boolean   @default(false)
+  overrideJustification String?
+  overriddenByUserId   String?
+  overriddenBy         User?     @relation("InvoiceOverriddenBy", fields: [overriddenByUserId], references: [id])
+  overriddenAt         DateTime?
+
+  rawSnapshot Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  events         InvoiceEvent[]
+  conflicts      SyncConflict[]
+  documents      Document[]
+  tasks          FinancialTask[]
+  collectionCase CollectionCase?
+  messages       OutboundMessage[]
+  serviceOrders  ServiceOrder[]
+
+  @@unique([entityId, number])
+  @@index([entityId, status])
+  @@index([contractId, competenceYear, competenceMonth])
+  @@index([status, issueDate])
+  @@index([paidAt])
+  @@map("invoices")
+}
+
+enum InvoiceEventType {
+  CREATED
+  STATUS_CHANGED
+  FIELD_CHANGED
+  MISSING_FROM_SOURCE
+  REAPPEARED
+  MANUAL_OVERRIDE
+  RECONCILED
+  CONFLICT_DETECTED
+  CONFLICT_RESOLVED
+  NOTE
+}
+
+/// Event log financeiro (append-only): toda mudança relevante de uma nota.
+model InvoiceEvent {
+  id        String           @id @default(uuid())
+  invoiceId String
+  invoice   Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  type      InvoiceEventType
+  field     String?
+  oldValue  String?
+  newValue  String?
+  origin    RecordOrigin
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id])
+  syncRunId String?
+  syncRun   SyncRun?         @relation(fields: [syncRunId], references: [id])
+  note      String?
+  createdAt DateTime         @default(now())
+
+  @@index([invoiceId, createdAt])
+  @@map("invoice_events")
+}
+
+enum ConflictStatus {
+  OPEN
+  KEPT_MANUAL
+  ACCEPTED_SOURCE
+}
+
+/// Conflito entre valor manual (protegido) e valor vindo da sincronização.
+model SyncConflict {
+  id               String         @id @default(uuid())
+  invoiceId        String
+  invoice          Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  syncRunId        String?
+  syncRun          SyncRun?       @relation(fields: [syncRunId], references: [id])
+  field            String
+  manualValue      String?
+  sourceValue      String?
+  status           ConflictStatus @default(OPEN)
+  resolvedByUserId String?
+  resolvedBy       User?          @relation(fields: [resolvedByUserId], references: [id])
+  resolvedAt       DateTime?
+  resolutionNote   String?
+  createdAt        DateTime       @default(now())
+
+  @@index([status])
+  @@map("sync_conflicts")
+}
+
+// ---------------------------------------------------------------------
+//  Documentos (armazenamento S3, privado, deduplicado por checksum)
+// ---------------------------------------------------------------------
+
+enum DocumentType {
+  INVOICE // Nota Fiscal
+  SERVICE_REPORT // Relatório de Serviços
+  PAYMENT_REQUEST // Solicitação de Pagamento
+  LABOR_DECLARATION // Declaração Trabalhista
+  RECEIPT // Recibo
+  AMENDMENT_REQUEST // Solicitação de Aditivo
+  CERTIFICATE // Certidão
+  CONTRACT // Contrato
+  SERVICE_ORDER // Ordem de Serviço
+  SERVICE_ORDER_SIGNED // OS assinada
+  OTHER
+}
+
+/// Conteúdo físico. Documentos idênticos (mesmo checksum) compartilham o blob.
+model DocumentBlob {
+  id         String   @id @default(uuid())
+  checksum   String   @unique // sha256 hex
+  storageKey String   @unique
+  size       Int
+  mimeType   String
+  createdAt  DateTime @default(now())
+
+  documents Document[]
+
+  @@map("document_blobs")
+}
+
+model Document {
+  id               String       @id @default(uuid())
+  type             DocumentType
+  name             String
+  blobId           String
+  blob             DocumentBlob @relation(fields: [blobId], references: [id])
+  entityId         String?
+  entity           Entity?      @relation(fields: [entityId], references: [id])
+  contractId       String?
+  contract         Contract?    @relation(fields: [contractId], references: [id])
+  invoiceId        String?
+  invoice          Invoice?     @relation(fields: [invoiceId], references: [id])
+  serviceOrderId   String?
+  serviceOrder     ServiceOrder? @relation("ServiceOrderDocuments", fields: [serviceOrderId], references: [id])
+  originalUrl      String?
+  sourceDate       DateTime?    @db.Date
+  capturedAt       DateTime     @default(now())
+  uploadedByUserId String?
+  uploadedBy       User?        @relation(fields: [uploadedByUserId], references: [id])
+  origin           RecordOrigin @default(MANUAL)
+  metadata         Json?
+  createdAt        DateTime     @default(now())
+  deletedAt        DateTime?
+
+  amendments          ContractAmendment[]
+  certificateVersions CertificateVersion[]
+  mainForServiceOrders ServiceOrder[]      @relation("ServiceOrderMainDocument")
+  signedServiceOrders ServiceOrder[]       @relation("ServiceOrderSignedDocument")
+  signatureRequests   SignatureRequest[]
+
+  @@index([entityId, type])
+  @@index([invoiceId])
+  @@index([contractId])
+  @@map("documents")
+}
+
+// ---------------------------------------------------------------------
+//  Certidões (com versões/histórico)
+// ---------------------------------------------------------------------
+
+model Certificate {
+  id        String    @id @default(uuid())
+  /// Chave normalizada do nome (ex.: "certidao-negativa-debitos-trabalhistas")
+  slug      String
+  name      String
+  /// null = certidão da própria empresa (válida para todas as entidades)
+  entityId  String?
+  entity    Entity?   @relation(fields: [entityId], references: [id])
+  isActive  Boolean   @default(true)
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  versions CertificateVersion[]
+
+  @@unique([slug, entityId])
+  @@map("certificates")
+}
+
+model CertificateVersion {
+  id               String       @id @default(uuid())
+  certificateId    String
+  certificate      Certificate  @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  externalId       String? // ex.: 1462 (storage/certidoes/1462.pdf)
+  sourceUrl        String?
+  issuedAt         DateTime?    @db.Date
+  validUntil       DateTime?    @db.Date
+  documentId       String?
+  document         Document?    @relation(fields: [documentId], references: [id])
+  capturedAt       DateTime     @default(now())
+  origin           RecordOrigin @default(SYNC)
+  registeredByUserId String?
+  registeredBy     User?        @relation(fields: [registeredByUserId], references: [id])
+  isCurrent        Boolean      @default(true)
+
+  @@index([certificateId, isCurrent])
+  @@index([validUntil])
+  @@map("certificate_versions")
+}
+
+// ---------------------------------------------------------------------
+//  Contatos
+// ---------------------------------------------------------------------
+
+model Contact {
+  id          String    @id @default(uuid())
+  entityId    String
+  entity      Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  name        String
+  role        String? // cargo
+  department  String? // setor
+  phone       String?
+  whatsapp    String?
+  email       String?
+  notes       String?
+  isPrimary   Boolean   @default(false)
+  isFinancial Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  collectionAttempts CollectionAttempt[]
+  messages           OutboundMessage[]
+
+  @@index([entityId])
+  @@map("contacts")
+}
+
+// ---------------------------------------------------------------------
+//  Agenda financeira (tarefas)
+// ---------------------------------------------------------------------
+
+enum TaskType {
+  CHARGE_CLIENT // cobrar município
+  CHARGE_AGAIN // cobrar novamente
+  VERIFY_PAYMENT // verificar pagamento
+  REQUEST_SERVICE_ORDER // solicitar ordem de serviço
+  VERIFY_SIGNATURE // verificar assinatura
+  RENEW_CERTIFICATE // renovar certidão
+  VERIFY_CONTRACT // verificar contrato
+  SEND_DOCUMENT // enviar documento
+  CONFIRM_PAYMENT // confirmar pagamento
+  CUSTOM
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+model FinancialTask {
+  id              String        @id @default(uuid())
+  title           String
+  description     String?
+  type            TaskType      @default(CUSTOM)
+  entityId        String?
+  entity          Entity?       @relation(fields: [entityId], references: [id])
+  contractId      String?
+  contract        Contract?     @relation(fields: [contractId], references: [id])
+  invoiceId       String?
+  invoice         Invoice?      @relation(fields: [invoiceId], references: [id])
+  serviceOrderId  String?
+  serviceOrder    ServiceOrder? @relation(fields: [serviceOrderId], references: [id])
+  assigneeUserId  String?
+  assignee        User?         @relation("TaskAssignee", fields: [assigneeUserId], references: [id])
+  createdByUserId String?
+  createdBy       User?         @relation("TaskCreator", fields: [createdByUserId], references: [id])
+  priority        TaskPriority  @default(MEDIUM)
+  status          TaskStatus    @default(PENDING)
+  dueDate         DateTime      @db.Date
+  dueTime         String? // "HH:mm" opcional
+  notes           String?
+  completedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  events TaskEvent[]
+
+  @@index([assigneeUserId, status, dueDate])
+  @@index([entityId, dueDate])
+  @@index([dueDate])
+  @@map("financial_tasks")
+}
+
+model TaskEvent {
+  id        String        @id @default(uuid())
+  taskId    String
+  task      FinancialTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?         @relation(fields: [userId], references: [id])
+  action    String // CREATED, STATUS_CHANGED, REASSIGNED, RESCHEDULED, COMMENT, ...
+  fromValue String?
+  toValue   String?
+  note      String?
+  createdAt DateTime      @default(now())
+
+  @@index([taskId, createdAt])
+  @@map("task_events")
+}
+
+// ---------------------------------------------------------------------
+//  Cobranças (separadas do status da nota)
+// ---------------------------------------------------------------------
+
+enum CollectionStatus {
+  NOT_CHARGED
+  SCHEDULED
+  SENT
+  CLIENT_REPLIED
+  PAYMENT_PROMISED
+  AWAITING_PAYMENT
+  SETTLED
+}
+
+enum MessageChannel {
+  WHATSAPP
+  EMAIL
+  PHONE
+  IN_PERSON
+  OTHER
+}
+
+model CollectionCase {
+  id                  String           @id @default(uuid())
+  invoiceId           String           @unique
+  invoice             Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  entityId            String
+  entity              Entity           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  status              CollectionStatus @default(NOT_CHARGED)
+  assigneeUserId      String?
+  assignee            User?            @relation(fields: [assigneeUserId], references: [id])
+  nextActionAt        DateTime?        @db.Date
+  nextActionNote      String?
+  promisedPaymentDate DateTime?        @db.Date
+  lastAttemptAt       DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  attempts CollectionAttempt[]
+
+  @@index([entityId, status])
+  @@index([nextActionAt])
+  @@map("collection_cases")
+}
+
+model CollectionAttempt {
+  id                String           @id @default(uuid())
+  caseId            String
+  case              CollectionCase   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  performedByUserId String?
+  performedBy       User?            @relation(fields: [performedByUserId], references: [id])
+  performedAt       DateTime         @default(now())
+  channel           MessageChannel
+  contactId         String?
+  contact           Contact?         @relation(fields: [contactId], references: [id])
+  message           String?
+  response          String?
+  resultingStatus   CollectionStatus
+  nextActionAt      DateTime?        @db.Date
+  nextActionNote    String?
+  messageId         String?          @unique
+  outboundMessage   OutboundMessage? @relation(fields: [messageId], references: [id])
+  createdAt         DateTime         @default(now())
+
+  @@index([caseId, performedAt])
+  @@map("collection_attempts")
+}
+
+// ---------------------------------------------------------------------
+//  Mensagens e templates
+// ---------------------------------------------------------------------
+
+model MessageTemplate {
+  id          String          @id @default(uuid())
+  key         String          @unique // ex.: SERVICE_ORDER_ISSUE_REMINDER
+  name        String
+  channel     MessageChannel? // null = qualquer canal
+  subject     String?
+  body        String
+  /// Lista de variáveis suportadas: ["entidade","competencia","exercicio",...]
+  variables   Json?
+  isActive    Boolean         @default(true)
+  isSystem    Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  messages OutboundMessage[]
+
+  @@map("message_templates")
+}
+
+enum OutboundMessageStatus {
+  DRAFT
+  MANUAL_PENDING // gerada para envio manual (sem provedor configurado)
+  MANUALLY_CONFIRMED // usuário confirmou que enviou manualmente
+  QUEUED
+  SENT // provedor aceitou
+  DELIVERED // provedor confirmou entrega
+  FAILED
+}
+
+model OutboundMessage {
+  id                String                @id @default(uuid())
+  channel           MessageChannel
+  templateId        String?
+  template          MessageTemplate?      @relation(fields: [templateId], references: [id])
+  entityId          String?
+  entity            Entity?               @relation(fields: [entityId], references: [id])
+  contactId         String?
+  contact           Contact?              @relation(fields: [contactId], references: [id])
+  invoiceId         String?
+  invoice           Invoice?              @relation(fields: [invoiceId], references: [id])
+  serviceOrderId    String?
+  serviceOrder      ServiceOrder?         @relation(fields: [serviceOrderId], references: [id])
+  recipient         String // telefone/e-mail de destino
+  subject           String?
+  body              String
+  status            OutboundMessageStatus @default(DRAFT)
+  providerName      String? // whatsapp-cloud, smtp, manual
+  providerMessageId String?
+  providerResponse  Json?
+  errorMessage      String?
+  sentByUserId      String?
+  sentBy            User?                 @relation(fields: [sentByUserId], references: [id])
+  sentAt            DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  collectionAttempt CollectionAttempt?
+
+  @@index([entityId, createdAt])
+  @@map("outbound_messages")
+}
+
+// ---------------------------------------------------------------------
+//  Ordens de serviço e assinatura
+// ---------------------------------------------------------------------
+
+enum ServiceOrderStatus {
+  NOT_REQUESTED
+  REQUESTED
+  AWAITING_ISSUE
+  ISSUED
+  AWAITING_SIGNATURE
+  SIGNED
+  CANCELLED
+}
+
+model ServiceOrder {
+  id               String             @id @default(uuid())
+  entityId         String
+  entity           Entity             @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  contractId       String
+  contract         Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  invoiceId        String?
+  invoice          Invoice?           @relation(fields: [invoiceId], references: [id])
+  competenceMonth  Int
+  competenceYear   Int
+  number           String?
+  status           ServiceOrderStatus @default(NOT_REQUESTED)
+  requestedAt      DateTime?          @db.Date
+  issuedAt         DateTime?          @db.Date
+  signedAt         DateTime?          @db.Date
+  documentId       String?
+  document         Document?          @relation("ServiceOrderMainDocument", fields: [documentId], references: [id])
+  signedDocumentId String?
+  signedDocument   Document?          @relation("ServiceOrderSignedDocument", fields: [signedDocumentId], references: [id])
+  notes            String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  deletedAt        DateTime?
+
+  signatories       ServiceOrderSignatory[]
+  events            ServiceOrderEvent[]
+  signatureRequests SignatureRequest[]
+  tasks             FinancialTask[]
+  messages          OutboundMessage[]
+  documents         Document[]          @relation("ServiceOrderDocuments")
+
+  @@unique([contractId, competenceYear, competenceMonth])
+  @@index([entityId, status])
+  @@map("service_orders")
+}
+
+model ServiceOrderSignatory {
+  id             String       @id @default(uuid())
+  serviceOrderId String
+  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  name           String
+  role           String?
+  email          String?
+  signedAt       DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@map("service_order_signatories")
+}
+
+model ServiceOrderEvent {
+  id             String       @id @default(uuid())
+  serviceOrderId String
+  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  action         String
+  fromValue      String?
+  toValue        String?
+  note           String?
+  createdAt      DateTime     @default(now())
+
+  @@index([serviceOrderId, createdAt])
+  @@map("service_order_events")
+}
+
+enum SignatureProvider {
+  MANUAL_UPLOAD
+  CLICKSIGN
+  DOCUSIGN
+  GOV_BR
+  OTHER
+}
+
+enum SignatureRequestStatus {
+  DRAFT
+  SENT
+  VIEWED
+  SIGNED
+  DECLINED
+  EXPIRED
+  CANCELLED
+  COMPLETED_MANUALLY
+}
+
+model SignatureRequest {
+  id                 String                 @id @default(uuid())
+  serviceOrderId     String
+  serviceOrder       ServiceOrder           @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  provider           SignatureProvider
+  providerRequestId  String?
+  status             SignatureRequestStatus @default(DRAFT)
+  sentAt             DateTime?
+  completedAt        DateTime?
+  signedDocumentId   String?
+  signedDocument     Document?              @relation(fields: [signedDocumentId], references: [id])
+  /// Evidências do provedor (IPs, hashes, timestamps, certificado) ou do registro manual
+  evidence           Json?
+  registeredByUserId String?
+  registeredBy       User?                  @relation(fields: [registeredByUserId], references: [id])
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  @@index([serviceOrderId])
+  @@map("signature_requests")
+}
+
+// ---------------------------------------------------------------------
+//  Auditoria (append-only), notificações e configurações
+// ---------------------------------------------------------------------
+
+/// Nunca é editado/apagado pela aplicação (ver migration com REVOKE).
+model AuditLog {
+  id            String   @id @default(uuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  action        String // CREATE, UPDATE, SOFT_DELETE, STATUS_OVERRIDE, LOGIN, EXPORT, DOWNLOAD, ...
+  resource      String // invoice, contract, entity, ...
+  resourceId    String?
+  before        Json?
+  after         Json?
+  justification String?
+  ip            String?
+  userAgent     String?
+  requestId     String?
+  createdAt     DateTime @default(now())
+
+  @@index([resource, resourceId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum NotificationType {
+  CERTIFICATE_EXPIRING
+  CERTIFICATE_EXPIRED
+  CONTRACT_EXPIRING
+  INVOICE_OVERDUE
+  SYNC_FAILED
+  RECONCILIATION_NEEDED
+  TASK_DUE
+  SERVICE_ORDER_PENDING
+  GENERIC
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  userId        String? // null = para toda a equipe
+  user          User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          NotificationType
+  title         String
+  body          String?
+  entityId      String?
+  entity        Entity?          @relation(fields: [entityId], references: [id])
+  referenceType String?
+  referenceId   String?
+  /// Chave de deduplicação (ex.: CERTIFICATE_EXPIRING:<versionId>)
+  dedupeKey     String?          @unique
+  readAt        DateTime?
+  createdAt     DateTime         @default(now())
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model Setting {
+  key             String   @id
+  value           Json
+  description     String?
+  updatedByUserId String?
+  updatedBy       User?    @relation(fields: [updatedByUserId], references: [id])
+  updatedAt       DateTime @updatedAt
+
+  @@map("settings")
+}

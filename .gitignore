@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+!.env.production.example
+infra/data/
+*.log
+.DS_Store
+.turbo/
+
+# Netlify
+.netlify

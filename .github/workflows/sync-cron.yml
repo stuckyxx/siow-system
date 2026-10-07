@@ -1,0 +1,32 @@
+# Alternativa gratuita ao Vercel Cron (no plano Hobby os crons rodam no máximo 1x/dia):
+# chama o endpoint de sincronização a cada 6 horas e as verificações diárias às 09:00 UTC.
+# Segredos necessários no repositório: APP_URL (ex.: https://app.exemplo.com.br) e CRON_SECRET
+# (mesmo valor da variável CRON_SECRET do projeto na Vercel).
+name: Sync cron
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    if: github.event.schedule != '0 9 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sincronizar fontes de dados
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/sync"
+
+  daily:
+    if: github.event.schedule == '0 9 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificações diárias
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/daily"
