@@ -225,6 +225,9 @@ export interface SyncBatchResult {
  * Sincroniza várias fontes dentro de um orçamento de tempo, da mais antiga
  * (lastSyncAt nulo primeiro) para a mais recente. Concorrência: env().SYNC_CONCURRENCY.
  */
+/** Janela para considerar uma fonte "em dia" no contador de restantes do lote. */
+const REMAINING_STALE_MS = 60 * 60_000;
+
 export async function syncBatch(opts: SyncBatchOptions): Promise<SyncBatchResult> {
   const startedAt = Date.now();
   const budgetMs = opts.budgetMs ?? env().SYNC_BUDGET_MS;
@@ -238,7 +241,7 @@ export async function syncBatch(opts: SyncBatchOptions): Promise<SyncBatchResult
       isActive: true,
       ...(opts.dataSourceIds ? { id: { in: opts.dataSourceIds } } : { syncEnabled: true, entity: { isActive: true, deletedAt: null } }),
     },
-    select: { id: true, entityId: true, circuitOpenUntil: true },
+    select: { id: true, entityId: true, circuitOpenUntil: true, lastSyncAt: true },
     orderBy: [{ lastSyncAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
   });
 
@@ -263,7 +266,10 @@ export async function syncBatch(opts: SyncBatchOptions): Promise<SyncBatchResult
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, queue.length || 1) }, () => worker()));
-  result.remaining = queue.length;
+  // "Restantes" = fontes que ficaram fora deste lote e ainda estão desatualizadas (nunca sincronizadas ou há mais de
+  // REMAINING_STALE_MS). As que sobraram na fila por já estarem em dia não contam — senão o contador nunca chegaria a zero.
+  const staleBefore = startedAt - REMAINING_STALE_MS;
+  result.remaining = queue.filter((ds) => !ds.lastSyncAt || ds.lastSyncAt.getTime() < staleBefore).length;
 
   // Certidões: uma única passada por lote (inclui pendências de lotes anteriores).
   try {
