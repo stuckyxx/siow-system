@@ -5,7 +5,7 @@ import { CONTRACT_STATUSES, CONTRACT_STATUS_LABELS, formatBRL, formatBrDate, typ
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ContractStatusBadge } from '../status';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Dialog, Empty, Field, Input, Select, Table, Td, Th, Textarea } from '../ui';
+import { Badge, Button, Card, Dialog, Empty, Field, Input, Select, Table, Td, Th, Textarea } from '../ui';
 
 export interface ContractRow {
   id: string; number: string; object: string | null; status: ContractStatus; monthlyValue: string | null; startDate: string | null; endDate: string | null; origin: string;

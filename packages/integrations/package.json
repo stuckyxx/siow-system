@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@siow/shared": "workspace:*",
-    "cheerio": "^1.0.0"
+    "cheerio": "^1.0.0",
+    "domhandler": "^5.0.3"
   },
   "devDependencies": {
     "typescript": "^5.7.3",

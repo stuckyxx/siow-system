@@ -20,6 +20,7 @@ const REPORT_LABELS: Record<(typeof REPORT_KEYS)[number], string> = {
   tasks: 'Agenda financeira',
   collections: 'Cobranças realizadas',
   invoice_history: 'Histórico financeiro',
+  forecast: 'Receita prevista (mensal / anual)',
 };
 
 @Controller('financeiro/reports')

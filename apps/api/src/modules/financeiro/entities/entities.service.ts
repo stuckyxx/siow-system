@@ -73,7 +73,8 @@ export class EntitiesService {
       ${order}
       LIMIT ${f.pageSize} OFFSET ${(f.page - 1) * f.pageSize}
     `);
-    const [{ count }] = await this.prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`SELECT COUNT(*)::int AS count FROM entities e ${where}`);
+    const countRows = await this.prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`SELECT COUNT(*)::int AS count FROM entities e ${where}`);
+    const count = countRows[0]?.count ?? 0;
 
     const items: EntitySummary[] = rows.map((r) => ({
       id: r['id'] as string,

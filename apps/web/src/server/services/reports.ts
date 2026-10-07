@@ -11,7 +11,7 @@
  *      contratos = que possuam nota nesse status no período. Certidões e previsão
  *      não têm nota associada: o filtro de status não se aplica (é informado em `filters`).
  */
-import { Prisma } from '@siow/db';
+import type { Prisma } from '@siow/db';
 import {
   CERTIFICATE_STATUS_LABELS,
   COLLECTION_STATUS_LABELS,

@@ -8,7 +8,7 @@
  *    (budgetMs) — o que não couber fica para a próxima execução (remaining).
  *  - documentos de certidões: baixados UMA vez por lote (não por entidade).
  */
-import { Prisma, type SyncStatus, type SyncTrigger } from '@siow/db';
+import type { Prisma, SyncStatus, SyncTrigger } from '@siow/db';
 import { getProvider, ProviderError, type ProviderContext } from '@siow/integrations';
 import { applySnapshot } from '@siow/sync-core';
 import type { z } from 'zod';

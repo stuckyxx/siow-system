@@ -12,7 +12,8 @@
  *  - listagem total: POST ajax/Faturas.ajax.php (mesma estrutura de .contract-header/.invoice-card)
  */
 import * as cheerio from 'cheerio';
-import type { AnyNode, Cheerio, CheerioAPI } from 'cheerio';
+import type { Cheerio, CheerioAPI } from 'cheerio';
+import type { AnyNode } from 'domhandler';
 import { parseBRL, parseBrDate, parseCompetence } from '@siow/shared';
 import type {
   CertificateSnapshot,

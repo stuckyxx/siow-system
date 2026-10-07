@@ -1,12 +1,12 @@
 import { PipeTransform } from '@nestjs/common';
-import type { ZodType } from 'zod';
+import type { ZodTypeAny, output } from 'zod';
 
 /** Pipe de validação com Zod — reutiliza os schemas de @siow/shared no backend e no frontend. */
-export class ZodPipe<T> implements PipeTransform<unknown, T> {
-  constructor(private readonly schema: ZodType<T>) {}
-  transform(value: unknown): T {
+export class ZodPipe<S extends ZodTypeAny> implements PipeTransform<unknown, output<S>> {
+  constructor(private readonly schema: S) {}
+  transform(value: unknown): output<S> {
     return this.schema.parse(value);
   }
 }
 
-export const zod = <T>(schema: ZodType<T>): ZodPipe<T> => new ZodPipe(schema);
+export const zod = <S extends ZodTypeAny>(schema: S): ZodPipe<S> => new ZodPipe(schema);

@@ -34,7 +34,7 @@ export async function putBlob(key: string, buffer: Buffer | Uint8Array, contentT
     return { url: `netlify:${key}`, pathname: key };
   }
   const { put } = await import('@vercel/blob');
-  const res = await put(key, buffer, { access: 'public', contentType, addRandomSuffix: false, token: vercelToken() });
+  const res = await put(key, Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer), { access: 'public', contentType, addRandomSuffix: false, token: vercelToken() });
   return { url: res.url, pathname: res.pathname };
 }
 

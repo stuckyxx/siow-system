@@ -3,7 +3,7 @@
  * autenticação por cookie JWT, permissões, CSRF, validação Zod e erros JSON.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { ZodError, type ZodType } from 'zod';
+import { ZodError, type ZodTypeAny, type output } from 'zod';
 import type { CurrentUser } from '@siow/shared';
 import { Prisma } from '@siow/db';
 import { getCurrentUser } from './auth.js';
@@ -62,10 +62,10 @@ export function errorResponse(e: unknown): Response {
  * route(null, …) — rota pública.
  */
 export function route(permissions: string[] | null, fn: Handler) {
-  return async (req: NextRequest, rp?: RouteParams): Promise<Response> => {
+  return async (req: NextRequest, rp: RouteParams): Promise<Response> => {
     try {
       if (!csrfOk(req)) throw forbidden('Requisição bloqueada (CSRF)');
-      const params = rp ? await rp.params : {};
+      const params = (await rp?.params) ?? {};
       const query = Object.fromEntries(req.nextUrl.searchParams.entries());
       let user: CurrentUser | null = null;
       if (permissions !== null) {
@@ -80,9 +80,9 @@ export function route(permissions: string[] | null, fn: Handler) {
   };
 }
 
-export async function json<T>(req: NextRequest, schema: ZodType<T>): Promise<T> {
+export async function json<S extends ZodTypeAny>(req: NextRequest, schema: S): Promise<output<S>> {
   let body: unknown;
   try { body = await req.json(); } catch { throw badRequest('JSON inválido'); }
   return schema.parse(body);
 }
-export function parseQuery<T>(query: Record<string, string>, schema: ZodType<T>): T { return schema.parse(query); }
+export function parseQuery<S extends ZodTypeAny>(query: Record<string, string>, schema: S): output<S> { return schema.parse(query); }

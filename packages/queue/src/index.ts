@@ -1,5 +1,5 @@
 import { Queue, type JobsOptions } from 'bullmq';
-import IORedis from 'ioredis';
+import { Redis as IORedis } from 'ioredis';
 
 /** Nomes das filas — únicos pontos de acoplamento entre API (produtor) e worker (consumidor). */
 export const QUEUES = {
