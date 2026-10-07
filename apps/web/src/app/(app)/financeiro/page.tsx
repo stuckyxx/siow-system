@@ -68,12 +68,12 @@ export default function DashboardPage() {
             {data.topDebtors.length === 0 ? <div className="bd"><Empty>Nenhuma pendência no recorte</Empty></div> : (
               <div className="tbl">
                 <table>
-                  <thead><tr><th>Entidade</th><th>Município/UF</th><th className="r">Notas</th><th className="r">Débito</th><th className="r">Mais antiga</th></tr></thead>
+                  <thead><tr><th>Entidade</th><th className="hide-m">Município/UF</th><th className="r">Notas</th><th className="r">Débito</th><th className="r">Mais antiga</th></tr></thead>
                   <tbody>
                     {data.topDebtors.slice(0, 15).map((d) => (
                       <tr key={d.entityId} className="click" onClick={() => router.push(`/financeiro/entidades/${d.entityId}?tab=invoices`)}>
                         <td><span className="link">{d.entityName}</span></td>
-                        <td className="muted">{d.municipality}/{d.uf}</td>
+                        <td className="muted hide-m">{d.municipality}/{d.uf}</td>
                         <td className="r num">{d.pendingInvoices}</td>
                         <td className="r num" style={{ color: 'var(--warn)', fontWeight: 600 }}>{formatBRL(d.debt)}</td>
                         <td className="r num muted">{d.oldestPendingDays ?? '—'} dias</td>
@@ -91,13 +91,13 @@ export default function DashboardPage() {
               {data.recentPayments.length === 0 ? <div className="bd"><Empty>Nenhum pagamento no recorte</Empty></div> : (
                 <div className="tbl">
                   <table>
-                    <thead><tr><th>Data</th><th>Entidade</th><th>Nota</th><th className="r">Valor</th></tr></thead>
+                    <thead><tr><th>Data</th><th>Entidade</th><th className="hide-m">Nota</th><th className="r">Valor</th></tr></thead>
                     <tbody>
                       {data.recentPayments.slice(0, 8).map((p) => (
                         <tr key={p.invoiceId}>
                           <td className="num">{formatBrDate(p.paidAt)}</td>
                           <td><Link href={`/financeiro/entidades/${p.entityId}`}>{p.entityName}</Link></td>
-                          <td className="muted">{p.number} · {comp(p.competence)}</td>
+                          <td className="muted hide-m">{p.number} · {comp(p.competence)}</td>
                           <td className="r num">{formatBRL(p.amount)}</td>
                         </tr>
                       ))}

@@ -49,20 +49,20 @@ export function InvoicesTable({ base, showEntity = true, initialOpenId }: { base
       <Card>
         {isLoading ? <div className="p-6 text-sm text-ink-3">Carregando…</div> : !data || data.items.length === 0 ? <div className="p-6"><Empty>Nenhuma nota para os filtros</Empty></div> : (
           <Table>
-            <thead><tr>{th('number', 'Nº')}{showEntity && <Th>Entidade</Th>}{th('competence', 'Competência')}<Th>Exercício</Th>{th('amount', 'Valor', true)}{th('issueDate', 'Emissão')}<Th>Situação</Th>{th('paidAt', 'Pagamento')}<Th className="text-right">Atraso</Th><Th>Contrato</Th><Th>Cobrança</Th><Th></Th></tr></thead>
+            <thead><tr>{th('number', 'Nº')}{showEntity && <Th>Entidade</Th>}{th('competence', 'Competência')}<Th className="hide-m">Exercício</Th>{th('amount', 'Valor', true)}{th('issueDate', 'Emissão')}<Th>Situação</Th>{th('paidAt', 'Pagamento')}<Th className="text-right">Atraso</Th><Th className="hide-m">Contrato</Th><Th>Cobrança</Th><Th></Th></tr></thead>
             <tbody>
               {data.items.map((i) => (
                 <tr key={i.id} className="hover:bg-surface">
                   <Td className="font-medium tabular-nums"><button className="text-brand hover:underline" onClick={() => setOpen(i.id)}>{i.number}</button>{i.needsReconciliation && <Badge tone="critical" className="ml-1">verificar</Badge>}{i.manualOverride && <Badge tone="info" className="ml-1">manual</Badge>}</Td>
                   {showEntity && <Td><Link href={`/financeiro/entidades/${i.entityId}`} className="hover:underline">{i.entityName}</Link></Td>}
                   <Td className="tabular-nums">{formatCompetence({ competenceMonth: i.competenceMonth, competenceYear: i.competenceYear })}</Td>
-                  <Td className="tabular-nums">{i.competenceYear}</Td>
+                  <Td className="tabular-nums hide-m">{i.competenceYear}</Td>
                   <Td className="text-right tabular-nums">{formatBRL(i.amount)}</Td>
                   <Td className="tabular-nums">{formatBrDate(i.issueDate)}</Td>
                   <Td><InvoiceStatusBadge status={i.status} /></Td>
                   <Td className="tabular-nums">{formatBrDate(i.paidAt)}</Td>
                   <Td className={`text-right tabular-nums ${i.daysOverdue ? (i.daysOverdue > 60 ? 'text-critical' : 'text-warn') : 'text-ink-3'}`}>{i.daysOverdue ? `${i.daysOverdue} d` : '—'}</Td>
-                  <Td className="text-ink-2">{i.contractNumber ?? '—'}</Td>
+                  <Td className="text-ink-2 hide-m">{i.contractNumber ?? '—'}</Td>
                   <Td>{i.status === 'PENDING' ? <CollectionStatusBadge status={i.collectionStatus} /> : <span className="text-ink-3">—</span>}</Td>
                   <Td><Button size="sm" variant="ghost" onClick={() => setOpen(i.id)}>Abrir</Button></Td>
                 </tr>

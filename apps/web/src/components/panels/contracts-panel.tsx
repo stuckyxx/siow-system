@@ -61,7 +61,7 @@ export function ContractsPanel({ entityId, manualOnly = false }: { entityId?: st
       {!data ? <div className="muted">Carregando…</div> : rows.length === 0 ? (
         <Empty>{manualOnly ? 'Nenhum contrato cadastrado manualmente. Use "Novo contrato" para registrar o contrato e seus aditivos.' : 'Nenhum contrato'}</Empty>
       ) : (
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {rows.map((c) => (
             <div key={c.id} className="card">
               <div className="hd" style={{ flexWrap: 'wrap' }}>

@@ -87,7 +87,7 @@ function EntitiesList() {
       </div>
       <p className="sub">{showEnded ? 'Entidades sem contrato ativo' : 'Entidades com contrato ativo'} · clique no nome para abrir a ficha</p>
       <div className="row" style={{ marginBottom: 12 }}>
-        <input placeholder="Buscar entidade, município, contrato ou nota…" style={{ width: 340 }} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar" />
+        <input placeholder="Buscar entidade, município, contrato ou nota…" style={{ width: 340, maxWidth: '100%' }} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar" />
         <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo">
           <option value="">Todos os tipos</option>
           {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t} — {ENTITY_TYPE_LABELS[t]}</option>)}
@@ -99,7 +99,7 @@ function EntitiesList() {
         {isLoading ? <div className="bd muted">Carregando…</div> : list.length === 0 ? (
           <div className="bd"><Empty>{data?.total === 0 && !q && !type && !onlyDebt ? 'Nenhuma entidade cadastrada. Use "Importar CSV/XLSX" com o arquivo docs/samples/entidades-exemplo.csv.' : 'Nenhuma entidade encontrada'}</Empty></div>
         ) : (
-          <table>
+          <table className="stack-m">
             <thead><tr><th>Entidade</th><th>Situação</th><th></th></tr></thead>
             <tbody>
               {list.map((e) => (
