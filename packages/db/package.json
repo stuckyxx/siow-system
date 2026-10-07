@@ -17,7 +17,8 @@
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
-    "push": "dotenv -e ../../.env -- prisma db push"
+    "push": "dotenv -e ../../.env -- prisma db push",
+    "test": "vitest run"
   },
   "prisma": {
     "schema": "prisma/schema.prisma",
@@ -30,6 +31,7 @@
     "dotenv-cli": "^8.0.0",
     "prisma": "^6.2.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "2.1.9"
   }
 }

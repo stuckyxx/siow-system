@@ -25,15 +25,17 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(hash: string | null | undefined, password: string): Promise<boolean> {
   if (!hash) {
-    await scrypt(password, randomBytes(16), 64, PARAMS); // tempo constante
+    await scrypt(password, randomBytes(16), 64, PARAMS); // tempo constante (PARAMS já inclui maxmem)
     return false;
   }
   const [alg, N, r, p, saltB64, keyB64] = hash.split('$');
   if (alg !== 'scrypt' || !N || !r || !p || !saltB64 || !keyB64) return false;
+  // maxmem é obrigatório: N=2^15, r=8 precisa de 32 MiB, exatamente o limite padrão do Node — sem ele a verificação lança erro.
   const key = await scrypt(password, Buffer.from(saltB64, 'base64'), 64, {
     N: Number(N),
     r: Number(r),
     p: Number(p),
+    maxmem: PARAMS.maxmem,
   });
   const expected = Buffer.from(keyB64, 'base64');
   return key.length === expected.length && timingSafeEqual(key, expected);
