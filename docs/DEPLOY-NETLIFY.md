@@ -40,21 +40,13 @@ Referências: `docs/prototipo-siow-financeiro.html` e `apps/web/public/logo.png`
 - **Relatórios**: pré-visualização em "papel" com logo no cabeçalho; o **PDF exportado** também traz a faixa com a logo.
 - **Busca rápida** (botão flutuante): interpreta o texto por regras (sem IA) e abre a tela/filtro certo; nunca envia mensagem nem altera status.
 
-## Pendente — bloqueia o sistema
+## Variáveis de ambiente (configuradas em 07/10/2026)
 
-**Variáveis de ambiente ausentes na Netlify.** Hoje o site só tem `APP_URL`, `COOKIE_SECURE`, `SYNC_BUDGET_MS` e `SYNC_CONCURRENCY`. Faltam (por isso `/api/health` responde `{"ok":false,"db":"error"}` — erro confirmado: `Environment variable not found: DATABASE_URL`):
+`DATABASE_URL` (pooler, com `pgbouncer=true&connect_timeout=15`, sem `channel_binding`), `DIRECT_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` e `CRON_SECRET` estão gravadas como **secretas no contexto Production**. Atenção: a Netlify não aceita valor secreto no contexto "All" (inclui o ambiente local de desenvolvimento) — gravado assim, a variável não é salva e a função não a enxerga. Depois de mudar qualquer variável, é preciso **novo deploy**.
 
-| Nome | Valor |
-|---|---|
-| `DATABASE_URL` | string **pooled** do Neon (Console Neon → `siowsystem` → *Connect* → *Connection pooling* ligado), terminando em `?sslmode=require&pgbouncer=true&connect_timeout=15` (como em `apps/web/.env.example`) |
-| `DIRECT_URL` | mesma string **sem** pooling (host sem `-pooler`) |
-| `JWT_ACCESS_SECRET` | segredo aleatório ≥ 32 caracteres |
-| `JWT_REFRESH_SECRET` | outro segredo ≥ 32 caracteres |
-| `CRON_SECRET` | outro segredo ≥ 16 caracteres |
+`/api/health` respondeu `{"ok":true,"db":"ok"}` e o login dos administradores funcionou em produção.
 
-Onde: https://app.netlify.com/projects/siow-system → **Project configuration → Environment variables → Add a variable** (escopo: todos; marque *Contains secret values*). Gerar segredos: `openssl rand -base64 48`.
-
-Depois, **é preciso um novo deploy** (as funções só leem as variáveis no deploy). Recomendado: **Project configuration → Build & deploy → Link repository** → GitHub → `stuckyxx/siow-system`, branch `main` (o `netlify.toml` da raiz já define a base `apps/web`; não preencha *Base directory*). Cada push na `main` passa a publicar sozinho.
+Recomendação de segurança: a senha do banco foi colada no chat durante a configuração — gere uma nova no Neon (Roles → neondb_owner → Reset password) e atualize `DATABASE_URL` e `DIRECT_URL` na Netlify, seguido de novo deploy.
 
 ## Pendente — validação (após o banco conectar)
 
