@@ -3,7 +3,8 @@
  */
 import ExcelJS from 'exceljs';
 import { Prisma } from '@siow/db';
-import { dateToIso, importEntityRowSchema, type EntitySummary, type ImportEntityRow, type Paginated } from '@siow/shared';
+import { dateToIso, importEntityRowSchema, isAdoisPartnerUrl, providerForUrl, type EntitySummary, type ImportEntityRow, type Paginated } from '@siow/shared';
+import { getProvider, normalizeKey, type AdoisPortalProvider } from '@siow/integrations';
 import type { z } from 'zod';
 import type { createContactSchema, createDataSourceSchema, createEntitySchema, entityListFilterSchema, updateContactSchema, updateDataSourceSchema, updateEntitySchema } from '@siow/shared';
 import { prisma } from '../db.js';
@@ -139,7 +140,12 @@ async function ensureEntity(id: string): Promise<void> {
 // ---------------- fontes de dados ----------------
 export async function addDataSource(ctx: Ctx, entityId: string, input: z.infer<typeof createDataSourceSchema>) {
   await ensureEntity(entityId);
-  const ds = await prisma.dataSource.create({ data: { entityId, ...input, config: input.config as Prisma.InputJsonValue | undefined } });
+  const provider = input.provider ?? providerForUrl(input.url);
+  if (!provider) throw badRequest('Não foi possível identificar o portal pela URL');
+  if (isAdoisPartnerUrl(input.url) && !(input.config as { entityKey?: string } | null | undefined)?.entityKey) {
+    throw badRequest('Este é um link de parceiro da Adois (várias entidades). Use "Importar link de parceiro" em Entidades.');
+  }
+  const ds = await prisma.dataSource.create({ data: { entityId, ...input, provider, label: input.label ?? providerLabel(provider), config: input.config as Prisma.InputJsonValue | undefined } });
   await audit(ctx, { action: 'CREATE', resource: 'dataSource', resourceId: ds.id, after: ds });
   return ds;
 }
@@ -218,13 +224,68 @@ export async function importBatch(ctx: Ctx, file: ImportFile) {
     const entity = existing ?? (await prisma.entity.create({ data: { type: row.tipo, name, shortName, municipality, uf: row.uf } }));
     if (existing) result.reused += 1;
     else result.created += 1;
-    const ds = await prisma.dataSource.findUnique({ where: { provider_url: { provider: 'ASSESI_PORTAL', url: row.url.trim() } } });
+    const url = row.url.trim();
+    const provider = providerForUrl(url);
+    if (!provider) {
+      result.errors.push({ line: i + 2, error: 'url: portal não reconhecido (use https de assesi.com.br ou adoissolucoes.com)' });
+      continue;
+    }
+    if (isAdoisPartnerUrl(url)) {
+      result.errors.push({ line: i + 2, error: 'url: link de parceiro da Adois (t=2) — use "Importar link de parceiro"' });
+      continue;
+    }
+    const ds = await prisma.dataSource.findFirst({ where: { provider, url, entityId: entity.id, deletedAt: null } });
     if (!ds) {
-      await prisma.dataSource.create({ data: { entityId: entity.id, provider: 'ASSESI_PORTAL', url: row.url.trim(), label: 'Portal do Cliente' } });
+      await prisma.dataSource.create({ data: { entityId: entity.id, provider, url, label: providerLabel(provider) } });
       result.sourcesCreated += 1;
     }
   }
   await audit(ctx, { action: 'IMPORT', resource: 'entity', after: { file: file.originalname, ...result, errors: result.errors.length } });
+  return result;
+}
+
+const providerLabel = (p: string): string => (p === 'ADOIS_PORTAL' ? 'Portal do Cliente (Adois)' : 'Portal do Cliente');
+
+export interface ImportPartnerResult {
+  company: string | null;
+  entities: Array<{ id: string; shortName: string; name: string; created: boolean; sourceCreated: boolean; contractCodes: string[]; invoices: number; pending: number; pendingAmount: number }>;
+  unassigned: number;
+  warnings: string[];
+}
+
+/**
+ * Link de parceiro da Adois (t=2): a página lista notas da empresa parceira para vários municípios.
+ * Lê o link, identifica cada entidade (prefeitura/câmara) pelas descrições das notas e cadastra
+ * uma entidade + uma fonte por município (mesma URL, `config.entityKey` distinto). Idempotente:
+ * entidade já existente (tipo + município sem acento + UF) e fonte já cadastrada são reaproveitadas.
+ * Não sincroniza: as fontes novas entram na frente da fila de "Sincronizar todas".
+ */
+export async function importPartner(ctx: Ctx, url: string): Promise<ImportPartnerResult> {
+  const provider = getProvider('ADOIS_PORTAL') as AdoisPortalProvider;
+  const discovered = await provider.discoverPartnerEntities(url, {
+    timeoutMs: Number(process.env['SYNC_HTTP_TIMEOUT_MS'] ?? 20_000),
+    userAgent: process.env['SYNC_USER_AGENT'] ?? 'SiowSystem/1.0',
+  });
+  const result: ImportPartnerResult = { company: discovered.company, entities: [], unassigned: discovered.unassigned, warnings: discovered.warnings };
+  for (const g of discovered.groups) {
+    const candidates = await prisma.entity.findMany({ where: { type: g.type, uf: g.uf, deletedAt: null } });
+    let entity = candidates.find((e) => normalizeKey(e.municipality) === normalizeKey(g.municipality)) ?? null;
+    const created = !entity;
+    if (!entity) {
+      entity = await prisma.entity.create({ data: { type: g.type, name: g.name, shortName: g.shortName, municipality: g.municipality, uf: g.uf, notes: `Cadastrada pelo link de parceiro ${discovered.company ?? 'Adois'}` } });
+      await audit(ctx, { action: 'CREATE', resource: 'entity', resourceId: entity.id, after: { ...entity, via: 'importPartner' } });
+    }
+    let ds = await prisma.dataSource.findFirst({ where: { provider: 'ADOIS_PORTAL', url, entityId: entity.id, deletedAt: null } });
+    const sourceCreated = !ds;
+    if (!ds) {
+      ds = await prisma.dataSource.create({
+        data: { entityId: entity.id, provider: 'ADOIS_PORTAL', url, label: `Portal Adois — parceiro ${discovered.company ?? ''}`.trim(), externalEntityType: '2', config: { partner: true, entityKey: g.key } },
+      });
+      await audit(ctx, { action: 'CREATE', resource: 'dataSource', resourceId: ds.id, after: ds });
+    }
+    result.entities.push({ id: entity.id, shortName: entity.shortName ?? g.shortName, name: entity.name, created, sourceCreated, contractCodes: g.contractCodes, invoices: g.invoices.length, pending: g.pendingCount, pendingAmount: g.pendingAmount });
+  }
+  await audit(ctx, { action: 'IMPORT', resource: 'entity', after: { partnerUrl: url, company: discovered.company, entities: result.entities.length, created: result.entities.filter((e) => e.created).length } });
   return result;
 }
 

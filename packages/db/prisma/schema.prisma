@@ -196,6 +196,7 @@ model Entity {
 
 enum DataSourceProvider {
   ASSESI_PORTAL
+  ADOIS_PORTAL // Portal do Cliente da Adois (links de entidade t=1 e de parceiro t=2)
   ASSESI_API
   MANUAL
 }
@@ -237,7 +238,8 @@ model DataSource {
   syncRuns SyncRun[]
   invoices Invoice[]
 
-  @@unique([provider, url])
+  /// A mesma URL pode servir a várias entidades (link de parceiro da Adois: uma fonte por município, distinguida por `config.entityKey`).
+  @@unique([provider, url, entityId])
   @@index([entityId])
   @@map("data_sources")
 }

@@ -139,7 +139,7 @@ function EntityForm({ open, onClose, onSaved }: { open: boolean; onClose: () => 
   const create = useMutation({
     mutationFn: async () => {
       const entity = await api<{ id: string }>('/financeiro/entities', { method: 'POST', body: { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null } });
-      if (form.url) await api(`/financeiro/entities/${entity.id}/data-sources`, { method: 'POST', body: { provider: 'ASSESI_PORTAL', url: form.url, label: 'Portal do Cliente' } });
+      if (form.url) await api(`/financeiro/entities/${entity.id}/data-sources`, { method: 'POST', body: { url: form.url } });
     },
     onSuccess: onSaved,
     onError: (e) => setError(e instanceof ApiError ? `${e.message}${e.issues ? ': ' + e.issues.map((i) => `${i.path} ${i.message}`).join('; ') : ''}` : 'Erro'),
@@ -153,7 +153,7 @@ function EntityForm({ open, onClose, onSaved }: { open: boolean; onClose: () => 
         <Field label="Município"><Input {...f('municipality')} placeholder="Bom Lugar" /></Field>
         <Field label="Nome curto"><Input {...f('shortName')} placeholder="CM BOM LUGAR" /></Field>
         <Field label="Nome completo" className="md:col-span-2"><Input {...f('name')} placeholder="CÂMARA MUNICIPAL DE BOM LUGAR" /></Field>
-        <Field label="URL financeira (Portal do Cliente)" className="md:col-span-2"><Input {...f('url')} placeholder="https://…/adm_faturas/index.php?e=…&t=1" /></Field>
+        <Field label="URL financeira (Portal do Cliente — Assesi ou Adois)" className="w"><Input {...f('url')} placeholder="https://www.assesi.com.br/adm_faturas/index.php?e=…&t=1" /></Field>
         <Field label="Observações" className="md:col-span-2"><Textarea rows={2} {...f('notes')} /></Field>
       </div>
       {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
@@ -162,28 +162,70 @@ function EntityForm({ open, onClose, onSaved }: { open: boolean; onClose: () => 
   );
 }
 
+interface PartnerResult { company: string | null; entities: Array<{ id: string; shortName: string; created: boolean; sourceCreated: boolean; contractCodes: string[]; invoices: number; pending: number; pendingAmount: number }>; unassigned: number; warnings: string[] }
+
 function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<{ created: number; reused: number; sourcesCreated: number; errors: Array<{ line: number; error: string }> } | null>(null);
+  const [partnerUrl, setPartnerUrl] = useState('');
+  const [partner, setPartner] = useState<PartnerResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const upload = useMutation({
     mutationFn: async () => {
       const fd = new FormData();
       fd.append('file', file!);
       return api<NonNullable<typeof result>>('/financeiro/entities/import', { method: 'POST', formData: fd });
     },
-    onSuccess: (r) => { setResult(r); onDone(); },
+    onSuccess: (r) => { setResult(r); setError(null); onDone(); },
+    onError: (e) => setError(e instanceof ApiError ? e.message : 'Falha na importação'),
+  });
+  const importPartner = useMutation({
+    mutationFn: () => api<PartnerResult>('/financeiro/entities/import-partner', { method: 'POST', body: { url: partnerUrl.trim() } }),
+    onSuccess: (r) => { setPartner(r); setError(null); onDone(); },
+    onError: (e) => setError(e instanceof ApiError ? `${e.message}${e.issues?.length ? ': ' + e.issues.map((i) => i.message).join('; ') : ''}` : 'Falha ao ler o link de parceiro'),
   });
   return (
-    <Dialog open={open} onClose={onClose} title="Importar entidades em lote">
-      <p className="text-sm text-ink-2">Arquivo CSV (separado por ; ou ,) ou XLSX com as colunas: <code>tipo, entidade, municipio, uf, url, nome_completo</code>. Ex.: <code>CM;Araioses;Araioses;MA;https://…;CÂMARA MUNICIPAL DE ARAIOSES</code></p>
-      <Input type="file" accept=".csv,.xlsx" className="mt-3" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-      {result && (
-        <div className="alert info" style={{ marginTop: 12 }}>
-          <div>Criadas: {result.created} · Reaproveitadas: {result.reused} · Fontes cadastradas: {result.sourcesCreated}</div>
-          {result.errors.length > 0 && <ul className="mt-2 list-disc pl-5" style={{ color: 'var(--crit)' }}>{result.errors.map((e) => <li key={e.line}>Linha {e.line}: {e.error}</li>)}</ul>}
+    <Dialog open={open} onClose={onClose} title="Importar entidades">
+      <div className="card" style={{ padding: '12px 14px', marginBottom: 12 }}>
+        <h2>Planilha CSV/XLSX</h2>
+        <p className="small muted" style={{ margin: '6px 0 8px' }}>Colunas: <code>tipo, entidade, municipio, uf, url, nome_completo</code>. A URL pode ser do portal da Assesi ou da Adois (link de entidade, <code>t=1</code>).</p>
+        <div className="row">
+          <input type="file" accept=".csv,.xlsx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <Button onClick={() => upload.mutate()} disabled={!file || upload.isPending}>{upload.isPending ? 'Importando…' : 'Importar planilha'}</Button>
         </div>
-      )}
-      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Fechar</Button><Button onClick={() => upload.mutate()} disabled={!file || upload.isPending}>Importar</Button></div>
+        {result && (
+          <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
+            <div>Criadas: {result.created} · Reaproveitadas: {result.reused} · Fontes cadastradas: {result.sourcesCreated}</div>
+            {result.errors.length > 0 && <ul className="mt-2 list-disc pl-5" style={{ color: 'var(--crit)' }}>{result.errors.map((e) => <li key={e.line}>Linha {e.line}: {e.error}</li>)}</ul>}
+          </div>
+        )}
+      </div>
+      <div className="card" style={{ padding: '12px 14px' }}>
+        <h2>Link de parceiro (Adois)</h2>
+        <p className="small muted" style={{ margin: '6px 0 8px' }}>Link <code>…/adm_faturas/index.php?e=…&amp;t=2</code> com as notas de uma empresa parceira para vários municípios. O sistema identifica cada prefeitura/câmara pelas notas e cadastra uma entidade para cada uma.</p>
+        <div className="row">
+          <input placeholder="https://adoissolucoes.com/adm_faturas/index.php?e=…&t=2" value={partnerUrl} onChange={(e) => setPartnerUrl(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+          <Button onClick={() => importPartner.mutate()} disabled={!partnerUrl.trim() || importPartner.isPending}>{importPartner.isPending ? 'Lendo o portal…' : 'Importar parceiro'}</Button>
+        </div>
+        {partner && (
+          <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
+            <div><b>{partner.company ?? 'Parceiro'}</b>: {partner.entities.length} entidade(s) encontrada(s) · {partner.entities.filter((e) => e.created).length} nova(s)</div>
+            <ul className="hist" style={{ marginTop: 6 }}>
+              {partner.entities.map((e) => (
+                <li key={e.id} className="row between">
+                  <span><Link href={`/financeiro/entidades/${e.id}`}>{e.shortName}</Link> <span className="small muted">· {e.invoices} nota(s), {e.pending} pendente(s) · {formatBRL(e.pendingAmount)} · contrato(s) {e.contractCodes.join(', ')}</span></span>
+                  <span className="pill n">{e.created ? 'nova' : e.sourceCreated ? 'fonte adicionada' : 'já cadastrada'}</span>
+                </li>
+              ))}
+            </ul>
+            {partner.unassigned > 0 && <div className="small" style={{ color: 'var(--warn)', marginTop: 6 }}>{partner.unassigned} nota(s) sem entidade identificável na descrição foram ignoradas.</div>}
+            {partner.warnings.length > 0 && <ul className="small muted" style={{ marginTop: 6, paddingLeft: 18 }}>{partner.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+            <div className="small muted" style={{ marginTop: 6 }}>Clique em <b>Sincronizar todas</b> (ou em Sincronizar na entidade) para trazer as notas.</div>
+          </div>
+        )}
+      </div>
+      {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
+      <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
     </Dialog>
   );
 }

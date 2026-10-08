@@ -208,7 +208,7 @@ export class EntitiesService {
       const entity = existing ?? (await this.prisma.entity.create({ data: { type: row.tipo, name, shortName, municipality, uf: row.uf } }));
       if (existing) result.reused += 1;
       else result.created += 1;
-      const ds = await this.prisma.dataSource.findUnique({ where: { provider_url: { provider: 'ASSESI_PORTAL', url: row.url.trim() } } });
+      const ds = await this.prisma.dataSource.findFirst({ where: { provider: 'ASSESI_PORTAL', url: row.url.trim(), entityId: entity.id, deletedAt: null } });
       if (!ds) {
         await this.prisma.dataSource.create({ data: { entityId: entity.id, provider: 'ASSESI_PORTAL', url: row.url.trim(), label: 'Portal do Cliente' } });
         result.sourcesCreated += 1;

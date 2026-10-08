@@ -6,7 +6,7 @@
  * (API oficial, outro portal, Playwright) não exige mudanças fora deste pacote.
  */
 
-export type ProviderKey = 'ASSESI_PORTAL' | 'ASSESI_API' | 'MANUAL';
+export type ProviderKey = 'ASSESI_PORTAL' | 'ADOIS_PORTAL' | 'ASSESI_API' | 'MANUAL';
 
 export type NormalizedInvoiceStatus = 'PENDING' | 'PAID' | 'CANCELLED' | 'UNKNOWN';
 

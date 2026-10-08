@@ -3,3 +3,5 @@ export * from './http/client.js';
 export * from './providers/registry.js';
 export * from './providers/assesi/parser.js';
 export * from './providers/assesi/provider.js';
+export * from './providers/adois/parser.js';
+export * from './providers/adois/provider.js';

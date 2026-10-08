@@ -22,7 +22,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE TYPE "DataSourceProvider" AS ENUM ('ASSESI_PORTAL', 'ASSESI_API', 'MANUAL');
+  CREATE TYPE "DataSourceProvider" AS ENUM ('ASSESI_PORTAL', 'ADOIS_PORTAL', 'ASSESI_API', 'MANUAL');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
@@ -673,7 +673,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "UserPermission_userId_permissionId_key" ON "U
 CREATE UNIQUE INDEX IF NOT EXISTS "entities_type_municipality_uf_key" ON "entities"("type", "municipality", "uf");
 CREATE INDEX IF NOT EXISTS "entities_municipality_idx" ON "entities"("municipality");
 CREATE INDEX IF NOT EXISTS "entities_uf_idx" ON "entities"("uf");
-CREATE UNIQUE INDEX IF NOT EXISTS "data_sources_provider_url_key" ON "data_sources"("provider", "url");
+CREATE UNIQUE INDEX IF NOT EXISTS "data_sources_provider_url_entityId_key" ON "data_sources"("provider", "url", "entityId");
 CREATE INDEX IF NOT EXISTS "data_sources_entityId_idx" ON "data_sources"("entityId");
 CREATE INDEX IF NOT EXISTS "sync_runs_dataSourceId_queuedAt_idx" ON "sync_runs"("dataSourceId", "queuedAt");
 CREATE INDEX IF NOT EXISTS "sync_runs_entityId_queuedAt_idx" ON "sync_runs"("entityId", "queuedAt");

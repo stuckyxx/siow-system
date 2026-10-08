@@ -2,8 +2,11 @@ import { z } from 'zod';
 import {
   COLLECTION_STATUSES,
   CONTRACT_STATUSES,
+  DATA_SOURCE_PROVIDERS,
   DOCUMENT_TYPES,
   ENTITY_TYPES,
+  isAdoisPartnerUrl,
+  providerForUrl,
   INVOICE_STATUSES,
   MESSAGE_CHANNELS,
   SERVICE_ORDER_STATUSES,
@@ -77,26 +80,23 @@ export const createEntitySchema = z.object({
 });
 export const updateEntitySchema = createEntitySchema.partial();
 
+const portalUrl = z
+  .string()
+  .url()
+  .max(500)
+  .refine((v) => providerForUrl(v) !== null, { message: 'URL deve ser https e de um portal conhecido (assesi.com.br ou adoissolucoes.com)' });
+
 export const createDataSourceSchema = z.object({
-  provider: z.enum(['ASSESI_PORTAL', 'ASSESI_API', 'MANUAL']).default('ASSESI_PORTAL'),
-  url: z
-    .string()
-    .url()
-    .max(500)
-    .refine(
-      (v) => {
-        try {
-          const u = new URL(v);
-          return u.protocol === 'https:' && ['assesi.com.br', 'www.assesi.com.br'].includes(u.hostname.toLowerCase());
-        } catch {
-          return false;
-        }
-      },
-      { message: 'URL deve ser https e do domínio assesi.com.br' },
-    ),
+  /** Omitido = inferido pelo host da URL (Assesi ou Adois). */
+  provider: z.enum(DATA_SOURCE_PROVIDERS).optional(),
+  url: portalUrl,
   label: z.string().max(120).optional().nullable(),
   syncEnabled: z.boolean().optional(),
   config: z.record(z.unknown()).optional().nullable(),
+});
+/** Importação de um link de parceiro da Adois (t=2): cadastra uma entidade por município encontrado. */
+export const importPartnerSchema = z.object({
+  url: portalUrl.refine((v) => isAdoisPartnerUrl(v), { message: 'Informe um link de parceiro da Adois (adoissolucoes.com/adm_faturas/index.php?e=…&t=2)' }),
 });
 export const updateDataSourceSchema = createDataSourceSchema.partial().extend({
   isActive: z.boolean().optional(),

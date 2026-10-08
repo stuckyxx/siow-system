@@ -191,3 +191,39 @@ export function agingBucket(days: number): AgingBucket {
   if (days <= 90) return '61-90';
   return '90+';
 }
+
+// ---------- fontes de dados (portais) ----------
+export const DATA_SOURCE_PROVIDERS = ['ASSESI_PORTAL', 'ADOIS_PORTAL', 'ASSESI_API', 'MANUAL'] as const;
+export type DataSourceProviderKey = (typeof DATA_SOURCE_PROVIDERS)[number];
+export const DATA_SOURCE_PROVIDER_LABELS: Record<DataSourceProviderKey, string> = {
+  ASSESI_PORTAL: 'Portal do Cliente (Assesi)',
+  ADOIS_PORTAL: 'Portal do Cliente (Adois)',
+  ASSESI_API: 'API Assesi',
+  MANUAL: 'Manual',
+};
+/** Hosts aceitos para URLs de fonte (anti-SSRF, spec §7) e o provider correspondente. */
+export const PORTAL_HOSTS: Record<string, 'ASSESI_PORTAL' | 'ADOIS_PORTAL'> = {
+  'assesi.com.br': 'ASSESI_PORTAL',
+  'www.assesi.com.br': 'ASSESI_PORTAL',
+  'adoissolucoes.com': 'ADOIS_PORTAL',
+  'www.adoissolucoes.com': 'ADOIS_PORTAL',
+};
+/** Provider inferido pela URL (https obrigatório) ou null quando o host não é um portal conhecido. */
+export function providerForUrl(url: string): 'ASSESI_PORTAL' | 'ADOIS_PORTAL' | null {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return null;
+    return PORTAL_HOSTS[u.hostname.toLowerCase()] ?? null;
+  } catch {
+    return null;
+  }
+}
+/** Link de parceiro da Adois: lista notas de várias entidades (t=2). */
+export const isAdoisPartnerUrl = (url: string): boolean => {
+  try {
+    const u = new URL(url);
+    return providerForUrl(url) === 'ADOIS_PORTAL' && u.searchParams.get('t') === '2';
+  } catch {
+    return false;
+  }
+};

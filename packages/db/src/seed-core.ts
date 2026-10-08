@@ -285,7 +285,7 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions = {}): Pro
         create: { type: s.type, name: s.name, shortName: s.shortName, municipality: s.municipality, uf: s.uf },
       });
       await prisma.dataSource.upsert({
-        where: { provider_url: { provider: 'ASSESI_PORTAL', url: s.url } },
+        where: { provider_url_entityId: { provider: 'ASSESI_PORTAL', url: s.url, entityId: entity.id } },
         update: {},
         create: { entityId: entity.id, provider: 'ASSESI_PORTAL', url: s.url, label: 'Portal do Cliente' },
       });
