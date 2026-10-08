@@ -98,7 +98,9 @@ export class AdoisPortalProvider implements BillingProvider {
       contracts: group.contracts,
       invoices: group.invoices,
       summary: { totalDebt: group.pendingAmount, pendingCount: group.pendingCount, paidCount: null, totalPaid: null, lastPaymentAt: null, statusText: null },
-      warnings: [...warnings, ...grouped.warnings.filter((w) => group.contractCodes.some((c) => w.includes(c)))],
+      // Divergências de grafia entre descrições são reportadas na descoberta (importação), não a cada sincronização —
+      // senão a fonte ficaria marcada como PARCIAL para sempre mesmo com a listagem completa.
+      warnings,
     };
   }
 

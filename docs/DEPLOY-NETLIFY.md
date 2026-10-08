@@ -48,6 +48,15 @@ Referências: `docs/prototipo-siow-financeiro.html` e `apps/web/public/logo.png`
 
 Recomendação de segurança: a senha do banco foi colada no chat durante a configuração — gere uma nova no Neon (Roles → neondb_owner → Reset password) e atualize `DATABASE_URL` e `DIRECT_URL` na Netlify, seguido de novo deploy.
 
+## Portal da Adois (08/10/2026)
+
+Além do portal da Assesi, o sistema lê o **Portal do Cliente da Adois** (`adoissolucoes.com/adm_faturas`). O provider é escolhido pelo host da URL.
+
+- **Link de entidade** (`…index.php?e=…&t=1`): uma prefeitura/câmara. Cadastre como qualquer entidade (Nova entidade com a URL, ou CSV). Lê nome, pendentes/pagas (data do pagamento = paga), descrição e número do contrato ("conforme contrato nº 184/2025"), Total pendente/pago para conferência.
+- **Link de parceiro** (`…&t=2`): notas de uma empresa parceira para vários municípios. Em **Entidades → Importar → Link de parceiro (Adois)** o sistema lê o link, identifica cada prefeitura/câmara pela descrição das notas ("… para Prefeitura de Bom Jardim - MA"), agrupa por contrato (NContrato) e cadastra uma entidade + uma fonte por município (mesma URL, `config.entityKey`). Idempotente: pode ser repetido quando o parceiro ganhar novos municípios. As certidões desse portal são da Adois e não são sincronizadas.
+- Banco: enum `DataSourceProvider` ganhou `ADOIS_PORTAL`; a unicidade de fontes passou a ser `(provider, url, entityId)` — ambos aplicados no Neon por SQL (espelho em `packages/db/prisma/schema.sql`).
+- Cadastrados em 08/10: PM TUNTUM (16 notas, 1 pendente de R$ 2.500,00) e, pelo link do parceiro A M C MOREIRA, PM BOM JARDIM, PM ICATÚ e CM ICATÚ (71 notas, 27 pendentes somando R$ 34.920,00 — igual ao total do portal).
+
 ## Pendente — validação (após o banco conectar)
 
 1. `GET https://siow-system.netlify.app/api/health` → `{"ok":true,…,"db":"ok"}`.
