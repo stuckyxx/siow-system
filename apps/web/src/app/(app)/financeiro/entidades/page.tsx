@@ -172,9 +172,9 @@ type SyncState = { status: 'sincronizando' | 'ok' | 'erro'; pending?: number; pa
  * 1) POST import-link cadastra a(s) entidade(s) e fonte(s); 2) a tela sincroniza cada uma (uma requisição por
  * entidade, respeitando o limite de tempo por função) e mostra pendentes / pagas / total lidos do portal.
  */
-async function downloadTemplate(): Promise<void> {
-  const blob = await api<Blob>('/financeiro/entities/import-template', { raw: true });
-  downloadBlob(blob, 'modelo-importacao-entidades.xlsx');
+async function downloadTemplate(url?: string): Promise<void> {
+  const blob = await api<Blob>('/financeiro/entities/import-template', { raw: true, query: url ? { url } : undefined });
+  downloadBlob(blob, url ? 'entidades-do-link.xlsx' : 'modelo-importacao-entidades.xlsx');
 }
 
 function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
@@ -183,7 +183,8 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
   const [sync, setSync] = useState<Record<string, SyncState>>({});
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [csv, setCsv] = useState<{ created: number; reused: number; sourcesCreated: number; errors: Array<{ line: number; error: string }> } | null>(null);
+  const [csv, setCsv] = useState<{ created: number; reused: number; sourcesCreated: number; invoicesCreated?: number; invoicesSkipped?: number; errors: Array<{ line: number; error: string }> } | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const syncAll = async (entities: ImportedEntity[]): Promise<void> => {
     for (const e of entities) {
@@ -216,7 +217,9 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
       <form className="row" onSubmit={(e) => { e.preventDefault(); if (url.trim()) importLink.mutate(); }}>
         <input placeholder="https://www.assesi.com.br/adm_faturas/index.php?e=…&t=1" value={url} onChange={(e) => setUrl(e.target.value)} style={{ flex: 1, minWidth: 260 }} aria-label="Link web" />
         <Button type="submit" disabled={!url.trim() || importLink.isPending}>{importLink.isPending ? 'Lendo o portal…' : 'Importar'}</Button>
+        <Button type="button" variant="secondary" disabled={!url.trim() || downloading} onClick={() => { setDownloading(true); downloadTemplate(url.trim()).catch((e) => setError(e instanceof ApiError ? e.message : 'Falha ao gerar a planilha')).finally(() => setDownloading(false)); }}>{downloading ? 'Gerando…' : '⬇ Baixar planilha do link'}</Button>
       </form>
+      <p className="small muted" style={{ margin: '6px 0 0' }}>"Baixar planilha do link" gera um XLSX já preenchido com a(s) entidade(s) e todas as notas do portal (nº, competência, exercício, valor, emissão, situação, pagamento, atraso, contrato), sem cadastrar nada — para conferir ou importar depois.</p>
       {result && (
         <div className="card" style={{ marginTop: 12 }}>
           <div className="hd"><h2>{result.kind === 'partner' ? `Parceiro ${result.company ?? ''}` : 'Entidade do link'} · {result.entities.length} entidade(s)</h2><span className="small muted">{result.entities.filter((e) => e.created).length} nova(s)</span></div>
@@ -256,7 +259,7 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
         </div>
         {csv && (
           <div className="alert info" style={{ marginTop: 10, marginBottom: 0 }}>
-            <div>Criadas: {csv.created} · Reaproveitadas: {csv.reused} · Fontes cadastradas: {csv.sourcesCreated}</div>
+            <div>Entidades criadas: {csv.created} · reaproveitadas: {csv.reused} · fontes cadastradas: {csv.sourcesCreated}{csv.invoicesCreated !== undefined ? ` · notas importadas: ${csv.invoicesCreated} (${csv.invoicesSkipped ?? 0} já existiam)` : ''}</div>
             {csv.errors.length > 0 && <ul className="mt-2 list-disc pl-5" style={{ color: 'var(--crit)' }}>{csv.errors.map((e) => <li key={e.line}>Linha {e.line}: {e.error}</li>)}</ul>}
           </div>
         )}

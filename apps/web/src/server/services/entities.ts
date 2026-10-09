@@ -3,7 +3,7 @@
  */
 import ExcelJS from 'exceljs';
 import { Prisma } from '@siow/db';
-import { dateToIso, importEntityRowSchema, isAdoisPartnerUrl, providerForUrl, type EntitySummary, type ImportEntityRow, type Paginated } from '@siow/shared';
+import { dateToIso, importEntityRowSchema, isAdoisPartnerUrl, parseBRL, parseBrDate, parseCompetence, providerForUrl, toDecimalString, type EntitySummary, type ImportEntityRow, type Paginated } from '@siow/shared';
 import { getProvider, normalizeKey, type AdoisPortalProvider } from '@siow/integrations';
 import type { z } from 'zod';
 import type { createContactSchema, createDataSourceSchema, createEntitySchema, entityListFilterSchema, updateContactSchema, updateDataSourceSchema, updateEntitySchema } from '@siow/shared';
@@ -213,8 +213,9 @@ export interface ImportFile {
 export async function importBatch(ctx: Ctx, file: ImportFile) {
   if (file.buffer.length === 0) throw badRequest('Arquivo vazio');
   if (file.buffer.length > IMPORT_MAX_SIZE) throw badRequest('Arquivo excede 5 MB');
-  const rows = await parseRows(file);
-  const result = { created: 0, reused: 0, sourcesCreated: 0, errors: [] as Array<{ line: number; error: string }> };
+  const sheets = await parseSheets(file);
+  const rows = sheets.entities;
+  const result = { created: 0, reused: 0, sourcesCreated: 0, invoicesCreated: 0, invoicesSkipped: 0, errors: [] as Array<{ line: number; error: string }> };
   for (let i = 0; i < rows.length; i += 1) {
     const parsed = importEntityRowSchema.safeParse(rows[i]);
     if (!parsed.success) {
@@ -245,8 +246,55 @@ export async function importBatch(ctx: Ctx, file: ImportFile) {
       result.sourcesCreated += 1;
     }
   }
+  if (sheets.invoices.length) {
+    const r = await importInvoiceRows(sheets.invoices);
+    result.invoicesCreated = r.created;
+    result.invoicesSkipped = r.skipped;
+    result.errors.push(...r.errors);
+  }
   await audit(ctx, { action: 'IMPORT', resource: 'entity', after: { file: file.originalname, ...result, errors: result.errors.length } });
   return result;
+}
+
+/**
+ * Aba "Notas": cria notas (origem IMPORT) para entidades já cadastradas, pulando números existentes.
+ * Nunca altera nota existente — a sincronização com o portal continua sendo a fonte da verdade.
+ */
+async function importInvoiceRows(rows: Array<Record<string, string>>): Promise<{ created: number; skipped: number; errors: Array<{ line: number; error: string }> }> {
+  const out = { created: 0, skipped: 0, errors: [] as Array<{ line: number; error: string }> };
+  const entities = await prisma.entity.findMany({ where: { deletedAt: null }, select: { id: true, name: true, shortName: true } });
+  const byKey = new Map<string, string>();
+  for (const e of entities) { byKey.set(normalizeKey(e.name), e.id); if (e.shortName) byKey.set(normalizeKey(e.shortName), e.id); }
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i]!;
+    const line = i + 2;
+    const entityId = byKey.get(normalizeKey(r['entidade'] ?? ''));
+    if (!entityId) { out.errors.push({ line, error: `notas: entidade "${r['entidade'] ?? ''}" não cadastrada` }); continue; }
+    const number = (r['numero'] ?? '').trim();
+    const competence = parseCompetence(r['competencia'] ?? '') ?? (r['exercicio'] && /^\d{1,2}$/.test(r['competencia'] ?? '') ? { month: Number(r['competencia']), year: Number(r['exercicio']) } : null);
+    const amount = parseBRL(r['valor'] ?? '');
+    if (!number || !competence || amount === null) { out.errors.push({ line, error: 'notas: informe numero, competencia (MM/AAAA) e valor' }); continue; }
+    const paidAt = parseBrDate(r['pagamento'] ?? '');
+    const situ = normalizeKey(r['situacao'] ?? '');
+    const status = situ.startsWith('PAG') || situ.startsWith('QUIT') ? 'PAID' : situ.startsWith('CANCEL') ? 'CANCELLED' : situ.startsWith('PEND') ? 'PENDING' : paidAt ? 'PAID' : 'PENDING';
+    const exists = await prisma.invoice.findUnique({ where: { entityId_number: { entityId, number } }, select: { id: true } });
+    if (exists) { out.skipped += 1; continue; }
+    const contractNumber = (r['contrato'] ?? '').trim();
+    const contract = contractNumber ? await prisma.contract.findFirst({ where: { entityId, deletedAt: null, OR: [{ number: contractNumber }, { externalCode: contractNumber }] }, select: { id: true } }) : null;
+    const now = new Date();
+    const issueDate = parseBrDate(r['emissao'] ?? '');
+    const inv = await prisma.invoice.create({
+      data: {
+        entityId, number, contractId: contract?.id ?? null, competenceMonth: competence.month, competenceYear: competence.year,
+        amount: new Prisma.Decimal(toDecimalString(amount)), issueDate: issueDate ? new Date(`${issueDate}T00:00:00Z`) : null,
+        status, paidAt: paidAt ? new Date(`${paidAt}T00:00:00Z`) : null, paidAmount: status === 'PAID' ? new Prisma.Decimal(toDecimalString(amount)) : null,
+        description: (r['descricao'] ?? '').trim() || null, origin: 'IMPORT', firstSeenAt: now, lastSeenAt: now,
+      },
+    });
+    await prisma.invoiceEvent.create({ data: { invoiceId: inv.id, type: 'CREATED', origin: 'IMPORT', newValue: status, note: 'Nota importada por planilha' } });
+    out.created += 1;
+  }
+  return out;
 }
 
 const providerLabel = (p: string): string => (p === 'ADOIS_PORTAL' ? 'Portal do Cliente (Adois)' : 'Portal do Cliente');
@@ -299,7 +347,7 @@ export interface ImportLinkResult extends ImportPartnerResult {
 }
 
 /** "CÂMARA MUNICIPAL DE BOM LUGAR" / "PM TUNTUM" → tipo, município e nomes. */
-function entityFromPortalNames(fullName: string | null, shortName: string | null): { type: 'PM' | 'CM' | 'INSTITUTO' | 'AUTARQUIA' | 'FUNDO' | 'CONSORCIO' | 'OUTRO'; municipality: string; name: string; shortName: string } | null {
+export function entityFromPortalNames(fullName: string | null, shortName: string | null): { type: 'PM' | 'CM' | 'INSTITUTO' | 'AUTARQUIA' | 'FUNDO' | 'CONSORCIO' | 'OUTRO'; municipality: string; name: string; shortName: string } | null {
   const full = (fullName ?? '').trim();
   const short = (shortName ?? '').trim();
   const typeFrom = (t: string): 'PM' | 'CM' | 'INSTITUTO' | 'AUTARQUIA' | 'FUNDO' | 'CONSORCIO' | 'OUTRO' | null => {
@@ -369,36 +417,50 @@ function defaultFullName(type: string, entity: string): string {
   return `${prefix[type] ?? type} ${entity}`.toUpperCase();
 }
 
-async function parseRows(file: ImportFile): Promise<Array<Record<string, string>>> {
+/** Lê a planilha: aba de entidades (cabeçalho com "tipo") e aba de notas (cabeçalho com "numero"); CSV = uma aba só. */
+async function parseSheets(file: ImportFile): Promise<{ entities: Array<Record<string, string>>; invoices: Array<Record<string, string>> }> {
+  const classify = (sheets: Array<{ name: string; rows: Array<Record<string, string>>; headers: string[] }>) => {
+    const out = { entities: [] as Array<Record<string, string>>, invoices: [] as Array<Record<string, string>> };
+    for (const sh of sheets) {
+      if (sh.headers.includes('numero')) out.invoices.push(...sh.rows);
+      else if (sh.headers.includes('tipo') || sh.headers.includes('url')) out.entities.push(...sh.rows);
+    }
+    return out;
+  };
   const isXlsx = file.originalname.toLowerCase().endsWith('.xlsx') || file.mimetype.includes('spreadsheetml');
   if (isXlsx) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(file.buffer as unknown as ArrayBuffer);
-    const ws = wb.worksheets[0];
-    if (!ws) throw badRequest('Planilha vazia');
-    const headers: string[] = [];
-    const rows: Array<Record<string, string>> = [];
-    ws.eachRow((row, n) => {
-      const values = (row.values as Array<unknown>).slice(1).map((v) => (v === null || v === undefined ? '' : String((v as { text?: string }).text ?? v).trim()));
-      if (n === 1) {
-        headers.push(...values.map((h) => h.toLowerCase().replace(/\s+/g, '_')));
-        return;
-      }
-      const obj: Record<string, string> = {};
-      headers.forEach((h, i) => (obj[h] = values[i] ?? ''));
-      if (Object.values(obj).some((v) => v)) rows.push(obj);
+    if (!wb.worksheets.length) throw badRequest('Planilha vazia');
+    const sheets = wb.worksheets.map((ws) => {
+      const headers: string[] = [];
+      const rows: Array<Record<string, string>> = [];
+      ws.eachRow((row, n) => {
+        const values = (row.values as Array<unknown>).slice(1).map((v) => {
+          if (v === null || v === undefined) return '';
+          if (v instanceof Date) return `${String(v.getUTCDate()).padStart(2, '0')}/${String(v.getUTCMonth() + 1).padStart(2, '0')}/${v.getUTCFullYear()}`;
+          if (typeof v === 'object') return String((v as { text?: string; result?: unknown }).text ?? (v as { result?: unknown }).result ?? '').trim();
+          return String(v).trim();
+        });
+        if (n === 1) { headers.push(...values.map((h) => h.toLowerCase().replace(/\s+/g, '_'))); return; }
+        const obj: Record<string, string> = {};
+        headers.forEach((h, i) => (obj[h] = values[i] ?? ''));
+        if (Object.values(obj).some((v) => v)) rows.push(obj);
+      });
+      return { name: ws.name, headers, rows };
     });
-    return rows;
+    return classify(sheets);
   }
-  const text = file.buffer.toString('utf8').replace(/^﻿/, '');
+  const text = file.buffer.toString('utf8').replace(/^\uFEFF/, '');
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) throw badRequest('CSV sem linhas de dados');
   const sep = (lines[0]!.match(/;/g) ?? []).length > (lines[0]!.match(/,/g) ?? []).length ? ';' : ',';
   const headers = lines[0]!.split(sep).map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
-  return lines.slice(1).map((line) => {
+  const rows = lines.slice(1).map((line) => {
     const cols = line.split(sep).map((c) => c.trim().replace(/^"|"$/g, ''));
     const obj: Record<string, string> = {};
     headers.forEach((h, i) => (obj[h] = cols[i] ?? ''));
     return obj;
   });
+  return classify([{ name: 'csv', headers, rows }]);
 }
