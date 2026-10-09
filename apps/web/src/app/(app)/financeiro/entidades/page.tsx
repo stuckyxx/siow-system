@@ -81,7 +81,7 @@ function EntitiesList() {
         <h1>Entidades</h1>
         <div className="row">
           {can('sync.run') && <button className="btn" onClick={() => syncAll.mutate()} disabled={syncAll.isPending}>{syncAll.isPending ? 'Sincronizando…' : 'Sincronizar todas'}</button>}
-          {can('entities.write') && <button className="btn" onClick={() => setImporting(true)}>Importar CSV/XLSX</button>}
+          {can('entities.write') && <button className="btn" onClick={() => setImporting(true)}>Importar entidade</button>}
           {can('entities.write') && <button className="btn p" onClick={() => setCreating(true)}>Nova entidade</button>}
         </div>
       </div>
@@ -162,68 +162,96 @@ function EntityForm({ open, onClose, onSaved }: { open: boolean; onClose: () => 
   );
 }
 
-interface PartnerResult { company: string | null; entities: Array<{ id: string; shortName: string; created: boolean; sourceCreated: boolean; contractCodes: string[]; invoices: number; pending: number; pendingAmount: number }>; unassigned: number; warnings: string[] }
+interface ImportedEntity { id: string; shortName: string; created: boolean; sourceCreated: boolean; contractCodes: string[]; invoices: number; pending: number; pendingAmount: number }
+interface LinkResult { kind: 'partner' | 'entity'; company: string | null; entities: ImportedEntity[]; unassigned: number; warnings: string[] }
+type SyncState = { status: 'sincronizando' | 'ok' | 'erro'; pending?: number; paid?: number; total?: number; debt?: string; message?: string };
 
+/**
+ * Importar entidade: cola-se o link web do Portal do Cliente (Assesi, Adois ou parceiro Adois).
+ * 1) POST import-link cadastra a(s) entidade(s) e fonte(s); 2) a tela sincroniza cada uma (uma requisição por
+ * entidade, respeitando o limite de tempo por função) e mostra pendentes / pagas / total lidos do portal.
+ */
 function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<{ created: number; reused: number; sourcesCreated: number; errors: Array<{ line: number; error: string }> } | null>(null);
-  const [partnerUrl, setPartnerUrl] = useState('');
-  const [partner, setPartner] = useState<PartnerResult | null>(null);
+  const [url, setUrl] = useState('');
+  const [result, setResult] = useState<LinkResult | null>(null);
+  const [sync, setSync] = useState<Record<string, SyncState>>({});
   const [error, setError] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [csv, setCsv] = useState<{ created: number; reused: number; sourcesCreated: number; errors: Array<{ line: number; error: string }> } | null>(null);
+
+  const syncAll = async (entities: ImportedEntity[]): Promise<void> => {
+    for (const e of entities) {
+      setSync((s) => ({ ...s, [e.id]: { status: 'sincronizando' } }));
+      try {
+        await api(`/financeiro/sync/entities/${e.id}`, { method: 'POST' });
+        const d = await api<{ overview: { pendingInvoices: number; paidInvoices: number; debtTotal: string } | null }>(`/financeiro/entities/${e.id}`);
+        const o = d.overview;
+        setSync((s) => ({ ...s, [e.id]: { status: 'ok', pending: o?.pendingInvoices ?? 0, paid: o?.paidInvoices ?? 0, total: (o?.pendingInvoices ?? 0) + (o?.paidInvoices ?? 0), debt: o?.debtTotal ?? '0' } }));
+      } catch (err) {
+        setSync((s) => ({ ...s, [e.id]: { status: 'erro', message: err instanceof ApiError ? err.message : 'falha ao sincronizar' } }));
+      }
+      onDone();
+    }
+  };
+  const importLink = useMutation({
+    mutationFn: () => api<LinkResult>('/financeiro/entities/import-link', { method: 'POST', body: { url: url.trim() } }),
+    onSuccess: (r) => { setResult(r); setSync({}); setError(null); onDone(); void syncAll(r.entities); },
+    onError: (e) => setError(e instanceof ApiError ? `${e.message}${e.issues?.length ? ': ' + e.issues.map((i) => i.message).join('; ') : ''}` : 'Falha ao ler o link'),
+  });
   const upload = useMutation({
-    mutationFn: async () => {
-      const fd = new FormData();
-      fd.append('file', file!);
-      return api<NonNullable<typeof result>>('/financeiro/entities/import', { method: 'POST', formData: fd });
-    },
-    onSuccess: (r) => { setResult(r); setError(null); onDone(); },
+    mutationFn: async () => { const fd = new FormData(); fd.append('file', file!); return api<NonNullable<typeof csv>>('/financeiro/entities/import', { method: 'POST', formData: fd }); },
+    onSuccess: (r) => { setCsv(r); setError(null); onDone(); },
     onError: (e) => setError(e instanceof ApiError ? e.message : 'Falha na importação'),
   });
-  const importPartner = useMutation({
-    mutationFn: () => api<PartnerResult>('/financeiro/entities/import-partner', { method: 'POST', body: { url: partnerUrl.trim() } }),
-    onSuccess: (r) => { setPartner(r); setError(null); onDone(); },
-    onError: (e) => setError(e instanceof ApiError ? `${e.message}${e.issues?.length ? ': ' + e.issues.map((i) => i.message).join('; ') : ''}` : 'Falha ao ler o link de parceiro'),
-  });
+
   return (
-    <Dialog open={open} onClose={onClose} title="Importar entidades">
-      <div className="card" style={{ padding: '12px 14px', marginBottom: 12 }}>
-        <h2>Planilha CSV/XLSX</h2>
-        <p className="small muted" style={{ margin: '6px 0 8px' }}>Colunas: <code>tipo, entidade, municipio, uf, url, nome_completo</code>. A URL pode ser do portal da Assesi ou da Adois (link de entidade, <code>t=1</code>).</p>
+    <Dialog open={open} onClose={onClose} title="Importar entidade" wide>
+      <p className="small muted" style={{ marginTop: 0 }}>Cole o <b>link web</b> do Portal do Cliente. Serve para link de entidade (Assesi ou Adois) e para link de parceiro da Adois (<code>t=2</code>), que cadastra uma entidade para cada município encontrado. Depois de cadastrar, o sistema já busca as notas pendentes, pagas e todas.</p>
+      <form className="row" onSubmit={(e) => { e.preventDefault(); if (url.trim()) importLink.mutate(); }}>
+        <input placeholder="https://www.assesi.com.br/adm_faturas/index.php?e=…&t=1" value={url} onChange={(e) => setUrl(e.target.value)} style={{ flex: 1, minWidth: 260 }} aria-label="Link web" />
+        <Button type="submit" disabled={!url.trim() || importLink.isPending}>{importLink.isPending ? 'Lendo o portal…' : 'Importar'}</Button>
+      </form>
+      {result && (
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="hd"><h2>{result.kind === 'partner' ? `Parceiro ${result.company ?? ''}` : 'Entidade do link'} · {result.entities.length} entidade(s)</h2><span className="small muted">{result.entities.filter((e) => e.created).length} nova(s)</span></div>
+          <div className="tbl">
+            <table>
+              <thead><tr><th>Entidade</th><th>Cadastro</th><th className="r">Pendentes</th><th className="r">Pagas</th><th className="r">Todas</th><th>Sincronização</th></tr></thead>
+              <tbody>
+                {result.entities.map((e) => {
+                  const st = sync[e.id];
+                  return (
+                    <tr key={e.id}>
+                      <td><Link href={`/financeiro/entidades/${e.id}`}>{e.shortName}</Link>{e.contractCodes.length > 0 && <div className="small muted">contrato(s) {e.contractCodes.join(', ')}</div>}</td>
+                      <td><span className="pill n">{e.created ? 'nova' : e.sourceCreated ? 'fonte adicionada' : 'já cadastrada'}</span></td>
+                      <td className="r num" style={{ color: 'var(--warn)' }}>{st?.status === 'ok' ? `${st.pending} · ${formatBRL(st.debt)}` : `${e.pending} · ${formatBRL(e.pendingAmount)}`}</td>
+                      <td className="r num" style={{ color: 'var(--good)' }}>{st?.status === 'ok' ? st.paid : e.invoices - e.pending}</td>
+                      <td className="r num">{st?.status === 'ok' ? st.total : e.invoices}</td>
+                      <td>{!st ? <span className="muted small">aguardando</span> : st.status === 'sincronizando' ? <span className="pill info">sincronizando…</span> : st.status === 'ok' ? <span className="pill good">concluída</span> : <span className="pill crit" title={st.message}>falhou</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {result.unassigned > 0 && <div className="bd small" style={{ color: 'var(--warn)' }}>{result.unassigned} nota(s) do link sem entidade identificável na descrição foram ignoradas.</div>}
+          {result.warnings.length > 0 && <ul className="small muted" style={{ margin: '0 18px 12px', paddingLeft: 18 }}>{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+        </div>
+      )}
+      <details style={{ marginTop: 14 }}>
+        <summary className="small" style={{ cursor: 'pointer', color: 'var(--accent)' }}>Importar várias por planilha (CSV/XLSX)</summary>
+        <p className="small muted" style={{ margin: '6px 0 8px' }}>Colunas: <code>tipo, entidade, municipio, uf, url, nome_completo</code>. Uma linha por entidade; a URL é o link web de cada uma.</p>
         <div className="row">
           <input type="file" accept=".csv,.xlsx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          <Button onClick={() => upload.mutate()} disabled={!file || upload.isPending}>{upload.isPending ? 'Importando…' : 'Importar planilha'}</Button>
+          <Button variant="secondary" onClick={() => upload.mutate()} disabled={!file || upload.isPending}>{upload.isPending ? 'Importando…' : 'Importar planilha'}</Button>
         </div>
-        {result && (
-          <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
-            <div>Criadas: {result.created} · Reaproveitadas: {result.reused} · Fontes cadastradas: {result.sourcesCreated}</div>
-            {result.errors.length > 0 && <ul className="mt-2 list-disc pl-5" style={{ color: 'var(--crit)' }}>{result.errors.map((e) => <li key={e.line}>Linha {e.line}: {e.error}</li>)}</ul>}
+        {csv && (
+          <div className="alert info" style={{ marginTop: 10, marginBottom: 0 }}>
+            <div>Criadas: {csv.created} · Reaproveitadas: {csv.reused} · Fontes cadastradas: {csv.sourcesCreated}</div>
+            {csv.errors.length > 0 && <ul className="mt-2 list-disc pl-5" style={{ color: 'var(--crit)' }}>{csv.errors.map((e) => <li key={e.line}>Linha {e.line}: {e.error}</li>)}</ul>}
           </div>
         )}
-      </div>
-      <div className="card" style={{ padding: '12px 14px' }}>
-        <h2>Link de parceiro (Adois)</h2>
-        <p className="small muted" style={{ margin: '6px 0 8px' }}>Link <code>…/adm_faturas/index.php?e=…&amp;t=2</code> com as notas de uma empresa parceira para vários municípios. O sistema identifica cada prefeitura/câmara pelas notas e cadastra uma entidade para cada uma.</p>
-        <div className="row">
-          <input placeholder="https://adoissolucoes.com/adm_faturas/index.php?e=…&t=2" value={partnerUrl} onChange={(e) => setPartnerUrl(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
-          <Button onClick={() => importPartner.mutate()} disabled={!partnerUrl.trim() || importPartner.isPending}>{importPartner.isPending ? 'Lendo o portal…' : 'Importar parceiro'}</Button>
-        </div>
-        {partner && (
-          <div className="alert info" style={{ marginTop: 12, marginBottom: 0 }}>
-            <div><b>{partner.company ?? 'Parceiro'}</b>: {partner.entities.length} entidade(s) encontrada(s) · {partner.entities.filter((e) => e.created).length} nova(s)</div>
-            <ul className="hist" style={{ marginTop: 6 }}>
-              {partner.entities.map((e) => (
-                <li key={e.id} className="row between">
-                  <span><Link href={`/financeiro/entidades/${e.id}`}>{e.shortName}</Link> <span className="small muted">· {e.invoices} nota(s), {e.pending} pendente(s) · {formatBRL(e.pendingAmount)} · contrato(s) {e.contractCodes.join(', ')}</span></span>
-                  <span className="pill n">{e.created ? 'nova' : e.sourceCreated ? 'fonte adicionada' : 'já cadastrada'}</span>
-                </li>
-              ))}
-            </ul>
-            {partner.unassigned > 0 && <div className="small" style={{ color: 'var(--warn)', marginTop: 6 }}>{partner.unassigned} nota(s) sem entidade identificável na descrição foram ignoradas.</div>}
-            {partner.warnings.length > 0 && <ul className="small muted" style={{ marginTop: 6, paddingLeft: 18 }}>{partner.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
-            <div className="small muted" style={{ marginTop: 6 }}>Clique em <b>Sincronizar todas</b> (ou em Sincronizar na entidade) para trazer as notas.</div>
-          </div>
-        )}
-      </div>
+      </details>
       {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
       <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
     </Dialog>

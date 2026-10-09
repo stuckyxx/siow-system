@@ -294,6 +294,76 @@ export async function importPartner(ctx: Ctx, url: string): Promise<ImportPartne
   return result;
 }
 
+export interface ImportLinkResult extends ImportPartnerResult {
+  kind: 'partner' | 'entity';
+}
+
+/** "CÂMARA MUNICIPAL DE BOM LUGAR" / "PM TUNTUM" → tipo, município e nomes. */
+function entityFromPortalNames(fullName: string | null, shortName: string | null): { type: 'PM' | 'CM' | 'INSTITUTO' | 'AUTARQUIA' | 'FUNDO' | 'CONSORCIO' | 'OUTRO'; municipality: string; name: string; shortName: string } | null {
+  const full = (fullName ?? '').trim();
+  const short = (shortName ?? '').trim();
+  const typeFrom = (t: string): 'PM' | 'CM' | 'INSTITUTO' | 'AUTARQUIA' | 'FUNDO' | 'CONSORCIO' | 'OUTRO' | null => {
+    const n = normalizeKey(t);
+    if (/^PREFEITURA|^PM\b/.test(n)) return 'PM';
+    if (/^CAMARA|^CM\b/.test(n)) return 'CM';
+    if (/^INSTITUTO/.test(n)) return 'INSTITUTO';
+    if (/^AUTARQUIA/.test(n)) return 'AUTARQUIA';
+    if (/^FUNDO/.test(n)) return 'FUNDO';
+    if (/^CONSORCIO/.test(n)) return 'CONSORCIO';
+    return null;
+  };
+  const titleCase = (m: string): string => m.toLowerCase().replace(/(^|\s)(\S)/g, (_x, sp: string, c: string) => sp + c.toUpperCase()).replace(/\b(De|Do|Da|Dos|Das)\b/g, (w) => w.toLowerCase());
+  if (full) {
+    const type = typeFrom(full) ?? 'OUTRO';
+    const municipality = titleCase(full.replace(/^.*?\b(?:DE|DO|DA)\s+/i, '').replace(/\s*[-–]\s*[A-Z]{2}$/i, '').trim() || full);
+    const prefix = type === 'PM' ? 'PM' : type === 'CM' ? 'CM' : type;
+    return { type, municipality, name: full.toUpperCase(), shortName: short || `${prefix} ${municipality.toUpperCase()}` };
+  }
+  if (short) {
+    const type = typeFrom(short) ?? 'OUTRO';
+    const municipality = titleCase(short.replace(/^(PM|CM|PREFEITURA(?:\s+MUNICIPAL)?|C[ÂA]MARA(?:\s+MUNICIPAL)?)\s+(?:DE\s+)?/i, '').trim() || short);
+    const name = type === 'PM' ? `PREFEITURA MUNICIPAL DE ${municipality.toUpperCase()}` : type === 'CM' ? `CÂMARA MUNICIPAL DE ${municipality.toUpperCase()}` : short.toUpperCase();
+    return { type, municipality, name, shortName: short.toUpperCase() };
+  }
+  return null;
+}
+
+/**
+ * Importa pelo link web: link de parceiro da Adois → importPartner; link de entidade (Assesi ou Adois)
+ * → lê a página do portal, identifica a entidade (nome, tipo, município, UF) e cadastra entidade + fonte.
+ * Não sincroniza (a tela dispara a sincronização de cada entidade em seguida, dentro do limite por requisição).
+ */
+export async function importLink(ctx: Ctx, url: string): Promise<ImportLinkResult> {
+  if (isAdoisPartnerUrl(url)) return { kind: 'partner', ...(await importPartner(ctx, url)) };
+  const providerKey = providerForUrl(url);
+  if (!providerKey) throw badRequest('Portal não reconhecido na URL');
+  const existingSource = await prisma.dataSource.findFirst({ where: { provider: providerKey, url, deletedAt: null }, include: { entity: true } });
+  const snapshot = await getProvider(providerKey).fetchSnapshot({ url, config: null }, { timeoutMs: Number(process.env['SYNC_HTTP_TIMEOUT_MS'] ?? 20_000), userAgent: process.env['SYNC_USER_AGENT'] ?? 'SiowSystem/1.0' });
+  const pending = snapshot.invoices.filter((i) => i.status === 'PENDING');
+  const pendingAmount = Math.round(pending.reduce((s, i) => s + i.amount, 0) * 100) / 100;
+  const contractCodes = [...new Set(snapshot.contracts.map((c) => c.number ?? c.externalCode).filter((x): x is string => Boolean(x)))];
+  const warnings = [...snapshot.warnings];
+
+  if (existingSource && !existingSource.entity.deletedAt) {
+    const e = existingSource.entity;
+    return { kind: 'entity', company: null, unassigned: 0, warnings, entities: [{ id: e.id, shortName: e.shortName ?? e.name, name: e.name, created: false, sourceCreated: false, contractCodes, invoices: snapshot.invoices.length, pending: pending.length, pendingAmount }] };
+  }
+  const info = entityFromPortalNames(snapshot.entity.name, snapshot.entity.shortName);
+  if (!info) throw badRequest('Não foi possível identificar o nome da entidade na página do portal');
+  const uf = (snapshot.entity.uf ?? '').toUpperCase();
+  if (!/^[A-Z]{2}$/.test(uf)) throw badRequest('Não foi possível identificar a UF da entidade na página do portal');
+  const candidates = await prisma.entity.findMany({ where: { type: info.type, uf, deletedAt: null } });
+  let entity = candidates.find((e) => normalizeKey(e.municipality) === normalizeKey(info.municipality)) ?? null;
+  const created = !entity;
+  if (!entity) {
+    entity = await prisma.entity.create({ data: { type: info.type, name: info.name, shortName: info.shortName, municipality: info.municipality, uf, logoUrl: snapshot.entity.logoUrl } });
+    await audit(ctx, { action: 'CREATE', resource: 'entity', resourceId: entity.id, after: { ...entity, via: 'importLink' } });
+  }
+  const ds = await prisma.dataSource.create({ data: { entityId: entity.id, provider: providerKey, url, label: providerLabel(providerKey), externalEntityCode: snapshot.entity.externalCode, externalEntityType: snapshot.entity.externalType } });
+  await audit(ctx, { action: 'CREATE', resource: 'dataSource', resourceId: ds.id, after: ds });
+  return { kind: 'entity', company: null, unassigned: 0, warnings, entities: [{ id: entity.id, shortName: entity.shortName ?? entity.name, name: entity.name, created, sourceCreated: true, contractCodes, invoices: snapshot.invoices.length, pending: pending.length, pendingAmount }] };
+}
+
 function defaultFullName(type: string, entity: string): string {
   const prefix: Record<string, string> = { PM: 'PREFEITURA MUNICIPAL DE', CM: 'CÂMARA MUNICIPAL DE' };
   return `${prefix[type] ?? type} ${entity}`.toUpperCase();

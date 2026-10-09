@@ -98,6 +98,8 @@ export const createDataSourceSchema = z.object({
 export const importPartnerSchema = z.object({
   url: portalUrl.refine((v) => isAdoisPartnerUrl(v), { message: 'Informe um link de parceiro da Adois (adoissolucoes.com/adm_faturas/index.php?e=…&t=2)' }),
 });
+/** Importação por link web (Assesi, Adois entidade ou Adois parceiro): cadastra a(s) entidade(s) do link. */
+export const importLinkSchema = z.object({ url: portalUrl });
 export const updateDataSourceSchema = createDataSourceSchema.partial().extend({
   isActive: z.boolean().optional(),
 });
