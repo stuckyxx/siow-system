@@ -6,6 +6,7 @@ import { Suspense, useState } from 'react';
 import { ENTITY_TYPES, ENTITY_TYPE_LABELS, formatBRL, type EntitySummary, type Paginated } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { downloadBlob } from '@/lib/utils';
 import { Button, Dialog, Empty, Field, Input, Select, Textarea, useToast } from '@/components/ui';
 
 const ICON = {
@@ -171,6 +172,11 @@ type SyncState = { status: 'sincronizando' | 'ok' | 'erro'; pending?: number; pa
  * 1) POST import-link cadastra a(s) entidade(s) e fonte(s); 2) a tela sincroniza cada uma (uma requisição por
  * entidade, respeitando o limite de tempo por função) e mostra pendentes / pagas / total lidos do portal.
  */
+async function downloadTemplate(): Promise<void> {
+  const blob = await api<Blob>('/financeiro/entities/import-template', { raw: true });
+  downloadBlob(blob, 'modelo-importacao-entidades.xlsx');
+}
+
 function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const [url, setUrl] = useState('');
   const [result, setResult] = useState<LinkResult | null>(null);
@@ -240,7 +246,10 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
       )}
       <details style={{ marginTop: 14 }}>
         <summary className="small" style={{ cursor: 'pointer', color: 'var(--accent)' }}>Importar várias por planilha (CSV/XLSX)</summary>
-        <p className="small muted" style={{ margin: '6px 0 8px' }}>Colunas: <code>tipo, entidade, municipio, uf, url, nome_completo</code>. Uma linha por entidade; a URL é o link web de cada uma.</p>
+        <p className="small muted" style={{ margin: '6px 0 8px' }}>Baixe o modelo, preencha uma linha por entidade (<code>tipo, entidade, municipio, uf, url, nome_completo</code> — a aba "Instruções" explica cada coluna) e envie o arquivo.</p>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <Button variant="secondary" onClick={() => downloadTemplate().catch((e) => setError(e instanceof ApiError ? e.message : 'Falha ao baixar o modelo'))}>⬇ Baixar modelo (XLSX)</Button>
+        </div>
         <div className="row">
           <input type="file" accept=".csv,.xlsx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           <Button variant="secondary" onClick={() => upload.mutate()} disabled={!file || upload.isPending}>{upload.isPending ? 'Importando…' : 'Importar planilha'}</Button>
