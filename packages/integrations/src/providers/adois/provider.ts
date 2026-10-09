@@ -78,7 +78,7 @@ export class AdoisPortalProvider implements BillingProvider {
     if (!cfg.entityKey) {
       throw new ProviderError('Link de parceiro: a fonte precisa indicar a entidade (config.entityKey). Use "Importar link de parceiro".', false);
     }
-    const grouped = groupPartnerInvoices(list);
+    const grouped = groupPartnerInvoices(list, index.entity.uf);
     const group = grouped.groups.find((g) => g.key === cfg.entityKey);
     if (!group) {
       // A entidade pode ter deixado de constar no link (contrato encerrado/removido). Snapshot vazio é tratado
@@ -108,7 +108,7 @@ export class AdoisPortalProvider implements BillingProvider {
   async discoverPartnerEntities(url: string, ctx: ProviderContext): Promise<{ company: string | null; groups: PartnerGroup[]; unassigned: number; warnings: string[] }> {
     const { index, list, warnings } = await this.fetchAll(url, ctx);
     if (index.entity.externalType !== '2') warnings.push('O link informado não é de parceiro (t=2); as notas pertencem a uma única entidade');
-    const grouped = groupPartnerInvoices(list);
+    const grouped = groupPartnerInvoices(list, index.entity.uf);
     return { company: index.cardName, groups: grouped.groups, unassigned: grouped.unassigned.length, warnings: [...warnings, ...grouped.warnings] };
   }
 

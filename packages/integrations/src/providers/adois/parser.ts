@@ -61,16 +61,18 @@ export interface PartnerEntityRef {
   key: string;
 }
 
-const PARTNER_ENTITY_RE = /\bpara\s+(?:a\s+|o\s+)?(prefeitura|c[âa]mara)(?:\s+municipal)?(?:\s+de)?\s+(.+?)\s*[-–]\s*([A-Za-z]{2})\b/i;
+// "… para Prefeitura de Bom Jardim - MA", "… para a Câmara Municipal de Cururupu" (sem UF: usa a UF da página)
+const PARTNER_ENTITY_RE = /\bpara\s+(?:a\s+|o\s+)?(prefeitura|c[âa]mara)(?:\s+municipal)?(?:\s+de)?\s+(.+?)(?:\s*[-–/]\s*([A-Za-z]{2})\b|\s*[.,;(]|$)/i;
 
 /** "Serviços prestados … para Câmara de Icatu - MA" → { type: CM, municipality: "Icatu", uf: MA }. */
-export function partnerEntityFromDescription(description: string | null | undefined): PartnerEntityRef | null {
+export function partnerEntityFromDescription(description: string | null | undefined, fallbackUf?: string | null): PartnerEntityRef | null {
   if (!description) return null;
   const m = PARTNER_ENTITY_RE.exec(clean(description));
   if (!m) return null;
   const type = /^pref/i.test(m[1]!) ? 'PM' : 'CM';
-  const municipality = clean(m[2]!).replace(/^(município|municipio)\s+de\s+/i, '');
-  const uf = m[3]!.toUpperCase();
+  const municipality = clean(m[2]!).replace(/^(município|municipio)\s+de\s+/i, '').replace(/\s+(conforme|referente|ref\.?|relativ[ao]).*$/i, '');
+  const uf = (m[3] ?? fallbackUf ?? '').toUpperCase();
+  if (!municipality || !/^[A-Z]{2}$/.test(uf)) return null;
   return { type, municipality, uf, key: `${type}|${normalizeKey(municipality)}|${uf}` };
 }
 
@@ -263,7 +265,7 @@ export interface PartnerGroup extends PartnerEntityRef {
  * das notas do contrato (o portal tem grafias divergentes — "Icatu"/"Icatú", e até "Prefeitura" numa nota
  * de contrato da Câmara). Contratos cuja descrição não identifica a entidade ficam em `unassigned`.
  */
-export function groupPartnerInvoices(list: ParsedAdoisList): { groups: PartnerGroup[]; unassigned: InvoiceSnapshot[]; warnings: string[] } {
+export function groupPartnerInvoices(list: ParsedAdoisList, fallbackUf?: string | null): { groups: PartnerGroup[]; unassigned: InvoiceSnapshot[]; warnings: string[] } {
   const warnings: string[] = [];
   const byContract = new Map<string, InvoiceSnapshot[]>();
   const unassigned: InvoiceSnapshot[] = [];
@@ -275,7 +277,7 @@ export function groupPartnerInvoices(list: ParsedAdoisList): { groups: PartnerGr
   for (const [code, invoices] of byContract) {
     const votes = new Map<string, { ref: PartnerEntityRef; n: number; spellings: Map<string, number> }>();
     for (const inv of invoices) {
-      const ref = partnerEntityFromDescription(inv.description);
+      const ref = partnerEntityFromDescription(inv.description, fallbackUf);
       if (!ref) continue;
       const v = votes.get(ref.key) ?? { ref, n: 0, spellings: new Map() };
       v.n += 1;

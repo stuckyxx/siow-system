@@ -15,6 +15,9 @@ describe('partnerEntityFromDescription', () => {
     expect(partnerEntityFromDescription('Serviços prestados de Locação do sistema aSiteGov para Prefeitura de Bom Jardim - MA')).toEqual({ type: 'PM', municipality: 'Bom Jardim', uf: 'MA', key: 'PM|BOM JARDIM|MA' });
     expect(partnerEntityFromDescription('… para Câmara de Icatú - MA')).toMatchObject({ type: 'CM', municipality: 'Icatú', key: 'CM|ICATU|MA' });
     expect(partnerEntityFromDescription('… para Camara Municipal de Icatu - MA')?.key).toBe('CM|ICATU|MA');
+    expect(partnerEntityFromDescription('Locação do sistemas Assesi aPlenário para a Câmara Municipal de Cururupu', 'MA')).toEqual({ type: 'CM', municipality: 'Cururupu', uf: 'MA', key: 'CM|CURURUPU|MA' });
+    expect(partnerEntityFromDescription('… para a Câmara Municipal de Cururupu, conforme contrato 12/2025', 'MA')?.municipality).toBe('Cururupu');
+    expect(partnerEntityFromDescription('… para a Câmara Municipal de Cururupu')).toBeNull(); // sem UF na descrição nem na página
     expect(partnerEntityFromDescription('Locação de software conforme contrato nº 184/2025.')).toBeNull();
     expect(partnerEntityFromDescription(null)).toBeNull();
   });
@@ -90,6 +93,12 @@ describe('AdoisPortalProvider.fetchSnapshot', () => {
   });
   it('link de parceiro sem entityKey é rejeitado', async () => {
     await expect(new AdoisPortalProvider().fetchSnapshot({ url: PARTNER_URL, config: { partner: true } }, ctx(fixture('index_parceiro_amc.html'), fixture('ajax_all_parceiro_amc.html')))).rejects.toThrow(/entityKey/);
+  });
+  it('parceiro sem UF na descrição usa a UF da página (Alves & Alves → CM Cururupu)', async () => {
+    const d = await new AdoisPortalProvider().discoverPartnerEntities('https://adoissolucoes.com/adm_faturas/index.php?e=534040&t=2', ctx(fixture('index_parceiro_alves.html'), fixture('ajax_all_parceiro_alves.html')));
+    expect(d.company).toBe('ALVES & ALVES COMERCIO E SERVICOS LTDA');
+    expect(d.unassigned).toBe(0);
+    expect(d.groups.map((g) => [g.key, g.shortName, g.contractCodes, g.invoices.length])).toEqual([['CM|CURURUPU|MA', 'CM CURURUPU', ['20152024'], 13]]);
   });
   it('descoberta de parceiro lista as entidades', async () => {
     const d = await new AdoisPortalProvider().discoverPartnerEntities(PARTNER_URL, ctx(fixture('index_parceiro_amc.html'), fixture('ajax_all_parceiro_amc.html')));
