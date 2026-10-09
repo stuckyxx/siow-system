@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { MONTH_NAMES_PT, formatBRL, formatBrDate, formatCompetence, type InvoiceRow, type Paginated } from '@siow/shared';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { NewInvoiceDialog } from './new-invoice-dialog';
 import { InvoiceDialog } from './invoice-dialog';
 import { CollectionStatusBadge, InvoiceStatusBadge } from './status';
 import { Badge, Button, Card, Empty, Input, Pagination, Select, Table, Td, Th } from './ui';
@@ -22,6 +24,8 @@ export function InvoicesTable({ base, showEntity = true, initialOpenId }: { base
   const [sortBy, setSortBy] = useState('issueDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [open, setOpen] = useState<string | null>(initialOpenId ?? null);
+  const [creating, setCreating] = useState(false);
+  const { can } = useAuth();
 
   const query: InvoiceQuery = { ...base, status, q: q || undefined, month: month || undefined, year: year || undefined, competenceFrom: from || undefined, competenceTo: to || undefined, page, pageSize: 25, sortBy, sortDir };
   const { data, isLoading, refetch } = useQuery({ queryKey: ['invoices', query], queryFn: () => api<Paginated<InvoiceRow> & { totals: { amount: string; count: number } }>('/financeiro/invoices', { query }) });
@@ -44,7 +48,10 @@ export function InvoicesTable({ base, showEntity = true, initialOpenId }: { base
         <Select value={year} onChange={(e) => { setYear(e.target.value); setPage(1); }} className="w-28"><option value="">Ano</option>{years.map((y) => <option key={y} value={y}>{y}</option>)}</Select>
         <Input type="month" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="w-36" aria-label="De" />
         <Input type="month" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-36" aria-label="Até" />
-        {data && <span className="ml-auto text-sm text-ink-2">{data.totals.count} nota(s) · <strong className="tabular-nums">{formatBRL(data.totals.amount)}</strong></span>}
+        <span className="ml-auto row" style={{ gap: 10 }}>
+          {data && <span className="text-sm text-ink-2">{data.totals.count} nota(s) · <strong className="tabular-nums">{formatBRL(data.totals.amount)}</strong></span>}
+          {can('invoices.override') && <Button size="sm" onClick={() => setCreating(true)}>+ Nova nota</Button>}
+        </span>
       </div>
       <Card>
         {isLoading ? <div className="p-6 text-sm text-ink-3">Carregando…</div> : !data || data.items.length === 0 ? <div className="p-6"><Empty>Nenhuma nota para os filtros</Empty></div> : (
@@ -73,6 +80,7 @@ export function InvoicesTable({ base, showEntity = true, initialOpenId }: { base
         {data && <div className="px-3"><Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></div>}
       </Card>
       <InvoiceDialog id={open} onClose={() => { setOpen(null); refetch(); }} />
+      <NewInvoiceDialog open={creating} onClose={() => setCreating(false)} entityId={typeof base?.['entityId'] === 'string' ? base['entityId'] : undefined} onCreated={(id) => { setCreating(false); setStatus('ALL'); setOpen(id); }} />
     </div>
   );
 }
