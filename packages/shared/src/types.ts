@@ -36,6 +36,9 @@ export interface EntitySummary {
   activeContractEndDate: string | null;
   debtTotal: string; // decimal string
   pendingInvoices: number;
+  /** notas pagas (quantidade) e total recebido (decimal string) */
+  paidInvoices: number;
+  paidTotal: string;
   lastPaymentAt: string | null;
   lastPaymentAmount: string | null;
   lastCollectionAt: string | null;

@@ -97,11 +97,13 @@ function EntityView() {
         </div>
       </div>
 
-      <div className="g4" style={{ marginTop: 12 }}>
+      <div className="g5" style={{ marginTop: 12 }}>
         <Stat small label="Contrato atual" value={current?.number ?? '—'} hint={current?.startDate || current?.endDate ? `${formatBrDate(current.startDate)} a ${formatBrDate(current.endDate)}` : undefined} />
         <Stat small label="Aditivos" value={amends.length} hint={amends.length ? `último: ${amends.at(-1)?.label ?? `${amends.at(-1)?.sequence}º`}` : 'nenhum'} />
         <Stat small label="Total em débito" value={formatBRL(o?.debtTotal ?? '0')} tone={Number(o?.debtTotal ?? 0) > 0 ? 'warn' : 'good'} />
-        <Stat small label="Notas pendentes" value={o?.pendingInvoices ?? 0} tone={o?.pendingInvoices ? 'warn' : undefined} />
+        <Stat small label="Notas pendentes" value={o?.pendingInvoices ?? 0} tone={o?.pendingInvoices ? 'warn' : undefined} onClick={() => setTab('invoices')} />
+        <Stat small label="Notas pagas" value={o?.paidInvoices ?? 0} tone="good" hint={o?.paidInvoices ? `${formatBRL(o.paidTotal)} recebidos` : 'nenhum pagamento'} onClick={() => setTab('invoices')} />
+        <Stat small label="Total de notas" value={(o?.pendingInvoices ?? 0) + (o?.paidInvoices ?? 0)} hint="pendentes + pagas" onClick={() => setTab('invoices')} />
         <Stat small label="Último pagamento" value={o?.lastPaymentAt ? formatBrDate(o.lastPaymentAt) : 'Nunca'} hint={o?.lastPaymentAmount ? formatBRL(o.lastPaymentAmount) : undefined} tone={o?.lastPaymentAt ? 'good' : undefined} />
         <Stat small label="Última cobrança" value={o?.lastCollectionAt ? formatBrDate(o.lastCollectionAt.slice(0, 10)) : '—'} />
         <Stat small label="OS pendentes" value={o?.pendingServiceOrders ?? 0} tone={o?.pendingServiceOrders ? 'warn' : undefined} />

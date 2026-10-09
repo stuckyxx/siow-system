@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { formatBrDateTime } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Dialog, Field, Input, Select, Table, Tabs, Td, Textarea, Th } from '@/components/ui';
 
-interface UserRow { id: string; name: string; email: string; isActive: boolean; lastLoginAt: string | null; roles: Array<{ id: string; name: string }> }
+interface UserRow { id: string; name: string; email: string; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null; roles: Array<{ id: string; name: string }>; effectivePermissions: string[]; extraPermissions: string[]; revokedPermissions: string[] }
+interface Permission { code: string; description: string | null }
 interface Role { id: string; name: string; description: string | null; permissions: Array<{ permission: { code: string; description: string | null } }> }
 interface Setting { key: string; value: unknown; description: string | null; updatedAt: string }
 interface Template { id: string; key: string; name: string; subject: string | null; body: string; channel: string | null; isActive: boolean }
@@ -32,6 +34,7 @@ function Users() {
   const { data } = useQuery({ queryKey: ['users'], queryFn: () => api<UserRow[]>('/users') });
   const { data: roles } = useQuery({ queryKey: ['roles'], queryFn: () => api<Role[]>('/users/roles') });
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<UserRow | null>(null);
   const [f, setF] = useState({ name: '', email: '', password: '', roleId: '' });
   const [error, setError] = useState<string | null>(null);
   const create = useMutation({ mutationFn: () => api('/users', { method: 'POST', body: { name: f.name, email: f.email, password: f.password, roleIds: [f.roleId] } }), onSuccess: () => { setOpen(false); qc.invalidateQueries({ queryKey: ['users'] }); }, onError: (e) => setError(e instanceof ApiError ? e.message + (e.issues ? ': ' + e.issues.map((i) => i.message).join('; ') : '') : 'Erro') });
@@ -50,10 +53,11 @@ function Users() {
       <CardHeader><CardTitle>Usuários</CardTitle><Button size="sm" onClick={() => setOpen(true)}>Novo usuário</Button></CardHeader>
       <CardContent className="px-0">
         <Table>
-          <thead><tr><Th>Nome</Th><Th>E-mail</Th><Th>Papéis</Th><Th>Último acesso</Th><Th>Situação</Th><Th></Th></tr></thead>
-          <tbody>{data?.map((u) => <tr key={u.id}><Td>{u.name}</Td><Td className="text-ink-2">{u.email}</Td><Td>{u.roles.map((r) => <Badge key={r.id} tone="info" className="mr-1">{r.name}</Badge>)}</Td><Td className="text-ink-2">{u.lastLoginAt ? formatBrDateTime(u.lastLoginAt) : '—'}</Td><Td>{u.isActive ? <Badge tone="good">ativo</Badge> : <Badge tone="neutral">inativo</Badge>}</Td><Td className="whitespace-nowrap"><Button size="sm" variant="ghost" onClick={() => askReset(u)} disabled={resetPassword.isPending}>Redefinir senha</Button> <Button size="sm" variant="ghost" onClick={() => toggle.mutate(u)}>{u.isActive ? 'Desativar' : 'Ativar'}</Button></Td></tr>)}</tbody>
+          <thead><tr><Th>Nome</Th><Th>E-mail</Th><Th>Papéis</Th><Th>Permissões</Th><Th>Último acesso</Th><Th>Situação</Th><Th></Th></tr></thead>
+          <tbody>{data?.map((u) => <tr key={u.id}><Td>{u.name}</Td><Td className="text-ink-2">{u.email}</Td><Td>{u.roles.map((r) => <Badge key={r.id} tone="info" className="mr-1">{r.name}</Badge>)}</Td><Td className="num small">{u.effectivePermissions.length}{u.extraPermissions.length ? <span style={{ color: 'var(--good)' }}> +{u.extraPermissions.length}</span> : null}{u.revokedPermissions.length ? <span style={{ color: 'var(--crit)' }}> −{u.revokedPermissions.length}</span> : null}</Td><Td className="text-ink-2">{u.lastLoginAt ? formatBrDateTime(u.lastLoginAt) : '—'}</Td><Td>{u.isActive ? <Badge tone="good">ativo</Badge> : <Badge tone="neutral">inativo</Badge>}{u.mustChangePassword && <span className="small muted"> · troca de senha pendente</span>}</Td><Td className="whitespace-nowrap"><Button size="sm" variant="secondary" onClick={() => setEditing(u)}>Editar</Button> <Button size="sm" variant="ghost" onClick={() => askReset(u)} disabled={resetPassword.isPending}>Redefinir senha</Button> <Button size="sm" variant="ghost" onClick={() => toggle.mutate(u)}>{u.isActive ? 'Desativar' : 'Ativar'}</Button></Td></tr>)}</tbody>
         </Table>
       </CardContent>
+      <EditUserDialog user={editing} roles={roles ?? []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); qc.invalidateQueries({ queryKey: ['users'] }); }} />
       <Dialog open={Boolean(reset)} onClose={() => setReset(null)} title="Senha provisória gerada">
         {reset && (
           <div className="space-y-3">
@@ -77,6 +81,97 @@ function Users() {
         </div>
       </Dialog>
     </Card>
+  );
+}
+
+/**
+ * Edição completa do usuário: dados, papéis, situação, nova senha (opcional) e ajustes individuais de
+ * permissão (concedidas/revogadas além do papel). Regras do backend: ninguém desativa a si mesmo nem
+ * remove a própria users.manage; nova senha obriga troca no próximo login e encerra as sessões.
+ */
+function EditUserDialog({ user, roles, onClose, onSaved }: { user: UserRow | null; roles: Role[]; onClose: () => void; onSaved: () => void }) {
+  const { user: me } = useAuth();
+  const { data: perms } = useQuery({ queryKey: ['permissions'], queryFn: () => api<Permission[]>('/users/permissions'), enabled: Boolean(user) });
+  const [f, setF] = useState({ name: '', email: '', password: '', roleIds: [] as string[], isActive: true });
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  if (user && user.id !== loadedId) {
+    setLoadedId(user.id);
+    setError(null);
+    setF({ name: user.name, email: user.email, password: '', roleIds: user.roles.map((r) => r.id), isActive: user.isActive });
+    setChecked(new Set(user.effectivePermissions));
+  }
+  // permissões que vêm dos papéis escolhidos (base); o que o usuário marca além vira "concedida", o que desmarca vira "revogada"
+  const fromRoles = new Set(roles.filter((r) => f.roleIds.includes(r.id)).flatMap((r) => r.permissions.map((p) => p.permission.code)));
+  const grant = [...checked].filter((c) => !fromRoles.has(c));
+  const revoke = [...fromRoles].filter((c) => !checked.has(c));
+  const save = useMutation({
+    mutationFn: async () => {
+      await api(`/users/${user!.id}`, { method: 'PATCH', body: { name: f.name.trim(), email: f.email.trim(), roleIds: f.roleIds, isActive: f.isActive, ...(f.password ? { password: f.password } : {}) } });
+      await api(`/users/${user!.id}/permissions`, { method: 'PUT', body: { grant, revoke } });
+    },
+    onSuccess: onSaved,
+    onError: (e) => setError(e instanceof ApiError ? e.message + (e.issues?.length ? ': ' + e.issues.map((i) => `${i.path} ${i.message}`).join('; ') : '') : 'Erro ao salvar'),
+  });
+  const toggleRole = (id: string): void => {
+    const next = f.roleIds.includes(id) ? f.roleIds.filter((r) => r !== id) : [...f.roleIds, id];
+    // ao trocar de papel, as permissões voltam ao padrão do(s) papel(is) escolhido(s), mantendo os ajustes já feitos
+    const nextBase = new Set(roles.filter((r) => next.includes(r.id)).flatMap((r) => r.permissions.map((p) => p.permission.code)));
+    const keepGrants = [...checked].filter((c) => !fromRoles.has(c));
+    const keepRevokes = [...fromRoles].filter((c) => !checked.has(c));
+    const nextChecked = new Set([...nextBase, ...keepGrants].filter((c) => !keepRevokes.includes(c)));
+    setF({ ...f, roleIds: next });
+    setChecked(nextChecked);
+  };
+  const self = user?.id === me?.id;
+  return (
+    <Dialog open={Boolean(user)} onClose={onClose} title={user ? `Editar usuário — ${user.name}` : 'Editar usuário'} wide>
+      <div className="frm">
+        <Field label="Nome"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label="E-mail (login)"><Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+        <Field label="Nova senha (opcional — mín. 10 caracteres com letra, número e símbolo)"><Input type="password" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder="deixe em branco para manter" /></Field>
+        <Field label="Situação">
+          <Select value={f.isActive ? '1' : '0'} onChange={(e) => setF({ ...f, isActive: e.target.value === '1' })} disabled={self}>
+            <option value="1">Ativo</option><option value="0">Inativo</option>
+          </Select>
+        </Field>
+        <div className="w">
+          <div className="small muted" style={{ textTransform: 'uppercase', letterSpacing: '.06em', fontSize: 11, marginBottom: 4 }}>Papéis</div>
+          <div className="row">
+            {roles.map((r) => (
+              <label key={r.id} className="row small" style={{ gap: 6, border: '1px solid var(--line2)', borderRadius: 99, padding: '4px 10px' }}>
+                <input type="checkbox" checked={f.roleIds.includes(r.id)} onChange={() => toggleRole(r.id)} /> {r.name} <span className="muted">· {r.permissions.length}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="w">
+          <div className="small muted" style={{ textTransform: 'uppercase', letterSpacing: '.06em', fontSize: 11, marginBottom: 4 }}>
+            Permissões individuais <span style={{ textTransform: 'none', letterSpacing: 0 }}>· marcadas além do papel = concedidas ({grant.length}); desmarcadas do papel = revogadas ({revoke.length})</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 4, maxHeight: 260, overflow: 'auto', padding: 8, border: '1px solid var(--line)', borderRadius: 10 }}>
+            {perms?.map((p) => {
+              const base = fromRoles.has(p.code);
+              const on = checked.has(p.code);
+              return (
+                <label key={p.code} className="row small" style={{ gap: 6, color: on && !base ? 'var(--good)' : !on && base ? 'var(--crit)' : undefined }} title={p.description ?? ''}>
+                  <input type="checkbox" checked={on} onChange={(e) => { const next = new Set(checked); if (e.target.checked) next.add(p.code); else next.delete(p.code); setChecked(next); }} />
+                  {p.description ?? p.code} <span className="muted mono" style={{ fontSize: 10 }}>{p.code}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      {self && <p className="small muted">Você está editando o próprio usuário: não é possível se inativar nem remover a própria permissão de gerenciar usuários.</p>}
+      {f.password && <p className="small muted">Ao definir uma nova senha, as sessões ativas do usuário são encerradas e ele deverá trocá-la no próximo acesso.</p>}
+      {error && <div className="alert crit">{error}</div>}
+      <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
+        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+        <Button onClick={() => save.mutate()} disabled={save.isPending || !f.name.trim() || !f.email.trim() || f.roleIds.length === 0}>{save.isPending ? 'Salvando…' : 'Salvar alterações'}</Button>
+      </div>
+    </Dialog>
   );
 }
 
