@@ -282,3 +282,8 @@
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Situação clicável na tabela de notas (marcar paga/pendente) */
+.status-btn { background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--ink2); font: inherit; }
+.status-btn:hover .pill { filter: brightness(1.2); }
+.status-btn span { font-size: 10px; opacity: .7; }

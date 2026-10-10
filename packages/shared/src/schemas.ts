@@ -217,6 +217,15 @@ export const createManualInvoiceSchema = z.object({
   justification: z.string().min(10).max(2000),
 });
 
+/** Alteração de situação em lote (ou de uma nota): sempre manual e com justificativa. */
+export const bulkInvoiceStatusSchema = z.object({
+  ids: z.array(uuid).min(1).max(200),
+  status: z.enum(['PAID', 'PENDING']),
+  paidAt: isoDate.optional().nullable(),
+  justification: z.string().min(10, 'Justificativa deve ter ao menos 10 caracteres').max(2000),
+});
+export type BulkInvoiceStatusDto = z.infer<typeof bulkInvoiceStatusSchema>;
+
 export const resolveConflictSchema = z.object({
   resolution: z.enum(['KEPT_MANUAL', 'ACCEPTED_SOURCE']),
   note: z.string().max(2000).optional(),

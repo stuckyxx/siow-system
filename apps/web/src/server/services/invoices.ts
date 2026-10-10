@@ -4,7 +4,7 @@
  */
 import { Prisma } from '@siow/db';
 import { getProvider, type DocumentRef, type ProviderContext } from '@siow/integrations';
-import { daysBetween, dateToIso, isoToDate, todayIso, type InvoiceListFilter, type InvoiceOverrideDto, type InvoiceRow, type Paginated } from '@siow/shared';
+import { daysBetween, dateToIso, isoToDate, todayIso, type BulkInvoiceStatusDto, type InvoiceListFilter, type InvoiceOverrideDto, type InvoiceRow, type Paginated } from '@siow/shared';
 import type { z } from 'zod';
 import type { createManualInvoiceSchema, reconcileInvoiceSchema, resolveConflictSchema } from '@siow/shared';
 import { prisma } from '../db.js';
@@ -216,6 +216,36 @@ export async function createManual(ctx: Ctx, dto: z.infer<typeof createManualInv
   });
   await audit(ctx, { action: 'CREATE', resource: 'invoice', resourceId: inv.id, after: inv, justification: dto.justification });
   return get(inv.id);
+}
+
+/**
+ * Marca várias notas como pagas/pendentes de uma vez (ou uma só). Cada nota passa pelo mesmo caminho de
+ * `override` (manualOverride + eventos + auditoria); notas já na situação pedida são puladas.
+ */
+export async function bulkStatus(ctx: Ctx, dto: BulkInvoiceStatusDto): Promise<{ updated: number; skipped: number; errors: Array<{ id: string; number: string | null; error: string }> }> {
+  const out = { updated: 0, skipped: 0, errors: [] as Array<{ id: string; number: string | null; error: string }> };
+  const rows = await prisma.invoice.findMany({ where: { id: { in: dto.ids }, deletedAt: null }, select: { id: true, number: true, status: true, paidAt: true, amount: true } });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const id of dto.ids) {
+    const inv = byId.get(id);
+    if (!inv) { out.errors.push({ id, number: null, error: 'Nota não encontrada' }); continue; }
+    if (inv.status === dto.status) { out.skipped += 1; continue; }
+    try {
+      const patch: InvoiceOverrideDto = { status: dto.status, justification: dto.justification };
+      if (dto.status === 'PAID') {
+        patch.paidAt = dto.paidAt ?? (inv.paidAt ? dateToIso(inv.paidAt) : todayIso());
+        patch.paidAmount = inv.amount.toFixed(2);
+      } else {
+        patch.paidAt = null;
+        patch.paidAmount = null;
+      }
+      await override(ctx, id, patch);
+      out.updated += 1;
+    } catch (e) {
+      out.errors.push({ id, number: inv.number, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return out;
 }
 
 /** Resolve uma nota marcada como "necessita verificação" (sumiu da fonte, regressão de status...). */

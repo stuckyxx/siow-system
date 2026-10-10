@@ -6,9 +6,10 @@ import { MONTH_NAMES_PT, formatBRL, formatBrDate, formatCompetence, type Invoice
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NewInvoiceDialog } from './new-invoice-dialog';
+import { InvoiceStatusDialog } from './invoice-status-dialog';
 import { InvoiceDialog } from './invoice-dialog';
 import { CollectionStatusBadge, InvoiceStatusBadge } from './status';
-import { Badge, Button, Card, Empty, Input, Pagination, Select, Table, Td, Th } from './ui';
+import { Badge, Button, Card, Empty, Input, Pagination, Select, Table, Td, Th, useToast } from './ui';
 
 export type InvoiceQuery = Record<string, string | number | boolean | undefined>;
 
@@ -25,7 +26,11 @@ export function InvoicesTable({ base, showEntity = true, initialOpenId }: { base
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [open, setOpen] = useState<string | null>(initialOpenId ?? null);
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [statusTarget, setStatusTarget] = useState<{ ids: string[]; label?: string; current?: string } | null>(null);
+  const [toast, showToast] = useToast();
   const { can } = useAuth();
+  const canOverride = can('invoices.override');
 
   const query: InvoiceQuery = { ...base, status, q: q || undefined, month: month || undefined, year: year || undefined, competenceFrom: from || undefined, competenceTo: to || undefined, page, pageSize: 25, sortBy, sortDir };
   const { data, isLoading, refetch } = useQuery({ queryKey: ['invoices', query], queryFn: () => api<Paginated<InvoiceRow> & { totals: { amount: string; count: number } }>('/financeiro/invoices', { query }) });
@@ -50,23 +55,25 @@ export function InvoicesTable({ base, showEntity = true, initialOpenId }: { base
         <Input type="month" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-36" aria-label="Até" />
         <span className="ml-auto row" style={{ gap: 10 }}>
           {data && <span className="text-sm text-ink-2">{data.totals.count} nota(s) · <strong className="tabular-nums">{formatBRL(data.totals.amount)}</strong></span>}
-          {can('invoices.override') && <Button size="sm" onClick={() => setCreating(true)}>+ Nova nota</Button>}
+          {canOverride && selected.size > 0 && <Button size="sm" variant="secondary" onClick={() => setStatusTarget({ ids: [...selected] })}>Alterar situação ({selected.size})</Button>}
+          {canOverride && <Button size="sm" onClick={() => setCreating(true)}>+ Nova nota</Button>}
         </span>
       </div>
       <Card>
         {isLoading ? <div className="p-6 text-sm text-ink-3">Carregando…</div> : !data || data.items.length === 0 ? <div className="p-6"><Empty>Nenhuma nota para os filtros</Empty></div> : (
           <Table>
-            <thead><tr>{th('number', 'Nº')}{showEntity && <Th>Entidade</Th>}{th('competence', 'Competência')}<Th className="hide-m">Exercício</Th>{th('amount', 'Valor', true)}{th('issueDate', 'Emissão')}<Th>Situação</Th>{th('paidAt', 'Pagamento')}<Th className="text-right">Atraso</Th><Th className="hide-m">Contrato</Th><Th>Cobrança</Th><Th></Th></tr></thead>
+            <thead><tr>{canOverride && <Th><input type="checkbox" aria-label="Selecionar todas desta página" checked={data.items.length > 0 && data.items.every((i) => selected.has(i.id))} onChange={(e) => setSelected(e.target.checked ? new Set([...selected, ...data.items.map((i) => i.id)]) : new Set([...selected].filter((id) => !data.items.some((i) => i.id === id))))} /></Th>}{th('number', 'Nº')}{showEntity && <Th>Entidade</Th>}{th('competence', 'Competência')}<Th className="hide-m">Exercício</Th>{th('amount', 'Valor', true)}{th('issueDate', 'Emissão')}<Th>Situação</Th>{th('paidAt', 'Pagamento')}<Th className="text-right">Atraso</Th><Th className="hide-m">Contrato</Th><Th>Cobrança</Th><Th></Th></tr></thead>
             <tbody>
               {data.items.map((i) => (
                 <tr key={i.id} className="hover:bg-surface">
+                  {canOverride && <Td><input type="checkbox" aria-label={`Selecionar nota ${i.number}`} checked={selected.has(i.id)} onChange={(e) => { const n = new Set(selected); if (e.target.checked) n.add(i.id); else n.delete(i.id); setSelected(n); }} /></Td>}
                   <Td className="font-medium tabular-nums"><button className="text-brand hover:underline" onClick={() => setOpen(i.id)}>{i.number}</button>{i.needsReconciliation && <Badge tone="critical" className="ml-1">verificar</Badge>}{i.manualOverride && <Badge tone="info" className="ml-1">manual</Badge>}</Td>
                   {showEntity && <Td><Link href={`/financeiro/entidades/${i.entityId}`} className="hover:underline">{i.entityName}</Link></Td>}
                   <Td className="tabular-nums">{formatCompetence({ competenceMonth: i.competenceMonth, competenceYear: i.competenceYear })}</Td>
                   <Td className="tabular-nums hide-m">{i.competenceYear}</Td>
                   <Td className="text-right tabular-nums">{formatBRL(i.amount)}</Td>
                   <Td className="tabular-nums">{formatBrDate(i.issueDate)}</Td>
-                  <Td><InvoiceStatusBadge status={i.status} /></Td>
+                  <Td>{canOverride ? <button type="button" className="status-btn" title="Clique para marcar como paga ou pendente" onClick={() => setStatusTarget({ ids: [i.id], label: i.number, current: i.status })}><InvoiceStatusBadge status={i.status} /> <span aria-hidden>▾</span></button> : <InvoiceStatusBadge status={i.status} />}</Td>
                   <Td className="tabular-nums">{formatBrDate(i.paidAt)}</Td>
                   <Td className={`text-right tabular-nums ${i.daysOverdue ? (i.daysOverdue > 60 ? 'text-critical' : 'text-warn') : 'text-ink-3'}`}>{i.daysOverdue ? `${i.daysOverdue} d` : '—'}</Td>
                   <Td className="text-ink-2 hide-m">{i.contractNumber ?? '—'}</Td>
@@ -80,6 +87,8 @@ export function InvoicesTable({ base, showEntity = true, initialOpenId }: { base
         {data && <div className="px-3"><Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></div>}
       </Card>
       <InvoiceDialog id={open} onClose={() => { setOpen(null); refetch(); }} />
+      {statusTarget && <InvoiceStatusDialog ids={statusTarget.ids} label={statusTarget.label} currentStatus={statusTarget.current} onClose={() => setStatusTarget(null)} onDone={(r) => { setStatusTarget(null); setSelected(new Set()); showToast(`${r.updated} nota(s) alterada(s)${r.skipped ? `, ${r.skipped} já estavam assim` : ''}${r.errors.length ? `, ${r.errors.length} com erro: ${r.errors[0]?.error}` : ''}`); refetch(); }} />}
+      {toast}
       <NewInvoiceDialog open={creating} onClose={() => setCreating(false)} entityId={typeof base?.['entityId'] === 'string' ? base['entityId'] : undefined} onCreated={(id) => { setCreating(false); setStatus('ALL'); setOpen(id); }} />
     </div>
   );
