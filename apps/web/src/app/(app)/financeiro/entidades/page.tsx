@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { ENTITY_TYPES, ENTITY_TYPE_LABELS, formatBRL, type EntitySummary, type Paginated } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -10,6 +10,7 @@ import { downloadBlob } from '@/lib/utils';
 import { Button, Dialog, Empty, Field, Input, Select, Textarea, useToast } from '@/components/ui';
 
 const ICON = {
+  edit: 'M4 20h4l10-10-4-4L4 16zM13 7l4 4M15 5l2-2 4 4-2 2',
   del: 'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6',
   inv: 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h6M9 17h6',
   con: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
@@ -44,6 +45,8 @@ function EntitiesList() {
   const [type, setType] = useState(search.get('type') ?? '');
   const [onlyDebt, setOnlyDebt] = useState(false);
   const [showEnded, setShowEnded] = useState(false);
+  const [syncFilter, setSyncFilter] = useState<'' | 'synced' | 'unsynced'>('');
+  const [editing, setEditing] = useState<EntitySummary | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [toast, showToast] = useToast();
@@ -78,8 +81,11 @@ function EntitiesList() {
   };
 
   const all = data?.items ?? [];
-  const list = all.filter((e) => (showEnded ? isEnded(e) : !isEnded(e)));
+  const bySync = (e: EntitySummary): boolean => syncFilter === '' ? true : syncFilter === 'synced' ? e.lastSyncAt !== null : e.lastSyncAt === null;
+  const list = all.filter((e) => (showEnded ? isEnded(e) : !isEnded(e))).filter(bySync);
   const endedCount = all.filter(isEnded).length;
+  const syncedCount = all.filter((e) => e.lastSyncAt !== null).length;
+  const unsyncedCount = all.length - syncedCount;
   const link = (e: EntitySummary, tab: string): string => `/financeiro/entidades/${e.id}?tab=${tab}`;
 
   return (
@@ -98,6 +104,11 @@ function EntitiesList() {
         <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo">
           <option value="">Todos os tipos</option>
           {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t} — {ENTITY_TYPE_LABELS[t]}</option>)}
+        </select>
+        <select value={syncFilter} onChange={(e) => setSyncFilter(e.target.value as '' | 'synced' | 'unsynced')} aria-label="Sincronização">
+          <option value="">Sincronizadas e não sincronizadas</option>
+          <option value="synced">Sincronizadas ({syncedCount})</option>
+          <option value="unsynced">Não sincronizadas ({unsyncedCount})</option>
         </select>
         <label className="row small muted" style={{ gap: 6 }}><input type="checkbox" checked={onlyDebt} onChange={(e) => setOnlyDebt(e.target.checked)} /> Somente com débito</label>
         <label className="row small muted" style={{ gap: 6 }}><input type="checkbox" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} /> Mostrar encerradas{endedCount ? ` (${endedCount})` : ''}</label>
@@ -123,6 +134,7 @@ function EntitiesList() {
                       <Link className="abtn" href={link(e, 'agenda')}><Ico d={ICON.age} />Agenda</Link>
                       <Link className="abtn" href={link(e, 'orders')}><Ico d={ICON.os} />Ordem de serviço</Link>
                       {can('sync.run') && <button className="abtn sync" onClick={() => void syncOne(e)} disabled={syncing !== null}><Ico d={ICON.sync} />{syncing === e.id ? 'Sincronizando…' : 'Sincronizar'}</button>}
+                      {can('entities.write') && <button className="abtn" onClick={() => setEditing(e)}><Ico d={ICON.edit} />Editar</button>}
                       {can('entities.write') && e.pendingInvoices + e.paidInvoices === 0 && (
                         <button className="abtn danger" title="Só é possível excluir entidades sem notas vinculadas" disabled={remove.isPending} onClick={() => { if (window.confirm(`Excluir a entidade "${e.shortName ?? e.name}"? Ela não possui notas vinculadas.`)) remove.mutate(e); }}><Ico d={ICON.del} />Excluir</button>
                       )}
@@ -137,37 +149,53 @@ function EntitiesList() {
       {data && <p className="small muted" style={{ marginTop: 8 }}>{list.length} entidade(s) exibida(s) de {data.total} cadastrada(s)</p>}
 
       <EntityForm open={creating} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); refresh(); }} />
+      {editing && <EntityForm open entity={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); showToast('Entidade atualizada'); refresh(); }} />}
       <ImportDialog open={importing} onClose={() => setImporting(false)} onDone={refresh} />
       {toast}
     </div>
   );
 }
 
-function EntityForm({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ type: 'CM', name: '', shortName: '', municipality: '', uf: 'MA', url: '', notes: '' });
+function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?: EntitySummary; onClose: () => void; onSaved: () => void }) {
+  const editing = Boolean(entity);
+  const [form, setForm] = useState({ type: entity?.type ?? 'CM', name: entity?.name ?? '', shortName: entity?.shortName ?? '', municipality: entity?.municipality ?? '', uf: entity?.uf ?? 'MA', url: '', notes: '', isActive: entity?.isActive ?? true });
   const [error, setError] = useState<string | null>(null);
-  const create = useMutation({
+  // Observações e fonte atual só existem na ficha completa; carrega ao editar.
+  const { data: detail } = useQuery({
+    queryKey: ['entity', entity?.id],
+    queryFn: () => api<{ notes: string | null; dataSources: Array<{ url: string }> }>(`/financeiro/entities/${entity!.id}`),
+    enabled: editing,
+  });
+  useEffect(() => { if (detail) setForm((f) => ({ ...f, notes: detail.notes ?? '', url: f.url || (detail.dataSources[0]?.url ?? '') })); }, [detail]);
+  const save = useMutation({
     mutationFn: async () => {
-      const entity = await api<{ id: string }>('/financeiro/entities', { method: 'POST', body: { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null } });
-      if (form.url) await api(`/financeiro/entities/${entity.id}/data-sources`, { method: 'POST', body: { url: form.url } });
+      const body = { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null, isActive: form.isActive };
+      if (editing) {
+        await api(`/financeiro/entities/${entity!.id}`, { method: 'PATCH', body });
+        if (form.url && form.url !== (detail?.dataSources[0]?.url ?? '')) await api(`/financeiro/entities/${entity!.id}/data-sources`, { method: 'POST', body: { url: form.url } });
+      } else {
+        const created = await api<{ id: string }>('/financeiro/entities', { method: 'POST', body });
+        if (form.url) await api(`/financeiro/entities/${created.id}/data-sources`, { method: 'POST', body: { url: form.url } });
+      }
     },
     onSuccess: onSaved,
     onError: (e) => setError(e instanceof ApiError ? `${e.message}${e.issues ? ': ' + e.issues.map((i) => `${i.path} ${i.message}`).join('; ') : ''}` : 'Erro'),
   });
-  const f = (k: keyof typeof form) => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value }) });
+  const f = (k: 'type' | 'name' | 'shortName' | 'municipality' | 'uf' | 'url' | 'notes') => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value }) });
   return (
-    <Dialog open={open} onClose={onClose} title="Nova entidade">
+    <Dialog open={open} onClose={onClose} title={editing ? `Editar entidade — ${entity!.shortName ?? entity!.name}` : 'Nova entidade'}>
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Tipo"><Select {...f('type')}>{ENTITY_TYPES.map((t) => <option key={t} value={t}>{t} — {ENTITY_TYPE_LABELS[t]}</option>)}</Select></Field>
         <Field label="UF"><Input maxLength={2} {...f('uf')} /></Field>
         <Field label="Município"><Input {...f('municipality')} placeholder="Bom Lugar" /></Field>
         <Field label="Nome curto"><Input {...f('shortName')} placeholder="CM BOM LUGAR" /></Field>
         <Field label="Nome completo" className="md:col-span-2"><Input {...f('name')} placeholder="CÂMARA MUNICIPAL DE BOM LUGAR" /></Field>
-        <Field label="URL financeira (Portal do Cliente — Assesi ou Adois)" className="w"><Input {...f('url')} placeholder="https://www.assesi.com.br/adm_faturas/index.php?e=…&t=1" /></Field>
+        <Field label={editing && detail?.dataSources[0] ? 'URL financeira atual (altere para cadastrar outra fonte)' : 'URL financeira (Portal do Cliente — Assesi ou Adois)'} className="w"><Input {...f('url')} placeholder="https://www.assesi.com.br/adm_faturas/index.php?e=…&t=1" /></Field>
         <Field label="Observações" className="md:col-span-2"><Textarea rows={2} {...f('notes')} /></Field>
+        {editing && <label className="row small muted md:col-span-2" style={{ gap: 6 }}><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Entidade ativa (desmarque quando o contrato terminar; ela passa a aparecer em "encerradas")</label>}
       </div>
       {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
-      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => create.mutate()} disabled={create.isPending}>Salvar</Button></div>
+      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => save.mutate()} disabled={save.isPending}>{save.isPending ? 'Salvando…' : 'Salvar'}</Button></div>
     </Dialog>
   );
 }
