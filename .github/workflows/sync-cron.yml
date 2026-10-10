@@ -1,12 +1,13 @@
-# Alternativa gratuita ao Vercel Cron (no plano Hobby os crons rodam no máximo 1x/dia):
-# chama o endpoint de sincronização a cada 6 horas e as verificações diárias às 09:00 UTC.
+# Sincronização agendada (o Vercel Cron do plano Hobby roda no máximo 1x/dia; vercel.json fica como reserva):
+# chama o endpoint de sincronização a cada 20 minutos (cada chamada processa as fontes mais antigas
+# dentro de SYNC_BUDGET_MS) e as verificações diárias às 09:00 UTC.
 # Segredos necessários no repositório: APP_URL (ex.: https://app.exemplo.com.br) e CRON_SECRET
 # (mesmo valor da variável CRON_SECRET do projeto na Vercel).
 name: Sync cron
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '*/20 * * * *'
     - cron: '0 9 * * *'
   workflow_dispatch:
 

@@ -21,8 +21,8 @@ const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; pe
   { href: '/admin', label: 'Administração', icon: Settings, perms: ['users.manage', 'settings.manage', 'templates.manage', 'audit.read'], match: (p) => p.startsWith('/admin') },
 ];
 
-/** Intervalo da função agendada da Netlify (apps/web/netlify.toml → scheduled-sync). */
-const SYNC_EVERY_MIN = 20;
+/** Intervalo da sincronização agendada (GitHub Actions .github/workflows/sync-cron.yml, a cada 20 min; Vercel Cron 1x/dia como reserva). */
+const SYNC_EVERY_LABEL = process.env['NEXT_PUBLIC_SYNC_INTERVAL_LABEL'] ?? '20 min';
 
 interface SyncOverview { sources: Array<{ lastSyncAt: string | null }> }
 
@@ -31,7 +31,7 @@ function SyncIndicator() {
   const last = data?.sources.map((s) => s.lastSyncAt).filter((x): x is string => Boolean(x)).sort().at(-1);
   return (
     <span className="demo" title="A sincronização com o Portal do Cliente roda em segundo plano">
-      Sincronização automática · a cada {SYNC_EVERY_MIN} min{last ? ` · última ${new Date(last).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}` : ''}
+      Sincronização automática · a cada {SYNC_EVERY_LABEL}{last ? ` · última ${new Date(last).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}` : ''}
     </span>
   );
 }

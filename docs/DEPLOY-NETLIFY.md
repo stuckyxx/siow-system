@@ -1,4 +1,6 @@
-# Publicando na Netlify (banco Neon) — estado atual e o que falta
+# Publicando na Netlify (banco Neon) — LEGADO
+
+> **Desde 10/10/2026 a hospedagem é a Vercel** (a conta Netlify esgotou os créditos de build do plano Free). Veja `docs/DEPLOY-VERCEL.md`, seção "Migração da Netlify → Vercel". Este documento fica como histórico da configuração anterior.
 
 _Atualizado em 07/10/2026._
 

@@ -1,5 +1,54 @@
 # Publicando o Siow System na Vercel (com Neon e Vercel Blob)
 
+## Migração da Netlify → Vercel (estado em 10/10/2026)
+
+O sistema rodou na Netlify (https://siow-system.netlify.app) até a conta esgotar os créditos de build
+do plano Free ("Skipped due to account credit usage exceeded"). A partir daqui a hospedagem é a Vercel.
+
+**O que já está pronto no código** (branch `main`):
+
+- `apps/web/vercel.json` com os crons de reserva (sync 03:00 UTC, diário 09:00 UTC); a Vercel envia o
+  `CRON_SECRET` sozinha. `.github/workflows/sync-cron.yml` faz a sincronização a cada 20 min.
+- Arquivos: `apps/web/src/server/storage.ts` usa o Vercel Blob quando `NETLIFY` não está definido.
+- Removidos `netlify.toml` (raiz e `apps/web`) e as funções agendadas `apps/web/netlify/functions`.
+- Script `apps/web/scripts/migrate-netlify-blobs.ts` copia os 15 PDFs que ficaram no Netlify Blobs
+  (anexos de contrato e documentos capturados) para o Vercel Blob e atualiza `document_blobs.storageKey`.
+
+**Nada muda no banco**: o Neon (projeto `dark-sound-41190359`) continua o mesmo; entidades, notas,
+usuários, contratos e configurações já estão lá. Não rode `prisma migrate`/`db push`.
+
+**Passos da migração** (quem tem acesso à conta Vercel):
+
+1. Passo 3 abaixo: importar `stuckyxx/siow-system` com Root Directory `apps/web` e
+   "Include files outside of the Root Directory" ligado.
+2. Passo 4: cadastrar as variáveis com os **mesmos valores** usados na Netlify: `DATABASE_URL`
+   (pooler, com `pgbouncer=true&connect_timeout=15`, sem `channel_binding`), `DIRECT_URL`,
+   `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CRON_SECRET`, `COOKIE_SECURE=true`,
+   `SYNC_BUDGET_MS=45000`, `SYNC_CONCURRENCY=2`, `APP_URL=https://<novo endereço>`.
+   Manter os segredos JWT iguais evita que todos precisem entrar de novo. Não precisa de
+   `SEED_ADMIN_*` (os usuários já existem) nem de bootstrap (já foi feito).
+3. Passo 6: criar o Blob store e conectar ao projeto (cria `BLOB_READ_WRITE_TOKEN`); Redeploy.
+4. Migrar os arquivos, na raiz do repositório, enquanto o site da Netlify ainda responde:
+
+   ```bash
+   OLD_APP_URL=https://siow-system.netlify.app OLD_LOGIN_EMAIL=<admin> OLD_LOGIN_PASSWORD=<senha> \
+   DATABASE_URL="<DATABASE_URL>" BLOB_READ_WRITE_TOKEN="<token do Blob>" pnpm --filter @siow/web migrate:blobs
+   ```
+
+   Pode repetir: só processa chaves que ainda começam com `netlify:`.
+5. GitHub → Settings → Secrets and variables → Actions: `APP_URL` = novo endereço e `CRON_SECRET`
+   (mesmo da Vercel); aba Actions → *Sync cron* → Enable workflow.
+6. Validar: `GET <APP>/api/health` com `"db":"ok"`; login; Dashboard; CM Bom Lugar com 20 notas e
+   7 pendentes (R$ 1.320); entidades Adois (PM Tuntum, PM Bom Jardim, PM/CM Icatú, CM Cururupu);
+   Entidades → Importar entidade → "Baixar planilha do link"; aba Notas fiscais → "+ Nova nota".
+7. Depois: apagar o site na Netlify (ou deixar parado) e, por segurança, trocar a senha do banco no
+   Neon (ela foi colada em chat) atualizando `DATABASE_URL`/`DIRECT_URL` na Vercel + Redeploy.
+
+Limites do Hobby que importam: funções de até 60 s (as rotas pesadas já declaram `maxDuration = 60`,
+melhor que os 10 s da Netlify Free, que causavam timeouts) e cron 1x/dia (por isso o GitHub Actions).
+
+---
+
 Este guia é para quem **não é desenvolvedor** e quer colocar o sistema no ar sem
 servidor próprio e sem instalar nada no computador. Tudo é feito pelo navegador.
 

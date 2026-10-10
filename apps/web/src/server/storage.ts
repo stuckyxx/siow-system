@@ -1,8 +1,9 @@
 /**
  * Armazenamento de arquivos — adaptador duplo:
- *  - Netlify (process.env.NETLIFY): Netlify Blobs, privado; o download passa pela rota
- *    autenticada /api/documents/[id]/download (storageKey = "netlify:<chave>").
- *  - Vercel: Vercel Blob público com chave não adivinhável (storageKey = URL completa).
+ *  - Vercel (produção): Vercel Blob público com chave não adivinhável (storageKey = URL completa).
+ *  - Netlify (legado, hospedagem anterior): Netlify Blobs, privado; o download passa pela rota
+ *    autenticada /api/documents/[id]/download (storageKey = "netlify:<chave>"). Mantido só para
+ *    ler o que ainda não foi migrado — ver apps/web/scripts/migrate-netlify-blobs.ts.
  */
 import { randomBytes } from 'node:crypto';
 import { env } from './env.js';

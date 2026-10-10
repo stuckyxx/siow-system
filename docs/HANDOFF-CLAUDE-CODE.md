@@ -11,7 +11,7 @@ Nada deve ser refeito do zero: o sistema já está construído e documentado nes
 Antes de qualquer ação, leia nesta ordem:
 
 1. `docs/PROMPT-MESTRE-v2.md` — a especificação completa e todas as decisões já validadas (regras de negócio, portal Assesi, modelo de dados, permissões, telas). É a fonte da verdade.
-2. `docs/DEPLOY-NETLIFY.md` — o estado atual da infraestrutura e o que falta.
+2. `docs/DEPLOY-VERCEL.md` — hospedagem atual (Vercel) e a migração a partir da Netlify; `docs/DEPLOY-NETLIFY.md` é histórico.
 3. `docs/ARCHITECTURE.md` e `README.md` — estrutura do monorepo.
 4. `docs/prototipo-siow-financeiro.html` — o protótipo aprovado pelo cliente (abra no navegador se quiser ver o comportamento esperado da interface; login `admin@siowsystem.com.br` / `Admin@12345` só no protótipo).
 
