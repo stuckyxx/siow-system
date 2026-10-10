@@ -17,7 +17,20 @@ do plano Free ("Skipped due to account credit usage exceeded"). A partir daqui a
 **Nada muda no banco**: o Neon (projeto `dark-sound-41190359`) continua o mesmo; entidades, notas,
 usuários, contratos e configurações já estão lá. Não rode `prisma migrate`/`db push`.
 
-**Passos da migração** (quem tem acesso à conta Vercel):
+**Feito em 10/10/2026 pela sessão de migração** (conta Vercel `siowsystemtecnologia-5452`, plano Hobby):
+
+- Projeto `siow-system` criado (`prj_LkMJb56K0fthq1RdzoQyHj1GI7I1`), Root Directory `apps/web`, Node 22, framework Next.js,
+  *Include files outside root* ligado, Vercel Authentication desligada (senão o site exigiria login da Vercel).
+- Blob store `siow-documentos` criado e conectado (`BLOB_READ_WRITE_TOKEN` automático).
+- Variáveis cadastradas em Production/Preview: `DATABASE_URL`, `DIRECT_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`,
+  `CRON_SECRET` (mesmos valores da Netlify), `COOKIE_SECURE`, `SYNC_BUDGET_MS`, `SYNC_CONCURRENCY`, `APP_URL`.
+- Os 15 PDFs do Netlify Blobs foram copiados para o Vercel Blob e `document_blobs.storageKey` atualizado (0 restantes).
+- **Pendente**: o deploy a partir do GitHub falhou com `git_info_fail` porque a conta Vercel **não tem o GitHub conectado**
+  (repositório privado). Conecte em Vercel → Account Settings → Authentication → GitHub, instale o app Vercel no
+  repositório `stuckyxx/siow-system` e, no projeto, Settings → Git → Connect. Depois o deploy sai de `main` automaticamente.
+- URL de produção prevista: https://siow-system-siowsystemtecnologia-5452.vercel.app (`APP_URL` já aponta para ela).
+
+**Passos da migração** (referência completa):
 
 1. Passo 3 abaixo: importar `stuckyxx/siow-system` com Root Directory `apps/web` e
    "Include files outside of the Root Directory" ligado.
