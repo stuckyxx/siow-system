@@ -10,7 +10,7 @@
  *   DATABASE_URL=... BLOB_READ_WRITE_TOKEN=... pnpm --filter @siow/web migrate:blobs
  */
 import { put } from '@vercel/blob';
-import { prisma } from '@siow/db';
+import { prisma } from '../src/server/db.js';
 
 const need = (k: string): string => { const v = process.env[k]; if (!v) throw new Error(`Variável ${k} obrigatória`); return v; };
 const OLD = need('OLD_APP_URL').replace(/\/$/, '');
