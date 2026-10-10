@@ -64,6 +64,9 @@ export async function rowsFromLink(url: string): Promise<{ entities: EntityRow[]
   return { entities, invoices: invoiceRows(info.shortName, snap.invoices, snap.contracts, overdueAfter), warnings: snap.warnings, title: info.name };
 }
 
+/** API de validação por intervalo do exceljs (existe em runtime, não está nas tipagens). */
+const dv = (ws: ExcelJS.Worksheet) => (ws as unknown as { dataValidations: { add: (range: string, v: ExcelJS.DataValidation) => void } }).dataValidations;
+
 function header(ws: ExcelJS.Worksheet): void {
   const head = ws.getRow(1);
   head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -88,8 +91,8 @@ export async function buildImportWorkbook(url?: string | null): Promise<{ buffer
   header(ws);
   for (const r of linked?.entities ?? []) ws.addRow(r);
   const last = Math.max(500, (linked?.entities.length ?? 0) + 2);
-  ws.dataValidations.add(`A2:A${last}`, { type: 'list', allowBlank: true, formulae: [`"${ENTITY_TYPES.join(',')}"`], showErrorMessage: true, errorTitle: 'Tipo inválido', error: `Use um destes: ${ENTITY_TYPES.join(', ')}` });
-  ws.dataValidations.add(`D2:D${last}`, { type: 'textLength', operator: 'equal', allowBlank: true, formulae: [2], showErrorMessage: true, errorTitle: 'UF inválida', error: 'Informe a sigla do estado com 2 letras (ex.: MA)' });
+  dv(ws).add(`A2:A${last}`, { type: 'list', allowBlank: true, formulae: [`"${ENTITY_TYPES.join(',')}"`], showErrorMessage: true, errorTitle: 'Tipo inválido', error: `Use um destes: ${ENTITY_TYPES.join(', ')}` });
+  dv(ws).add(`D2:D${last}`, { type: 'textLength', operator: 'equal', allowBlank: true, formulae: [2], showErrorMessage: true, errorTitle: 'UF inválida', error: 'Informe a sigla do estado com 2 letras (ex.: MA)' });
   ws.autoFilter = 'A1:F1';
 
   const notes = wb.addWorksheet('Notas', { views: [{ state: 'frozen', ySplit: 1 }] });
