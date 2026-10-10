@@ -46,6 +46,10 @@ function EntitiesList() {
   const [onlyDebt, setOnlyDebt] = useState(false);
   const [showEnded, setShowEnded] = useState(false);
   const [syncFilter, setSyncFilter] = useState<'' | 'synced' | 'unsynced'>('');
+  type YesNo = '' | 'yes' | 'no';
+  const [withContracts, setWithContracts] = useState<YesNo>('');
+  const [withInvoices, setWithInvoices] = useState<YesNo>('');
+  const [withUrl, setWithUrl] = useState<YesNo>('');
   const [editing, setEditing] = useState<EntitySummary | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -82,7 +86,12 @@ function EntitiesList() {
 
   const all = data?.items ?? [];
   const bySync = (e: EntitySummary): boolean => syncFilter === '' ? true : syncFilter === 'synced' ? e.lastSyncAt !== null : e.lastSyncAt === null;
-  const list = all.filter((e) => (showEnded ? isEnded(e) : !isEnded(e))).filter(bySync);
+  const yesNo = (v: YesNo, n: number): boolean => v === '' ? true : v === 'yes' ? n > 0 : n === 0;
+  const list = all
+    .filter((e) => (showEnded ? isEnded(e) : !isEnded(e)))
+    .filter(bySync)
+    .filter((e) => yesNo(withContracts, e.contractCount) && yesNo(withInvoices, e.invoiceCount) && yesNo(withUrl, e.sourceCount));
+  const cnt = (pred: (e: EntitySummary) => boolean): number => all.filter(pred).length;
   const endedCount = all.filter(isEnded).length;
   const syncedCount = all.filter((e) => e.lastSyncAt !== null).length;
   const unsyncedCount = all.length - syncedCount;
@@ -110,6 +119,21 @@ function EntitiesList() {
           <option value="synced">Sincronizadas ({syncedCount})</option>
           <option value="unsynced">Não sincronizadas ({unsyncedCount})</option>
         </select>
+        <select value={withContracts} onChange={(e) => setWithContracts(e.target.value as YesNo)} aria-label="Contratos">
+          <option value="">Com ou sem contratos</option>
+          <option value="yes">Com contratos ({cnt((e) => e.contractCount > 0)})</option>
+          <option value="no">Sem contratos ({cnt((e) => e.contractCount === 0)})</option>
+        </select>
+        <select value={withInvoices} onChange={(e) => setWithInvoices(e.target.value as YesNo)} aria-label="Notas">
+          <option value="">Com ou sem notas</option>
+          <option value="yes">Com notas vinculadas ({cnt((e) => e.invoiceCount > 0)})</option>
+          <option value="no">Sem notas vinculadas ({cnt((e) => e.invoiceCount === 0)})</option>
+        </select>
+        <select value={withUrl} onChange={(e) => setWithUrl(e.target.value as YesNo)} aria-label="Link">
+          <option value="">Com ou sem link de URL</option>
+          <option value="yes">Com link de URL ({cnt((e) => e.sourceCount > 0)})</option>
+          <option value="no">Sem link de URL ({cnt((e) => e.sourceCount === 0)})</option>
+        </select>
         <label className="row small muted" style={{ gap: 6 }}><input type="checkbox" checked={onlyDebt} onChange={(e) => setOnlyDebt(e.target.checked)} /> Somente com débito</label>
         <label className="row small muted" style={{ gap: 6 }}><input type="checkbox" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} /> Mostrar encerradas{endedCount ? ` (${endedCount})` : ''}</label>
       </div>
@@ -135,7 +159,7 @@ function EntitiesList() {
                       <Link className="abtn" href={link(e, 'orders')}><Ico d={ICON.os} />Ordem de serviço</Link>
                       {can('sync.run') && <button className="abtn sync" onClick={() => void syncOne(e)} disabled={syncing !== null}><Ico d={ICON.sync} />{syncing === e.id ? 'Sincronizando…' : 'Sincronizar'}</button>}
                       {can('entities.write') && <button className="abtn" onClick={() => setEditing(e)}><Ico d={ICON.edit} />Editar</button>}
-                      {can('entities.write') && e.pendingInvoices + e.paidInvoices === 0 && (
+                      {can('entities.write') && e.invoiceCount === 0 && (
                         <button className="abtn danger" title="Só é possível excluir entidades sem notas vinculadas" disabled={remove.isPending} onClick={() => { if (window.confirm(`Excluir a entidade "${e.shortName ?? e.name}"? Ela não possui notas vinculadas.`)) remove.mutate(e); }}><Ico d={ICON.del} />Excluir</button>
                       )}
                     </div>

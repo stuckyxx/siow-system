@@ -66,7 +66,10 @@ export async function list(f: EntityFilter, onlyId?: string): Promise<Paginated<
       (SELECT cc.status FROM collection_cases cc WHERE cc."entityId" = e.id ORDER BY cc."updatedAt" DESC LIMIT 1) AS collection_status,
       (SELECT COUNT(*) FROM service_orders so WHERE so."entityId" = e.id AND so."deletedAt" IS NULL AND so.status NOT IN ('SIGNED','CANCELLED'))::int AS pending_service_orders,
       (SELECT MAX(ds."lastSyncAt") FROM data_sources ds WHERE ds."entityId" = e.id AND ds."deletedAt" IS NULL) AS last_sync_at,
-      (SELECT ds."lastSyncStatus" FROM data_sources ds WHERE ds."entityId" = e.id AND ds."deletedAt" IS NULL ORDER BY ds."lastSyncAt" DESC NULLS LAST LIMIT 1) AS last_sync_status
+      (SELECT ds."lastSyncStatus" FROM data_sources ds WHERE ds."entityId" = e.id AND ds."deletedAt" IS NULL ORDER BY ds."lastSyncAt" DESC NULLS LAST LIMIT 1) AS last_sync_status,
+      (SELECT COUNT(*) FROM contracts c WHERE c."entityId" = e.id AND c."deletedAt" IS NULL)::int AS contract_count,
+      (SELECT COUNT(*) FROM invoices i WHERE i."entityId" = e.id AND i."deletedAt" IS NULL)::int AS invoice_count,
+      (SELECT COUNT(*) FROM data_sources ds WHERE ds."entityId" = e.id AND ds."deletedAt" IS NULL)::int AS source_count
     FROM entities e
     ${where}
     ${order}
@@ -97,6 +100,9 @@ export async function list(f: EntityFilter, onlyId?: string): Promise<Paginated<
     lastSyncAt: r['last_sync_at'] ? (r['last_sync_at'] as Date).toISOString() : null,
     lastSyncStatus: (r['last_sync_status'] as EntitySummary['lastSyncStatus']) ?? null,
     needsReconciliation: Number(r['reconciliation_count'] ?? 0),
+    contractCount: Number(r['contract_count'] ?? 0),
+    invoiceCount: Number(r['invoice_count'] ?? 0),
+    sourceCount: Number(r['source_count'] ?? 0),
   }));
   return { items, total: count, page: f.page, pageSize: f.pageSize };
 }

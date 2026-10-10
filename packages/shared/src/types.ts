@@ -47,6 +47,10 @@ export interface EntitySummary {
   lastSyncAt: string | null;
   lastSyncStatus: SyncStatus | null;
   needsReconciliation: number;
+  /** totais para filtros da lista: contratos (qualquer status), notas (qualquer status) e fontes (links) cadastradas */
+  contractCount: number;
+  invoiceCount: number;
+  sourceCount: number;
 }
 
 export interface InvoiceRow {

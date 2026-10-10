@@ -100,6 +100,9 @@ export class EntitiesService {
       lastSyncAt: r['last_sync_at'] ? (r['last_sync_at'] as Date).toISOString() : null,
       lastSyncStatus: (r['last_sync_status'] as EntitySummary['lastSyncStatus']) ?? null,
       needsReconciliation: Number(r['reconciliation_count'] ?? 0),
+      contractCount: 0,
+      invoiceCount: Number(r['pending_count'] ?? 0) + Number(r['paid_count'] ?? 0),
+      sourceCount: r['last_sync_at'] ? 1 : 0,
     }));
     return { items, total: count, page: f.page, pageSize: f.pageSize };
   }
