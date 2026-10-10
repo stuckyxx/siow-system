@@ -25,10 +25,17 @@ usuários, contratos e configurações já estão lá. Não rode `prisma migrate
 - Variáveis cadastradas em Production/Preview: `DATABASE_URL`, `DIRECT_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`,
   `CRON_SECRET` (mesmos valores da Netlify), `COOKIE_SECURE`, `SYNC_BUDGET_MS`, `SYNC_CONCURRENCY`, `APP_URL`.
 - Os 15 PDFs do Netlify Blobs foram copiados para o Vercel Blob e `document_blobs.storageKey` atualizado (0 restantes).
-- **Pendente**: o deploy a partir do GitHub falhou com `git_info_fail` porque a conta Vercel **não tem o GitHub conectado**
-  (repositório privado). Conecte em Vercel → Account Settings → Authentication → GitHub, instale o app Vercel no
-  repositório `stuckyxx/siow-system` e, no projeto, Settings → Git → Connect. Depois o deploy sai de `main` automaticamente.
-- URL de produção prevista: https://siow-system-siowsystemtecnologia-5452.vercel.app (`APP_URL` já aponta para ela).
+- **Deploy**: a conta Vercel não tem o GitHub conectado, por isso `gitSource {org, repo}` falha com `git_info_fail`.
+  Como o repositório é **público**, o deploy funciona pela API usando o **id numérico** do repositório
+  (`gitSource: { type: 'github', repoId: 1395708654, ref: 'main' }`). Primeiro deploy em produção: 10/10/2026,
+  commit `d8c939a`, com `/api/health` ok, login, dashboard, CM Bom Lugar (20 notas, 7 pendentes, R$ 9.240),
+  PM Tuntum, planilha pelo link, download de documento (Vercel Blob) e `/api/cron/sync` validados.
+  **Enquanto o GitHub não for conectado, um push na `main` NÃO publica sozinho**: é preciso criar o deploy pela API
+  (MCP da Vercel, `create_deployment` com o `repoId` acima) ou conectar o GitHub (Account Settings → Authentication →
+  GitHub; depois Settings → Git no projeto) para ter deploy automático.
+- Sincronização a cada 20 min (GitHub Actions) ainda depende dos *secrets* `APP_URL` e `CRON_SECRET` no repositório
+  (a API de secrets do GitHub não é acessível pela sessão). Sem eles, vale só o Vercel Cron 1x/dia.
+- URL de produção: https://siow-system-siowsystemtecnologia-5452.vercel.app (`APP_URL` aponta para ela).
 
 **Passos da migração** (referência completa):
 

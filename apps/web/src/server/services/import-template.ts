@@ -87,10 +87,9 @@ export async function buildImportWorkbook(url?: string | null): Promise<{ buffer
   ];
   header(ws);
   for (const r of linked?.entities ?? []) ws.addRow(r);
-  for (let r = 2; r <= Math.max(500, (linked?.entities.length ?? 0) + 2); r += 1) {
-    ws.getCell(`A${r}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`"${ENTITY_TYPES.join(',')}"`], showErrorMessage: true, errorTitle: 'Tipo inválido', error: `Use um destes: ${ENTITY_TYPES.join(', ')}` };
-    ws.getCell(`D${r}`).dataValidation = { type: 'textLength', operator: 'equal', allowBlank: true, formulae: [2], showErrorMessage: true, errorTitle: 'UF inválida', error: 'Informe a sigla do estado com 2 letras (ex.: MA)' };
-  }
+  const last = Math.max(500, (linked?.entities.length ?? 0) + 2);
+  ws.dataValidations.add(`A2:A${last}`, { type: 'list', allowBlank: true, formulae: [`"${ENTITY_TYPES.join(',')}"`], showErrorMessage: true, errorTitle: 'Tipo inválido', error: `Use um destes: ${ENTITY_TYPES.join(', ')}` });
+  ws.dataValidations.add(`D2:D${last}`, { type: 'textLength', operator: 'equal', allowBlank: true, formulae: [2], showErrorMessage: true, errorTitle: 'UF inválida', error: 'Informe a sigla do estado com 2 letras (ex.: MA)' });
   ws.autoFilter = 'A1:F1';
 
   const notes = wb.addWorksheet('Notas', { views: [{ state: 'frozen', ySplit: 1 }] });
