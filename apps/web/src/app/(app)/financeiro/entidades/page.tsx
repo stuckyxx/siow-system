@@ -10,6 +10,7 @@ import { downloadBlob } from '@/lib/utils';
 import { Button, Dialog, Empty, Field, Input, Select, Textarea, useToast } from '@/components/ui';
 
 const ICON = {
+  del: 'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6',
   inv: 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h6M9 17h6',
   con: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
   age: 'M3 5h18v16H3zM3 9h18M8 3v4M16 3v4',
@@ -53,6 +54,11 @@ function EntitiesList() {
     queryFn: () => api<Paginated<EntitySummary>>('/financeiro/entities', { query: { q, type, onlyWithDebt: onlyDebt || undefined, page: 1, pageSize: 200, sortBy: 'name', sortDir: 'asc' } }),
   });
   const refresh = (): void => { void qc.invalidateQueries({ queryKey: ['entities'] }); };
+  const remove = useMutation({
+    mutationFn: (e: EntitySummary) => api<{ ok: boolean }>(`/financeiro/entities/${e.id}`, { method: 'DELETE' }),
+    onSuccess: (_r, e) => { showToast(`${e.shortName ?? e.name} excluída`); refresh(); },
+    onError: (err) => showToast(err instanceof ApiError ? err.message : 'Falha ao excluir'),
+  });
   const syncAll = useMutation({
     mutationFn: () => api<{ processed: number; remaining: number; succeeded: number; failed: number }>('/financeiro/sync/all', { method: 'POST' }),
     onSuccess: (r) => { showToast(`${r.succeeded} entidade(s) sincronizada(s)${r.failed ? `, ${r.failed} com falha` : ''}${r.remaining ? ` · ${r.remaining} restante(s): clique de novo ou aguarde a sincronização automática` : ''}`); refresh(); },
@@ -117,6 +123,9 @@ function EntitiesList() {
                       <Link className="abtn" href={link(e, 'agenda')}><Ico d={ICON.age} />Agenda</Link>
                       <Link className="abtn" href={link(e, 'orders')}><Ico d={ICON.os} />Ordem de serviço</Link>
                       {can('sync.run') && <button className="abtn sync" onClick={() => void syncOne(e)} disabled={syncing !== null}><Ico d={ICON.sync} />{syncing === e.id ? 'Sincronizando…' : 'Sincronizar'}</button>}
+                      {can('entities.write') && e.pendingInvoices + e.paidInvoices === 0 && (
+                        <button className="abtn danger" title="Só é possível excluir entidades sem notas vinculadas" disabled={remove.isPending} onClick={() => { if (window.confirm(`Excluir a entidade "${e.shortName ?? e.name}"? Ela não possui notas vinculadas.`)) remove.mutate(e); }}><Ico d={ICON.del} />Excluir</button>
+                      )}
                     </div>
                   </td>
                 </tr>

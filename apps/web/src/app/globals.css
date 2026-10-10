@@ -130,6 +130,8 @@
   .abtn:hover { border-color: var(--accent); color: var(--accent); }
   .abtn svg { width: 13px; height: 13px; }
   .abtn.sync { border-color: rgba(76, 201, 240, .45); color: var(--accent); }
+  .abtn.danger { border-color: rgba(255, 99, 99, .4); color: var(--crit); }
+  .abtn.danger:hover { border-color: var(--crit); background: rgba(255, 99, 99, .08); }
   .abtn:disabled { opacity: .45; cursor: default; }
 
   /* ---- formulários ---- */

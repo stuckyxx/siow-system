@@ -130,9 +130,16 @@ export async function update(ctx: Ctx, id: string, input: z.infer<typeof updateE
   return after;
 }
 
+/**
+ * Exclusão lógica. Só é permitida sem notas vinculadas (a nota é o registro financeiro; uma entidade com
+ * histórico deve ser encerrada, não excluída). As fontes de dados ficam desativadas para o cron não sincronizá-las.
+ */
 export async function softDelete(ctx: Ctx, id: string): Promise<void> {
   const before = await prisma.entity.findFirst({ where: { id, deletedAt: null } });
   if (!before) throw notFound('Entidade não encontrada');
+  const invoices = await prisma.invoice.count({ where: { entityId: id, deletedAt: null } });
+  if (invoices > 0) throw badRequest(`A entidade possui ${invoices} nota(s) vinculada(s) e não pode ser excluída. Se o contrato terminou, desmarque "ativa" na edição.`);
+  await prisma.dataSource.updateMany({ where: { entityId: id }, data: { syncEnabled: false } });
   await prisma.entity.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
   await audit(ctx, { action: 'SOFT_DELETE', resource: 'entity', resourceId: id, before });
 }
