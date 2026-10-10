@@ -77,6 +77,11 @@ export interface DashboardCards {
   pendingInvoices: number;
   paidInvoices: number;
   entitiesWithDebt: number;
+  /** Entidades cadastradas (ativas, não excluídas) no recorte */
+  totalEntities: number;
+  entitiesSynced: number;
+  entitiesWithoutSource: number;
+  entitiesWithActiveContract: number;
   activeContracts: number;
   contractsExpiring: number;
   certificatesExpiring: number;

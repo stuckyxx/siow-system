@@ -213,6 +213,13 @@ export async function build(f: DashboardFilter): Promise<DashboardWithForecast> 
 
   void overdueAfter;
 
+  const entityWhere = { deletedAt: null, ...(f.entityId ? { id: f.entityId } : {}) };
+  const [totalEntities, entitiesSynced, entitiesWithoutSource, entitiesWithActiveContract] = await Promise.all([
+    prisma.entity.count({ where: entityWhere }),
+    prisma.entity.count({ where: { ...entityWhere, dataSources: { some: { deletedAt: null, lastSyncAt: { not: null } } } } }),
+    prisma.entity.count({ where: { ...entityWhere, dataSources: { none: { deletedAt: null } } } }),
+    prisma.entity.count({ where: { ...entityWhere, contracts: { some: { deletedAt: null, status: 'ACTIVE' } } } }),
+  ]);
   const [activeContracts, contractsExpiring, certVersions, pendingServiceOrders, failedSyncs, overdueCollections, fc] = await Promise.all([
     prisma.contract.count({ where: { deletedAt: null, status: 'ACTIVE', entityId: f.entityId } }),
     prisma.contract.findMany({
@@ -310,6 +317,10 @@ export async function build(f: DashboardFilter): Promise<DashboardWithForecast> 
       pendingInvoices: pendingCount,
       paidInvoices: paidCount,
       entitiesWithDebt: debtByEntity.size,
+      totalEntities,
+      entitiesSynced,
+      entitiesWithoutSource,
+      entitiesWithActiveContract,
       activeContracts,
       contractsExpiring: contractsExpiring.length,
       certificatesExpiring: certVersions.length,

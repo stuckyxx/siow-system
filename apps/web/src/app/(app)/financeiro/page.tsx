@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { formatBRL, formatBrDate, formatBrDateTime, type DashboardResponse } from '@siow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { GlobalFilters, useFilterOptions, useGlobalFilters } from '@/components/global-filters';
+import { GlobalFilters, useGlobalFilters } from '@/components/global-filters';
 import { Badge, Dialog, Empty, Skeleton, Stat } from '@/components/ui';
 
 interface ForecastRow { entityId: string; entityShort: string; contractId: string; contractNumber: string; lastInvoice: { number: string; competence: string; issuedAt: string | null } | null; monthly: string; annual: string }
@@ -20,7 +20,6 @@ export default function DashboardPage() {
   const { can } = useAuth();
   const [filters, setFilters] = useGlobalFilters();
   const [forecastOpen, setForecastOpen] = useState(false);
-  const { data: options } = useFilterOptions();
   const { data, isLoading } = useQuery({ queryKey: ['dashboard', filters], queryFn: () => api<Dashboard>('/financeiro/dashboard', { query: filters as Record<string, string | number | undefined> }) });
   // Chips de alerta do protótipo: contratos vencendo em 120 dias.
   const { data: expiring } = useQuery({
@@ -30,7 +29,6 @@ export default function DashboardPage() {
   });
 
   const pendingOs = data?.attention.filter((a) => a.kind === 'SERVICE_ORDER_PENDING').length ?? 0;
-  const totalEntities = options?.entities.length;
 
   return (
     <div>
@@ -43,16 +41,17 @@ export default function DashboardPage() {
       <GlobalFilters value={filters} onChange={setFilters} />
 
       {isLoading || !data ? (
-        <div className="g6">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[86px]" />)}</div>
+        <div className="g7">{Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-[86px]" />)}</div>
       ) : (
         <>
-          <div className="g6">
+          <div className="g7">
+            <Stat label="Total de entidades" value={data.cards.totalEntities} tone="info" hint={`${data.cards.entitiesSynced} sincronizada(s) · ${data.cards.entitiesWithoutSource} sem link`} onClick={() => router.push('/financeiro/entidades')} />
             <Stat label="Total pendente" value={formatBRL(data.cards.totalReceivable)} tone={data.cards.pendingInvoices ? 'warn' : 'good'} hint={`${data.cards.pendingInvoices} nota(s) pendente(s)`} />
             <Stat label="Total recebido" value={formatBRL(data.cards.totalReceived)} tone="good" hint={`${data.cards.paidInvoices} nota(s) paga(s)`} />
             <Stat label="Receita prevista mensal" value={formatBRL(data.forecastMonthly)} tone="info" hint={`${data.forecastRows.length} contrato(s) ativo(s)`} />
             <Stat label="Receita prevista anual" value={formatBRL(data.forecastAnnual)} tone="info" hint="clique para detalhar" onClick={() => setForecastOpen(true)} />
-            <Stat label="Entidades com pendências" value={data.cards.entitiesWithDebt} tone={data.cards.entitiesWithDebt ? 'warn' : 'good'} hint={totalEntities !== undefined ? `de ${totalEntities} cadastrada(s)` : undefined} />
-            <Stat label="Contratos ativos" value={data.cards.activeContracts} />
+            <Stat label="Entidades com pendências" value={data.cards.entitiesWithDebt} tone={data.cards.entitiesWithDebt ? 'warn' : 'good'} hint={`de ${data.cards.totalEntities} cadastrada(s)`} />
+            <Stat label="Contratos ativos" value={data.cards.activeContracts} hint={`em ${data.cards.entitiesWithActiveContract} entidade(s)`} onClick={() => router.push('/financeiro/contratos')} />
           </div>
 
           <div className="alerts">

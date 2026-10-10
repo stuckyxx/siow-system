@@ -98,9 +98,10 @@
   .card .bd { padding: 8px 18px 16px; }
   .g5 { display: grid; gap: 12px; grid-template-columns: repeat(5, 1fr); }
   .g6 { display: grid; gap: 12px; grid-template-columns: repeat(6, 1fr); }
+  .g7 { display: grid; gap: 12px; grid-template-columns: repeat(7, 1fr); }
   .g4 { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
   .g2 { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
-  @media (max-width: 1100px) { .g5, .g6 { grid-template-columns: repeat(3, 1fr); } .g4 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 1100px) { .g5, .g6 { grid-template-columns: repeat(3, 1fr); } .g7 { grid-template-columns: repeat(4, 1fr); } .g4 { grid-template-columns: repeat(2, 1fr); } }
   .stat { padding: 14px 16px; position: relative; overflow: hidden; text-align: left; }
   .stat::after { content: ""; position: absolute; inset: auto -30px -40px auto; width: 120px; height: 120px; border-radius: 50%; background: var(--grad); opacity: .08; filter: blur(20px); pointer-events: none; }
   .stat .l { font-size: 11px; color: var(--ink3); text-transform: uppercase; letter-spacing: .08em; }
@@ -241,13 +242,13 @@
 
 /* ---- celular / tablet estreito: declarado por último para prevalecer sobre as regras acima ---- */
 @layer components {
-  .g5 > *, .g6 > *, .g4 > *, .g2 > * { min-width: 0; }
+  .g5 > *, .g6 > *, .g7 > *, .g4 > *, .g2 > * { min-width: 0; }
   .content { min-width: 0; }
   @media (max-width: 860px) {
     .demo { display: none; }
   }
   @media (max-width: 700px) {
-    .g5, .g6, .g4 { grid-template-columns: 1fr 1fr; }
+    .g5, .g6, .g7, .g4 { grid-template-columns: 1fr 1fr; }
     .g2 { grid-template-columns: 1fr; }
     .content { padding: 14px 12px 90px; }
     .top { padding: 0 10px; gap: 8px; }
