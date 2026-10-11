@@ -187,6 +187,7 @@ model Entity {
   messages        OutboundMessage[]
   notifications   Notification[]
   certificates    Certificate[]
+  issuanceAlarms  IssuanceAlarm[]
 
   @@unique([type, municipality, uf])
   @@index([municipality])
@@ -1011,7 +1012,29 @@ enum NotificationType {
   RECONCILIATION_NEEDED
   TASK_DUE
   SERVICE_ORDER_PENDING
+  ISSUANCE_DUE
   GENERIC
+}
+
+/// Alarme de emissão: dia do mês em que a nota da entidade deve ser emitida; o sistema avisa `leadDays` antes.
+model IssuanceAlarm {
+  id              String    @id @default(uuid())
+  entityId        String
+  entity          Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  /// Contrato a que o alarme se refere (opcional; texto livre do número para não depender da sincronização)
+  contractNumber  String?
+  label           String    @default("Emissão da nota")
+  dayOfMonth      Int
+  leadDays        Int       @default(5)
+  isActive        Boolean   @default(true)
+  notes           String?
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  @@index([entityId])
+  @@map("issuance_alarms")
 }
 
 model Notification {

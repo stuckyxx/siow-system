@@ -6,6 +6,7 @@
  */
 import { addDaysIso, isoToDate, todayIso } from '@siow/shared';
 import { prisma } from '../db.js';
+import { notifyDue } from './alarms.js';
 
 async function settingNumber(key: string, fallback: number): Promise<number> {
   const s = await prisma.setting.findUnique({ where: { key } });
@@ -18,6 +19,7 @@ export interface DailyChecksResult {
   certificates: { checked: number; expiring: number; expired: number };
   contracts: { checked: number; expiredNow: number };
   tasks: { due: number; overdue: number };
+  issuance: { due: number; late: number };
   durationMs: number;
 }
 
@@ -103,11 +105,15 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
     });
   }
 
+  // ---- alarmes de emissão de nota ----
+  const issuance = await notifyDue(today);
+
   const result: DailyChecksResult = {
     date: today,
     certificates: { checked: versions.length, expiring, expired },
     contracts: { checked: contracts.length, expiredNow },
     tasks: { due: tasks.length - overdue, overdue },
+    issuance,
     durationMs: Date.now() - startedAt,
   };
   console.info('[cron] verificações diárias concluídas', result);

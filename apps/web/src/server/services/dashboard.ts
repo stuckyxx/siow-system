@@ -22,6 +22,7 @@ import {
 } from '@siow/shared';
 import { prisma } from '../db.js';
 import { buildInvoiceWhere } from './invoices.js';
+import { deadlines as issuanceDeadlines } from './alarms.js';
 
 export interface ForecastRow {
   entityId: string;
@@ -244,8 +245,18 @@ export async function build(f: DashboardFilter): Promise<DashboardWithForecast> 
     }),
     forecast(f),
   ]);
+  const issuance = (await issuanceDeadlines({ entityId: f.entityId, days: 0 })).filter((d) => d.status === 'LATE' || d.status === 'DUE');
 
   const attention: AttentionItem[] = [
+    ...issuance.map<AttentionItem>((d) => ({
+      kind: 'ISSUANCE_DUE',
+      title: `${d.status === 'LATE' ? 'Nota em atraso' : 'Emitir nota'} — ${d.entityShortName ?? d.entityName}`,
+      detail: `${d.label}${d.contractNumber ? ` · contrato ${d.contractNumber}` : ''} · prazo ${d.dueDate.split('-').reverse().join('/')}${d.status === 'LATE' ? ` (${-d.daysUntil} dia(s) de atraso)` : ` (faltam ${d.daysUntil} dia(s))`}`,
+      entityId: d.entityId,
+      referenceId: d.id,
+      severity: d.status === 'LATE' ? 'high' : 'warning',
+      date: d.dueDate,
+    })),
     ...oldPending.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')).slice(0, 15),
     ...contractsExpiring.map<AttentionItem>((c) => ({
       kind: 'CONTRACT_EXPIRING',
@@ -322,6 +333,7 @@ export async function build(f: DashboardFilter): Promise<DashboardWithForecast> 
       entitiesWithoutSource,
       entitiesWithActiveContract,
       activeContracts,
+      issuanceDue: issuance.length,
       contractsExpiring: contractsExpiring.length,
       certificatesExpiring: certVersions.length,
       needsReconciliation: reconciliation,

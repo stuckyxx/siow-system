@@ -102,6 +102,7 @@ function EntitiesList() {
       <div className="row between">
         <h1>Entidades</h1>
         <div className="row">
+          <Link className="btn" href="/financeiro/alarmes">🔔 Prazos de emissão</Link>
           {can('sync.run') && <button className="btn" onClick={() => syncAll.mutate()} disabled={syncAll.isPending}>{syncAll.isPending ? 'Sincronizando…' : 'Sincronizar todas'}</button>}
           {can('entities.write') && <button className="btn" onClick={() => setImporting(true)}>Importar entidade</button>}
           {can('entities.write') && <button className="btn p" onClick={() => setCreating(true)}>Nova entidade</button>}

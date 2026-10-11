@@ -633,6 +633,31 @@ CREATE TABLE IF NOT EXISTS "audit_logs" (
 );
 
 -- Notification
+-- IssuanceAlarm (alarme de emissão de nota)
+CREATE TABLE IF NOT EXISTS "issuance_alarms" (
+  "id" TEXT NOT NULL,
+  "entityId" TEXT NOT NULL,
+  "contractNumber" TEXT NULL,
+  "label" TEXT NOT NULL DEFAULT 'Emissão da nota',
+  "dayOfMonth" INTEGER NOT NULL,
+  "leadDays" INTEGER NOT NULL DEFAULT 5,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "notes" TEXT NULL,
+  "createdByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "issuance_alarms_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "issuance_alarms_entityId_idx" ON "issuance_alarms"("entityId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'issuance_alarms_entityId_fkey') THEN
+    ALTER TABLE "issuance_alarms" ADD CONSTRAINT "issuance_alarms_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'ISSUANCE_DUE';
+
+-- Notification
 CREATE TABLE IF NOT EXISTS "notifications" (
   "id" TEXT NOT NULL,
   "userId" TEXT NULL,

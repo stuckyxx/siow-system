@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { InvoicesTable } from '@/components/invoices-table';
 import { InvoiceDialog } from '@/components/invoice-dialog';
 import { ContractsPanel } from '@/components/panels/contracts-panel';
+import { AlarmsPanel } from '@/components/panels/alarms-panel';
 import { TasksPanel } from '@/components/panels/tasks-panel';
 import { ServiceOrdersPanel } from '@/components/panels/service-orders-panel';
 import { ContactsPanel } from '@/components/panels/contacts-panel';
@@ -25,6 +26,7 @@ interface EntityDetail {
 const TABS = [
   { key: 'overview', label: 'Visão geral' },
   { key: 'invoices', label: 'Notas fiscais' },
+  { key: 'alarms', label: 'Alarme' },
   { key: 'contracts', label: 'Contratos' },
   { key: 'agenda', label: 'Agenda' },
   { key: 'orders', label: 'Ordens de serviço' },
@@ -133,6 +135,7 @@ function EntityView() {
         </div>
       )}
       {tab === 'invoices' && <InvoicesTable base={{ entityId: id }} showEntity={false} initialOpenId={search.get('nota')} />}
+      {tab === 'alarms' && <AlarmsPanel entityId={id} contracts={e.contracts} />}
       {tab === 'contracts' && <ContractsPanel entityId={id} manualOnly />}
       {tab === 'agenda' && <TasksPanel key={newTask ? 'new' : 'list'} entityId={id} autoCreate={newTask} />}
       {tab === 'orders' && <ServiceOrdersPanel entityId={id} contracts={e.contracts} />}

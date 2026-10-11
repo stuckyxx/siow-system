@@ -399,3 +399,20 @@ export const syncRunListFilterSchema = paginationSchema.extend({
   entityId: uuid.optional(),
   status: z.enum(['QUEUED', 'RUNNING', 'SUCCESS', 'PARTIAL', 'FAILED', 'SKIPPED']).optional(),
 });
+
+// ---------- alarmes de emissão ----------
+export const createIssuanceAlarmSchema = z.object({
+  entityId: uuid,
+  contractNumber: z.string().max(60).optional().nullable(),
+  label: z.string().min(2).max(120).default('Emissão da nota'),
+  dayOfMonth: z.number().int().min(1).max(31),
+  leadDays: z.number().int().min(0).max(60).default(5),
+  isActive: z.boolean().optional(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const updateIssuanceAlarmSchema = createIssuanceAlarmSchema.omit({ entityId: true }).partial();
+export const issuanceDeadlineFilterSchema = z.object({
+  entityId: uuid.optional(),
+  /** horizonte em dias para "próximos" (padrão 30) */
+  days: z.coerce.number().int().min(1).max(120).default(30),
+});

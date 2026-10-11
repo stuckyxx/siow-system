@@ -248,6 +248,7 @@ export class DashboardService {
         paidInvoices: paidCount,
         entitiesWithDebt: debtByEntity.size,
         activeContracts,
+        issuanceDue: 0,
         contractsExpiring: contractsExpiring.length,
         certificatesExpiring: certVersions.length,
         needsReconciliation: reconciliation,

@@ -18,7 +18,7 @@ export default function NotificationsPage() {
       <Card className="divide-y divide-line">
         {!data ? <div className="p-4 text-sm text-ink-3">Carregando…</div> : data.length === 0 ? <div className="p-4"><Empty>Nenhuma notificação</Empty></div> : data.map((n) => (
           <div key={n.id} className={`flex items-start gap-3 p-3 ${n.readAt ? 'opacity-60' : ''}`}>
-            <Badge tone={n.type.includes('EXPIRED') || n.type === 'SYNC_FAILED' ? 'critical' : n.type.includes('EXPIRING') || n.type === 'RECONCILIATION_NEEDED' ? 'warn' : 'info'}>{n.type.replace(/_/g, ' ').toLowerCase()}</Badge>
+            <Badge tone={n.type.includes('EXPIRED') || n.type === 'SYNC_FAILED' ? 'critical' : n.type.includes('EXPIRING') || n.type === 'RECONCILIATION_NEEDED' || n.type === 'ISSUANCE_DUE' ? 'warn' : 'info'}>{n.type.replace(/_/g, ' ').toLowerCase()}</Badge>
             <div className="min-w-0 flex-1">
               <div className="text-sm">{n.entityId ? <Link href={`/financeiro/entidades/${n.entityId}`} className="hover:underline">{n.title}</Link> : n.title}</div>
               {n.body && <div className="text-xs text-ink-2">{n.body}</div>}

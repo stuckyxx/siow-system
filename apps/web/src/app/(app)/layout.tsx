@@ -13,7 +13,7 @@ const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; pe
   { href: '/financeiro', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/financeiro' },
   {
     href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'],
-    match: (p) => ['/financeiro/entidades', '/financeiro/notas', '/financeiro/contratos', '/financeiro/agenda', '/financeiro/cobrancas', '/financeiro/ordens-de-servico'].some((x) => p.startsWith(x)),
+    match: (p) => ['/financeiro/entidades', '/financeiro/alarmes', '/financeiro/notas', '/financeiro/contratos', '/financeiro/agenda', '/financeiro/cobrancas', '/financeiro/ordens-de-servico'].some((x) => p.startsWith(x)),
   },
   { href: '/financeiro/certidoes', label: 'Certidões', icon: FileBadge, perms: ['certificates.read'], match: (p) => p.startsWith('/financeiro/certidoes') },
   { href: '/financeiro/relatorios', label: 'Relatórios', icon: FileBarChart, perms: ['reports.read'], match: (p) => p.startsWith('/financeiro/relatorios') },

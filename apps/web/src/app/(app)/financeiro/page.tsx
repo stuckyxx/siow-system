@@ -13,7 +13,7 @@ interface ForecastRow { entityId: string; entityShort: string; contractId: strin
 type Dashboard = DashboardResponse & { forecastMonthly: string; forecastAnnual: string; forecastRows: ForecastRow[] };
 
 const comp = (c: string): string => `${c.slice(5, 7)}/${c.slice(0, 4)}`;
-const KIND: Record<string, string> = { OLD_INVOICE: 'Nota antiga', SERVICE_ORDER_PENDING: 'OS', CERTIFICATE_EXPIRING: 'Certidão', CERTIFICATE_EXPIRED: 'Certidão', CONTRACT_EXPIRING: 'Contrato', COLLECTION_OVERDUE: 'Cobrança', RECONCILIATION: 'Verificar', SYNC_FAILED: 'Sincronização', MISSING_INVOICE: 'Sem nota' };
+const KIND: Record<string, string> = { OLD_INVOICE: 'Nota antiga', SERVICE_ORDER_PENDING: 'OS', CERTIFICATE_EXPIRING: 'Certidão', CERTIFICATE_EXPIRED: 'Certidão', CONTRACT_EXPIRING: 'Contrato', COLLECTION_OVERDUE: 'Cobrança', RECONCILIATION: 'Verificar', SYNC_FAILED: 'Sincronização', MISSING_INVOICE: 'Sem nota', ISSUANCE_DUE: 'Emissão' };
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -57,9 +57,10 @@ export default function DashboardPage() {
           <div className="alerts">
             {data.cards.needsReconciliation > 0 && <Link className="crit" href="/financeiro/notas">⚠ <b>{data.cards.needsReconciliation}</b> nota(s) a verificar</Link>}
             {(expiring?.length ?? 0) > 0 && <Link className="warn" href="/financeiro/contratos"><b>{expiring!.length}</b> contrato(s) vencendo em 120 dias</Link>}
+            {data.cards.issuanceDue > 0 && <Link className="warn" href="/financeiro/alarmes">🔔 <b>{data.cards.issuanceDue}</b> nota(s) para emitir (prazo próximo ou atrasado)</Link>}
             {data.cards.certificatesExpiring > 0 && <Link className="warn" href="/financeiro/certidoes"><b>{data.cards.certificatesExpiring}</b> certidão(ões) vencendo em 30 dias</Link>}
             {pendingOs > 0 && <Link className="warn" href="/financeiro/ordens-de-servico"><b>{pendingOs}</b> OS pendente(s)</Link>}
-            {!data.cards.needsReconciliation && !expiring?.length && !data.cards.certificatesExpiring && !pendingOs && <span className="pill good">Nenhum alerta</span>}
+            {!data.cards.needsReconciliation && !expiring?.length && !data.cards.certificatesExpiring && !pendingOs && !data.cards.issuanceDue && <span className="pill good">Nenhum alerta</span>}
           </div>
 
           <div className="card" style={{ marginTop: 12 }}>

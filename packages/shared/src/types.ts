@@ -87,6 +87,8 @@ export interface DashboardCards {
   entitiesWithoutSource: number;
   entitiesWithActiveContract: number;
   activeContracts: number;
+  /** alarmes de emissão a vencer (dentro da antecedência) ou atrasados */
+  issuanceDue: number;
   contractsExpiring: number;
   certificatesExpiring: number;
   needsReconciliation: number;
@@ -136,7 +138,8 @@ export interface AttentionItem {
     | 'COLLECTION_OVERDUE'
     | 'RECONCILIATION'
     | 'SYNC_FAILED'
-    | 'MISSING_INVOICE';
+    | 'MISSING_INVOICE'
+    | 'ISSUANCE_DUE';
   title: string;
   detail: string;
   entityId: string | null;
@@ -202,4 +205,32 @@ export interface CertificateView {
     sourceUrl: string | null;
   } | null;
   versionsCount: number;
+}
+
+// ---------- alarmes de emissão ----------
+export interface IssuanceAlarm {
+  id: string;
+  entityId: string;
+  entityName: string;
+  entityShortName: string | null;
+  contractNumber: string | null;
+  label: string;
+  dayOfMonth: number;
+  leadDays: number;
+  isActive: boolean;
+  notes: string | null;
+}
+export type IssuanceDeadlineStatus = 'LATE' | 'DUE' | 'UPCOMING' | 'ISSUED';
+/** Próximo prazo calculado para um alarme (mês corrente ou seguinte). */
+export interface IssuanceDeadline extends IssuanceAlarm {
+  /** data-alvo (YYYY-MM-DD) do próximo prazo */
+  dueDate: string;
+  /** competência do prazo (YYYY-MM) */
+  competence: string;
+  /** dias até o prazo (negativo = atrasado) */
+  daysUntil: number;
+  status: IssuanceDeadlineStatus;
+  /** nº da nota emitida no mês do prazo, quando houver */
+  issuedInvoiceNumber: string | null;
+  issuedAt: string | null;
 }
