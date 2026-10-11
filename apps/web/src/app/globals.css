@@ -197,7 +197,7 @@
 
   /* ---- login ---- */
   .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-  .lg-card { width: min(92vw, 420px); background: var(--bg2); border: 1px solid var(--line2); border-radius: 18px; padding: 30px 28px; box-shadow: 0 30px 80px rgba(0, 0, 0, .5), 0 0 60px rgba(56, 189, 248, .08); text-align: center; }
+  .lg-card { position: relative; width: min(92vw, 420px); background: var(--bg2); border: 1px solid var(--line2); border-radius: 18px; padding: 30px 28px; box-shadow: 0 30px 80px rgba(0, 0, 0, .5), 0 0 60px rgba(56, 189, 248, .08); text-align: center; }
   .lg-logo { height: 64px; width: auto; margin: 0 auto; filter: drop-shadow(0 0 14px rgba(56, 189, 248, .4)); }
   .lg-sub { color: var(--ink3); text-transform: uppercase; letter-spacing: .18em; font-size: 10px; margin: 6px 0 22px; }
   .lg-card form { display: grid; gap: 12px; text-align: left; }
@@ -290,3 +290,32 @@
 .status-btn { background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--ink2); font: inherit; }
 .status-btn:hover .pill { filter: brightness(1.2); }
 .status-btn span { font-size: 10px; opacity: .7; }
+
+/* ---------- Modo claro (botão "Claro/Escuro" na barra superior; preferência salva no dispositivo) ---------- */
+:root[data-theme="light"] {
+  --bg: #f3f6fb; --bg2: #ffffff; --card: rgba(255, 255, 255, .9); --card2: #ffffff;
+  --ink: #0f172a; --ink2: #3f4b63; --ink3: #6b7690; --line: rgba(30, 50, 90, .14); --line2: rgba(30, 50, 90, .28);
+  --accent: #0369a1; --accent2: #6d28d9; --accent-soft: rgba(3, 105, 161, .1); --grad: linear-gradient(135deg, #0284c7, #6d28d9);
+  --good: #047857; --good-soft: rgba(4, 120, 87, .12); --warn: #b45309; --warn-soft: rgba(180, 83, 9, .12);
+  --crit: #be123c; --crit-soft: rgba(190, 18, 60, .12); --info: #1d4ed8; --info-soft: rgba(29, 78, 216, .1);
+  --glow: 0 0 0 1px rgba(3, 105, 161, .2), 0 8px 24px rgba(3, 105, 161, .1);
+  color-scheme: light;
+}
+:root[data-theme="light"] body {
+  background-image:
+    radial-gradient(1200px 600px at 10% -10%, rgba(2, 132, 199, .10), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(109, 40, 217, .08), transparent 55%),
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+}
+:root[data-theme="light"] .top, :root[data-theme="light"] .hnav { background: rgba(255, 255, 255, .78); }
+:root[data-theme="light"] .brand .logo, :root[data-theme="light"] .lg-logo { filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .25)); }
+:root[data-theme="light"] tbody tr:hover td { background: rgba(3, 105, 161, .05); }
+:root[data-theme="light"] .att { background: rgba(15, 23, 42, .02); }
+:root[data-theme="light"] dialog { box-shadow: 0 30px 80px rgba(15, 23, 42, .25); }
+:root[data-theme="light"] dialog::backdrop { background: rgba(15, 23, 42, .35); }
+:root[data-theme="light"] .sugg, :root[data-theme="light"] .asst { box-shadow: 0 16px 40px rgba(15, 23, 42, .18); }
+:root[data-theme="light"] .lg-card { box-shadow: 0 30px 80px rgba(15, 23, 42, .18); }
+:root[data-theme="light"] .hnav a.on { border-color: rgba(3, 105, 161, .35); box-shadow: none; }
+:root[data-theme="light"] .btn.p { box-shadow: 0 6px 18px rgba(2, 132, 199, .25); }
+:root[data-theme="light"] .demo { border-color: rgba(3, 105, 161, .3); }

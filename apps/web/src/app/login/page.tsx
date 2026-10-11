@@ -1,4 +1,5 @@
 'use client';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
@@ -42,6 +43,7 @@ export default function LoginPage() {
   return (
     <main className="login-wrap">
       <div className="lg-card">
+        <div style={{ position: 'absolute', top: 12, right: 12 }}><ThemeToggle className="btn sm ghost" /></div>
         <img className="lg-logo" src="/logo.png" alt="Siow System" />
         <div className="lg-sub">Módulo Financeiro</div>
         <form onSubmit={submit}>

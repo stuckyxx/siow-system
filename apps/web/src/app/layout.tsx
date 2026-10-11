@@ -17,6 +17,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={`${manrope.variable} ${sora.variable} ${jetbrains.variable}`}>
+      <head>
+        {/* Aplica o tema salvo antes da primeira pintura (evita piscar entre escuro e claro). */}
+        <script dangerouslySetInnerHTML={{ __html: "try{if(localStorage.getItem('siow.theme')==='light')document.documentElement.dataset.theme='light'}catch(e){}" }} />
+      </head>
       <body>
         <Providers>{children}</Providers>
       </body>

@@ -6,6 +6,7 @@ import { Building2, FileBadge, FileBarChart, LayoutDashboard, RefreshCw, Setting
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { GlobalSearch } from '@/components/global-search';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { QuickSearch } from '@/components/quick-search';
 
 /** Menu horizontal do protótipo aprovado: somente estes 6 itens, cada um filtrado por permissão. */
@@ -57,6 +58,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         {can('sync.read') && <SyncIndicator />}
         <div className="user" style={{ marginLeft: 'auto' }}>
           <div className="who"><b>{user?.name}</b><span>{user?.roles.join(', ')}</span></div>
+          <ThemeToggle />
           <Link href="/alterar-senha" className="btn sm" title="Alterar senha">Senha</Link>
           <button className="btn sm" onClick={() => void logout()}>Sair</button>
         </div>
