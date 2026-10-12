@@ -76,7 +76,7 @@ model Role {
   id          String   @id @default(uuid())
   organizationId   String
   organization     Organization @relation(fields: [organizationId], references: [id])
-  name        String   @unique // ADMINISTRADOR, FINANCEIRO, GESTOR, CONSULTA, ...
+  name        String   // ADMINISTRADOR, FINANCEIRO, GESTOR, CONSULTA, ... (único por organização)
   description String?
   isSystem    Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -210,7 +210,6 @@ model Entity {
   publicAgents    PublicAgent[]
   healthSnapshots EntityHealthSnapshot[]
 
-  @@unique([type, municipality, uf])
   @@unique([organizationId, type, municipality, uf])
   @@index([municipality])
   @@index([uf])
@@ -866,7 +865,7 @@ model MessageTemplate {
   id          String          @id @default(uuid())
   organizationId   String
   organization     Organization @relation(fields: [organizationId], references: [id])
-  key         String          @unique // ex.: SERVICE_ORDER_ISSUE_REMINDER
+  key         String          // ex.: SERVICE_ORDER_ISSUE_REMINDER (único por organização)
   name        String
   channel     MessageChannel? // null = qualquer canal
   subject     String?
@@ -881,6 +880,7 @@ model MessageTemplate {
   messages OutboundMessage[]
 
   @@index([organizationId])
+  @@unique([organizationId, key])
   @@map("message_templates")
 }
 

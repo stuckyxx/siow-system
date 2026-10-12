@@ -120,6 +120,27 @@ distinguindo `NOT_INVOICED` (não houve nota) de `PENDING` (nota emitida e não 
 - Contatos (dados pessoais) sob permissões próprias (`contacts.read/write`); documentos só via URL pré-assinada temporária.
 - Estrutura pronta para 2FA (`twoFactorEnabled/Secret` no usuário).
 
+## 6a. Multi-organização (Fase 1 do CRM)
+
+Toda tabela de negócio tem `organizationId` (FK para `organizations`). O isolamento é aplicado no **backend**, em duas camadas:
+
+- `apps/web/src/server/tenant.ts`: contexto por requisição em `AsyncLocalStorage` (`runWithOrg`, `runAsPlatform`, `currentOrgId`).
+  `route()` (`http.ts`) entra em `runWithOrg(user.organizationId)` para requisições autenticadas e em `runAsPlatform` para as públicas.
+- `packages/db/src/tenant.ts`: extensão Prisma (`$allModels.$allOperations`) que injeta `organizationId` no `where` de leitura/atualização/exclusão
+  e nos `create`. Modelos filhos sem a coluna (`Session`, `UserRole`, `ContractAmendment`, `InvoiceEvent`, …) são filtrados pela relação
+  (`CHILD_TENANT_PATHS`). Modelos globais: `Permission`, `Setting`, `Organization`, `PlatformAdmin`. Sem contexto e fora do modo plataforma,
+  a operação falha com `TenantContextError` (nunca vaza dados entre organizações por omissão).
+- Raw SQL (`entities.ts`, `dashboard.ts`, `reports.ts`) adiciona `e."organizationId" = ${currentOrgId()}` explicitamente.
+- Crons (`cron.ts` → `forEachOrganization`) iteram as organizações ativas e executam cada job dentro de `runWithOrg`.
+
+Organização padrão: `DEFAULT_ORGANIZATION_ID` (`@siow/shared`) = Siow System Tecnologia. `Setting` continua global na Fase 1 (overrides por
+organização ficam para a Fase 9). Unicidades antigas (`users.email`, `roles.name`, `entities(type,municipality,uf)`) foram mantidas e as
+por organização adicionadas; as colunas `organizationId` têm `DEFAULT` da organização padrão até a Fase 10.
+
+Cadastro Público (módulo 1) acrescenta `public_agents` (agentes públicos por entidade), `entity_health_snapshots` (saúde do cliente diária,
+pesos em `Setting health.weights`), campos `ibgeCode/segment/partnerId/healthScore` em `entities`, importação de municípios do IBGE como leads
+(`entities/import-ibge`) e a linha do tempo unificada (`services/timeline.ts`).
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

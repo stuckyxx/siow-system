@@ -690,12 +690,10 @@ CREATE TABLE IF NOT EXISTS "settings" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "users_email_key" ON "users"("email");
 CREATE INDEX IF NOT EXISTS "users_email_idx" ON "users"("email");
-CREATE UNIQUE INDEX IF NOT EXISTS "roles_name_key" ON "roles"("name");
 CREATE UNIQUE INDEX IF NOT EXISTS "permissions_code_key" ON "permissions"("code");
 CREATE UNIQUE INDEX IF NOT EXISTS "sessions_refreshTokenHash_key" ON "sessions"("refreshTokenHash");
 CREATE INDEX IF NOT EXISTS "sessions_userId_idx" ON "sessions"("userId");
 CREATE UNIQUE INDEX IF NOT EXISTS "UserPermission_userId_permissionId_key" ON "UserPermission"("userId", "permissionId");
-CREATE UNIQUE INDEX IF NOT EXISTS "entities_type_municipality_uf_key" ON "entities"("type", "municipality", "uf");
 CREATE INDEX IF NOT EXISTS "entities_municipality_idx" ON "entities"("municipality");
 CREATE INDEX IF NOT EXISTS "entities_uf_idx" ON "entities"("uf");
 CREATE UNIQUE INDEX IF NOT EXISTS "data_sources_provider_url_entityId_key" ON "data_sources"("provider", "url", "entityId");
@@ -732,7 +730,6 @@ CREATE INDEX IF NOT EXISTS "collection_cases_entityId_status_idx" ON "collection
 CREATE INDEX IF NOT EXISTS "collection_cases_nextActionAt_idx" ON "collection_cases"("nextActionAt");
 CREATE UNIQUE INDEX IF NOT EXISTS "collection_attempts_messageId_key" ON "collection_attempts"("messageId");
 CREATE INDEX IF NOT EXISTS "collection_attempts_caseId_performedAt_idx" ON "collection_attempts"("caseId", "performedAt");
-CREATE UNIQUE INDEX IF NOT EXISTS "message_templates_key_key" ON "message_templates"("key");
 CREATE INDEX IF NOT EXISTS "outbound_messages_entityId_createdAt_idx" ON "outbound_messages"("entityId", "createdAt");
 CREATE UNIQUE INDEX IF NOT EXISTS "service_orders_contractId_competenceYear_competenceMonth_key" ON "service_orders"("contractId", "competenceYear", "competenceMonth");
 CREATE INDEX IF NOT EXISTS "service_orders_entityId_status_idx" ON "service_orders"("entityId", "status");
@@ -1422,6 +1419,11 @@ END $$;
 
 -- Unicidades adicionais por organização (as globais permanecem até a Fase 10)
 CREATE UNIQUE INDEX IF NOT EXISTS "users_organizationId_email_key" ON "users"("organizationId", "email");
+-- Unicidades globais antigas substituídas pelas unicidades por organização (uma 2ª organização precisa dos mesmos papéis/entidades).
+DROP INDEX IF EXISTS "roles_name_key";
+DROP INDEX IF EXISTS "entities_type_municipality_uf_key";
+DROP INDEX IF EXISTS "message_templates_key_key";
+CREATE UNIQUE INDEX IF NOT EXISTS "message_templates_organizationId_key_key" ON "message_templates"("organizationId", "key");
 CREATE UNIQUE INDEX IF NOT EXISTS "roles_organizationId_name_key" ON "roles"("organizationId", "name");
 CREATE UNIQUE INDEX IF NOT EXISTS "entities_organizationId_type_municipality_uf_key" ON "entities"("organizationId", "type", "municipality", "uf");
 

@@ -247,7 +247,7 @@ export async function importBatch(ctx: Ctx, file: ImportFile) {
     const municipality = (row.municipio ?? row.entidade).trim();
     const shortName = `${row.tipo} ${row.entidade}`.toUpperCase();
     const name = row.nome_completo?.trim() || defaultFullName(row.tipo, row.entidade);
-    const existing = await prisma.entity.findUnique({ where: { type_municipality_uf: { type: row.tipo, municipality, uf: row.uf } } });
+    const existing = await prisma.entity.findUnique({ where: { organizationId_type_municipality_uf: { organizationId: currentOrgId(), type: row.tipo, municipality, uf: row.uf } } });
     const entity = existing ?? (await prisma.entity.create({ data: { organizationId: currentOrgId(), type: row.tipo, name, shortName, municipality, uf: row.uf } }));
     if (existing) result.reused += 1;
     else result.created += 1;

@@ -18,8 +18,8 @@ export function listTemplates() {
 }
 
 export async function upsertTemplate(ctx: Ctx, input: z.infer<typeof upsertTemplateSchema>) {
-  const before = await prisma.messageTemplate.findUnique({ where: { key: input.key } });
-  const t = await prisma.messageTemplate.upsert({ where: { key: input.key }, update: input, create: { ...input, organizationId: currentOrgId() } });
+  const before = await prisma.messageTemplate.findUnique({ where: { organizationId_key: { organizationId: currentOrgId(), key: input.key } } });
+  const t = await prisma.messageTemplate.upsert({ where: { organizationId_key: { organizationId: currentOrgId(), key: input.key } }, update: input, create: { ...input, organizationId: currentOrgId() } });
   await audit(ctx, { action: before ? 'UPDATE' : 'CREATE', resource: 'messageTemplate', resourceId: t.id, before, after: t });
   return t;
 }
@@ -55,7 +55,7 @@ export async function buildVars(input: { entityId: string; contactId?: string | 
 
 /** Pré-preenche a mensagem (o usuário pode editar antes de confirmar). */
 export async function prepare(input: z.infer<typeof prepareMessageSchema>) {
-  const template = await prisma.messageTemplate.findUnique({ where: { key: input.templateKey } });
+  const template = await prisma.messageTemplate.findUnique({ where: { organizationId_key: { organizationId: currentOrgId(), key: input.templateKey } } });
   if (!template || !template.isActive) throw notFound('Modelo de mensagem não encontrado');
   const contact = await prisma.contact.findFirst({ where: { id: input.contactId, entityId: input.entityId, deletedAt: null } });
   if (!contact) throw notFound('Contato não encontrado');
@@ -83,7 +83,7 @@ export async function send(ctx: Ctx, input: z.infer<typeof sendMessageSchema>) {
   if (!contact) throw notFound('Contato não encontrado');
   const recipient = input.channel === 'WHATSAPP' ? (contact.whatsapp ?? contact.phone) : contact.email;
   if (!recipient) throw badRequest('Contato sem canal de destino');
-  const template = input.templateKey ? await prisma.messageTemplate.findUnique({ where: { key: input.templateKey } }) : null;
+  const template = input.templateKey ? await prisma.messageTemplate.findUnique({ where: { organizationId_key: { organizationId: currentOrgId(), key: input.templateKey } } }) : null;
   const adapter = adapterFor(input.channel);
 
   const base: Prisma.OutboundMessageUncheckedCreateInput = {

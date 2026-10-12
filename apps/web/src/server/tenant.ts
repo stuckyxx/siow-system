@@ -10,8 +10,10 @@ import type { TenantContext } from '@siow/db';
 const als = new AsyncLocalStorage<TenantContext>();
 
 export function tenantContext(): TenantContext | undefined { return als.getStore(); }
-export function runWithOrg<T>(organizationId: string, fn: () => Promise<T>): Promise<T> { return als.run({ organizationId, platform: false }, fn); }
-export function runAsPlatform<T>(fn: () => Promise<T>): Promise<T> { return als.run({ organizationId: null, platform: true }, fn); }
+// `await fn()` DENTRO do als.run é obrigatório: uma PrismaPromise é preguiçosa (só executa no `await`), então
+// `runAsPlatform(() => prisma.x.findUnique(…))` sem o await interno executaria a consulta já fora do contexto.
+export function runWithOrg<T>(organizationId: string, fn: () => Promise<T>): Promise<T> { return als.run({ organizationId, platform: false }, async () => await fn()); }
+export function runAsPlatform<T>(fn: () => Promise<T>): Promise<T> { return als.run({ organizationId: null, platform: true }, async () => await fn()); }
 export function currentOrgId(): string {
   const id = als.getStore()?.organizationId;
   if (!id) throw new Error('Sem organização no contexto');

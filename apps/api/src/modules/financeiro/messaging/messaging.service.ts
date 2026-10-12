@@ -1,7 +1,6 @@
-import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@siow/db';
-import { formatBRL, formatBrDate, renderTemplate, type TemplateVars } from '@siow/shared';
+import { DEFAULT_ORGANIZATION_ID, formatBRL, formatBrDate, renderTemplate, type TemplateVars } from '@siow/shared';
 import type { z } from 'zod';
 import type { prepareMessageSchema, sendMessageSchema, upsertTemplateSchema } from '@siow/shared';
 import { AuditService } from '../../../common/audit/audit.service.js';
@@ -22,8 +21,8 @@ export class MessagingService {
   }
 
   async upsertTemplate(ctx: RequestContext, input: z.infer<typeof upsertTemplateSchema>) {
-    const before = await this.prisma.messageTemplate.findUnique({ where: { key: input.key } });
-    const t = await this.prisma.messageTemplate.upsert({ where: { key: input.key }, update: input, create: { ...input, organizationId: DEFAULT_ORGANIZATION_ID } });
+    const before = await this.prisma.messageTemplate.findUnique({ where: { organizationId_key: { organizationId: DEFAULT_ORGANIZATION_ID, key: input.key } } });
+    const t = await this.prisma.messageTemplate.upsert({ where: { organizationId_key: { organizationId: DEFAULT_ORGANIZATION_ID, key: input.key } }, update: input, create: { ...input, organizationId: DEFAULT_ORGANIZATION_ID } });
     await this.audit.log(ctx, { action: before ? 'UPDATE' : 'CREATE', resource: 'messageTemplate', resourceId: t.id, before, after: t });
     return t;
   }
@@ -59,7 +58,7 @@ export class MessagingService {
 
   /** Pré-preenche a mensagem (o usuário pode editar antes de confirmar). */
   async prepare(input: z.infer<typeof prepareMessageSchema>) {
-    const template = await this.prisma.messageTemplate.findUnique({ where: { key: input.templateKey } });
+    const template = await this.prisma.messageTemplate.findUnique({ where: { organizationId_key: { organizationId: DEFAULT_ORGANIZATION_ID, key: input.templateKey } } });
     if (!template || !template.isActive) throw new NotFoundException('Modelo de mensagem não encontrado');
     const contact = await this.prisma.contact.findFirst({ where: { id: input.contactId, entityId: input.entityId, deletedAt: null } });
     if (!contact) throw new NotFoundException('Contato não encontrado');
@@ -87,7 +86,7 @@ export class MessagingService {
     if (!contact) throw new NotFoundException('Contato não encontrado');
     const recipient = input.channel === 'WHATSAPP' ? (contact.whatsapp ?? contact.phone) : contact.email;
     if (!recipient) throw new BadRequestException('Contato sem canal de destino');
-    const template = input.templateKey ? await this.prisma.messageTemplate.findUnique({ where: { key: input.templateKey } }) : null;
+    const template = input.templateKey ? await this.prisma.messageTemplate.findUnique({ where: { organizationId_key: { organizationId: DEFAULT_ORGANIZATION_ID, key: input.templateKey } } }) : null;
     const adapter = adapterFor(input.channel);
 
     const base: Prisma.OutboundMessageUncheckedCreateInput = {

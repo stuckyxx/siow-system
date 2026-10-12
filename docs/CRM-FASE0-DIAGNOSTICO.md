@@ -177,3 +177,31 @@ Conclusão: a migração multi-organização é pequena em volume (poucos milhar
 - Conectar o GitHub à Vercel (deploy automático) e criar os secrets `APP_URL` e `CRON_SECRET` no repositório (sincronização a cada 20 min).
 - Rotacionar a senha do banco no Neon e o `CRON_SECRET` (foram expostos em chat) e atualizar as variáveis na Vercel.
 - Aprovar: nomes das etapas padrão do funil, papéis padrão (inclusive "Parceiro"), pesos iniciais da saúde do cliente e a janela de renovação (90 dias).
+
+---
+
+## Executado na Fase 1 (12/10/2026)
+
+**Banco (Neon, produção)** — backup prévio no branch `pre-fase1-backup-2026-10-12` (`br-shy-mud-b4mlobv5`). Migração idempotente aplicada em 3 transações
++ 6 `ALTER TYPE` (fora de transação): `organizations`, `platform_admins`, `organizationId` em 20 tabelas (preenchido com a organização padrão,
+`NOT NULL`, `DEFAULT` temporário, índice e FK), `audit_logs.organizationId` nulo (preenchido via `DEFAULT` no `ADD COLUMN` porque a tabela é
+append-only), novas colunas em `entities`/`financial_tasks`, novas tabelas `public_agents` e `entity_health_snapshots`, unicidades por organização.
+Contagens após a migração iguais às anteriores (entities 94, contracts 101, invoices 2425, data_sources 51, documents 27, certificates 18,
+sync_runs 2151, audit_logs 288, users 3, notifications 18, issuance_alarms 2); 100% das linhas com `organizationId` da Siow.
+
+**Desvios em relação ao plano (seção 6)**, todos necessários para a 2ª organização funcionar e validados em teste local com duas organizações:
+- Unicidades globais `roles.name`, `entities(type,municipality,uf)` e `message_templates.key` **removidas** (substituídas pelas unicidades por
+  organização, já criadas). `users.email` continua global (o login é só por e-mail).
+- Remoção de organização é **exclusão lógica** (`status=SUSPENDED`, `deletedAt`, slug/e-mails renomeados, sessões revogadas): nada é apagado,
+  porque `audit_logs` é append-only e referencia usuários e organização.
+
+**Código** — commits `4d10dc2` (Fase 1) e seguintes: contexto de tenant (`AsyncLocalStorage` + extensão Prisma com testes), `organizationId` em
+todos os `create`, raw SQL filtrado, crons por organização, `CurrentUser.organization`, Cadastro Público (agentes públicos, linha do tempo,
+saúde do cliente v1, importação IBGE como leads, ciclo de vida LEAD/CLIENTE/EX_CLIENTE), rota de plataforma `POST/GET/DELETE /api/platform/organizations`
+protegida por `CRON_SECRET` até a Fase 9.
+
+**Correção encontrada na validação**: `runWithOrg/runAsPlatform` precisam fazer `await fn()` dentro do `als.run` — uma PrismaPromise é preguiçosa
+e, sem isso, a consulta executava fora do contexto e toda requisição autenticada respondia 401. Corrigido antes da publicação definitiva.
+
+**Testes de aceite** — ver relatório de entrega no chat/commit: regressão do Financeiro ao vivo, teste de isolamento com organização
+`isolamento-teste` (lista vazia, 404 para entidade da Siow, dashboard zerado, cron por organização), depois removida (exclusão lógica).

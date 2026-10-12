@@ -202,9 +202,9 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions): Promise<
 
   log('→ papéis');
   for (const r of ROLES) {
-    const before = await prisma.role.findUnique({ where: { name: r.name }, select: { id: true } });
+    const before = await prisma.role.findUnique({ where: { organizationId_name: { organizationId: opts.organizationId, name: r.name } }, select: { id: true } });
     const role = await prisma.role.upsert({
-      where: { name: r.name },
+      where: { organizationId_name: { organizationId: opts.organizationId, name: r.name } },
       update: { description: r.description, isSystem: true },
       create: { organizationId: opts.organizationId, name: r.name, description: r.description, isSystem: true },
     });
@@ -238,7 +238,7 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions): Promise<
     const password = envPassword ?? 'Admin@12345';
     const passwordHash = await hashPassword(password);
     const admin = await prisma.user.create({ data: { organizationId: opts.organizationId, name, email, passwordHash, mustChangePassword: true } });
-    const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'ADMINISTRADOR' } });
+    const adminRole = await prisma.role.findUniqueOrThrow({ where: { organizationId_name: { organizationId: opts.organizationId, name: 'ADMINISTRADOR' } } });
     await prisma.userRole.create({ data: { userId: admin.id, roleId: adminRole.id } });
     adminCreated = true;
     log(`   criado ${email}`);
@@ -249,7 +249,7 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions): Promise<
   log('→ modelos de mensagem');
   for (const t of TEMPLATES) {
     await prisma.messageTemplate.upsert({
-      where: { key: t.key },
+      where: { organizationId_key: { organizationId: opts.organizationId, key: t.key } },
       update: {},
       create: { ...t, organizationId: opts.organizationId, isSystem: true },
     });
@@ -288,7 +288,7 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions): Promise<
     ];
     for (const s of samples) {
       const entity = await prisma.entity.upsert({
-        where: { type_municipality_uf: { type: s.type, municipality: s.municipality, uf: s.uf } },
+        where: { organizationId_type_municipality_uf: { organizationId: opts.organizationId, type: s.type, municipality: s.municipality, uf: s.uf } },
         update: {},
         create: { organizationId: opts.organizationId, type: s.type, name: s.name, shortName: s.shortName, municipality: s.municipality, uf: s.uf },
       });

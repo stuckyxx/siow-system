@@ -310,13 +310,25 @@ Se definiu `APP_URL`, atualize para o domínio novo e faça *Redeploy*.
 
 ## 13. Atualizando o sistema
 
-- Toda alteração enviada ao GitHub (`git push` na branch principal) gera um novo deploy
-  automaticamente em 2–5 minutos. Acompanhe em **Deployments**.
+- Com o GitHub conectado à Vercel, todo `git push` na branch principal gera um novo deploy
+  automaticamente em 2–5 minutos. Enquanto a conexão não existe (estado atual), o deploy é criado
+  manualmente pela API/MCP da Vercel (`create_deployment` com `gitSource.repoId = 1395708654` e o `sha` do commit)
+  ou pela CLI `vercel deploy --prod`. Acompanhe em **Deployments**.
 - Deu errado? Em **Deployments**, abra o deploy anterior que funcionava → *Promote to Production*
   (ou *Instant Rollback*).
 - Se a atualização **mudou o banco** (`schema.prisma`), repita o passo 7 com o novo
   `schema.sql` (ou `pnpm db:push`) e depois o passo 8 (o bootstrap atualiza permissões novas).
 - Variáveis de ambiente alteradas só valem depois de um *Redeploy*.
+
+### Migrações de banco em produção (regra desde a Fase 1 do CRM)
+
+1. Criar um branch de backup no Neon antes de qualquer SQL (`create_branch` a partir de `production`; ex.: `pre-fase1-backup-2026-10-12`).
+2. Aplicar o trecho novo do `schema.sql` (idempotente: `ADD COLUMN IF NOT EXISTS`, `DO $$ … $$` para FKs) em transação, **antes** do deploy do código.
+   Colunas novas obrigatórias recebem `DEFAULT` para a janela entre migração e deploy.
+3. `ALTER TYPE … ADD VALUE` não pode rodar dentro de transação: um comando por vez.
+4. `audit_logs` é append-only (trigger bloqueia `UPDATE`/`DELETE`): preencher colunas novas via `DEFAULT` no `ADD COLUMN` e depois `DROP DEFAULT`.
+5. Conferir contagens das tabelas antes/depois e o preenchimento das colunas novas; só então fazer o deploy.
+6. Rollback: *Instant Rollback* do deploy anterior (o código antigo ignora colunas extras) e, se necessário, restaurar o branch de backup no Neon.
 
 ## 14. Problemas comuns
 
