@@ -1784,3 +1784,119 @@ DO $$ BEGIN
     ALTER TABLE "contract_renewals" ADD CONSTRAINT "contract_renewals_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "contracts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- =====================================================================
+-- FASE 4 (PARCEIROS E COMISSÕES) — idempotente. Tabelas novas + FKs opcionais em entities/contracts/opportunities.partnerId.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "partners" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "kind" TEXT NOT NULL DEFAULT 'REPRESENTANTE',
+  "document" TEXT NULL,
+  "contactName" TEXT NULL,
+  "email" TEXT NULL,
+  "phone" TEXT NULL,
+  "whatsapp" TEXT NULL,
+  "userId" TEXT NULL,
+  "bankInfo" TEXT NULL,
+  "notes" TEXT NULL,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "partners_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "partners_userId_key" ON "partners"("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "partners_organizationId_name_key" ON "partners"("organizationId", "name");
+CREATE INDEX IF NOT EXISTS "partners_organizationId_idx" ON "partners"("organizationId");
+
+CREATE TABLE IF NOT EXISTS "commission_rules" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "partnerId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "basis" TEXT NOT NULL DEFAULT 'RECEIVED',
+  "percent" DECIMAL(7,4) NOT NULL,
+  "entityId" TEXT NULL,
+  "contractId" TEXT NULL,
+  "startDate" DATE NULL,
+  "endDate" DATE NULL,
+  "maxMonths" INTEGER NULL,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "commission_rules_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "commission_rules_organizationId_partnerId_idx" ON "commission_rules"("organizationId", "partnerId");
+
+CREATE TABLE IF NOT EXISTS "commissions" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "partnerId" TEXT NOT NULL,
+  "ruleId" TEXT NOT NULL,
+  "invoiceId" TEXT NOT NULL,
+  "entityId" TEXT NOT NULL,
+  "contractId" TEXT NULL,
+  "competenceYear" INTEGER NOT NULL,
+  "competenceMonth" INTEGER NOT NULL,
+  "baseAmount" DECIMAL(14,2) NOT NULL,
+  "percent" DECIMAL(7,4) NOT NULL,
+  "amount" DECIMAL(14,2) NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'FORECAST',
+  "dueAt" DATE NULL,
+  "paidAt" DATE NULL,
+  "paidByUserId" TEXT NULL,
+  "paymentRef" TEXT NULL,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "commissions_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "commissions_ruleId_invoiceId_key" ON "commissions"("ruleId", "invoiceId");
+CREATE INDEX IF NOT EXISTS "commissions_organizationId_partnerId_status_idx" ON "commissions"("organizationId", "partnerId", "status");
+CREATE INDEX IF NOT EXISTS "commissions_invoiceId_idx" ON "commissions"("invoiceId");
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'partners_organizationId_fkey') THEN
+    ALTER TABLE "partners" ADD CONSTRAINT "partners_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'partners_userId_fkey') THEN
+    ALTER TABLE "partners" ADD CONSTRAINT "partners_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commission_rules_organizationId_fkey') THEN
+    ALTER TABLE "commission_rules" ADD CONSTRAINT "commission_rules_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commission_rules_partnerId_fkey') THEN
+    ALTER TABLE "commission_rules" ADD CONSTRAINT "commission_rules_partnerId_fkey" FOREIGN KEY ("partnerId") REFERENCES "partners"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commissions_organizationId_fkey') THEN
+    ALTER TABLE "commissions" ADD CONSTRAINT "commissions_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commissions_partnerId_fkey') THEN
+    ALTER TABLE "commissions" ADD CONSTRAINT "commissions_partnerId_fkey" FOREIGN KEY ("partnerId") REFERENCES "partners"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commissions_ruleId_fkey') THEN
+    ALTER TABLE "commissions" ADD CONSTRAINT "commissions_ruleId_fkey" FOREIGN KEY ("ruleId") REFERENCES "commission_rules"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commissions_invoiceId_fkey') THEN
+    ALTER TABLE "commissions" ADD CONSTRAINT "commissions_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "invoices"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commissions_entityId_fkey') THEN
+    ALTER TABLE "commissions" ADD CONSTRAINT "commissions_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commissions_contractId_fkey') THEN
+    ALTER TABLE "commissions" ADD CONSTRAINT "commissions_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "contracts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entities_partnerId_fkey') THEN
+    ALTER TABLE "entities" ADD CONSTRAINT "entities_partnerId_fkey" FOREIGN KEY ("partnerId") REFERENCES "partners"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contracts_partnerId_fkey') THEN
+    ALTER TABLE "contracts" ADD CONSTRAINT "contracts_partnerId_fkey" FOREIGN KEY ("partnerId") REFERENCES "partners"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunities_partnerId_fkey') THEN
+    ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_partnerId_fkey" FOREIGN KEY ("partnerId") REFERENCES "partners"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "entities_partnerId_idx" ON "entities"("partnerId");

@@ -32,7 +32,9 @@ export default function LoginPage() {
         else window.localStorage.removeItem('siow.login.email');
       } catch { /* armazenamento indisponível */ }
       // Senha provisória (primeiro acesso / redefinida pelo admin): troca obrigatória.
-      router.replace(res.user?.mustChangePassword ? '/alterar-senha' : '/financeiro');
+      if (res.user?.mustChangePassword) { router.replace('/alterar-senha'); return; }
+      const me = await api<{ permissions: string[] }>('/auth/me').catch(() => null);
+      router.replace(me && !me.permissions.includes('dashboard.read') && me.permissions.includes('partners.portal') ? '/parceiro' : '/financeiro');
     } catch (err) {
       setError(err instanceof ApiError ? (err.status === 429 ? 'Muitas tentativas. Aguarde alguns minutos ou peça ao administrador para redefinir a senha.' : err.status >= 500 ? 'Sistema indisponível no momento. Tente novamente em instantes.' : err.message) : 'Falha ao entrar');
     } finally {

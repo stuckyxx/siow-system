@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Building2, FileBarChart, FileSignature, LayoutDashboard, Settings, Wallet } from 'lucide-react';
+import { Briefcase, Building2, FileBarChart, FileSignature, Handshake, LayoutDashboard, Settings, Wallet } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { GlobalSearch } from '@/components/global-search';
@@ -10,7 +10,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { QuickSearch } from '@/components/quick-search';
 
 /** Menu (PROMPT MESTRE v2): Dashboard | Comercial | Entidades | Contratos | Financeiro | Relatórios | Administração — Licitações, Atendimento e Parceiros entram nas fases 4–6. Cada item filtrado por permissão. */
-const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean }> = [
+const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean; onlyIfMissing?: string }> = [
   { href: '/financeiro', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/financeiro' },
   { href: '/comercial', label: 'Comercial', icon: Briefcase, perms: ['crm.read'], match: (p) => p.startsWith('/comercial') },
   { href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'], match: (p) => p.startsWith('/financeiro/entidades') },
@@ -19,6 +19,8 @@ const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; pe
     href: '/financeiro/central', label: 'Financeiro', icon: Wallet, perms: ['invoices.read', 'collections.read', 'certificates.read', 'sync.read', 'tasks.read'],
     match: (p) => ['/financeiro/central', '/financeiro/notas', '/financeiro/cobrancas', '/financeiro/alarmes', '/financeiro/agenda', '/financeiro/ordens-de-servico', '/financeiro/certidoes', '/financeiro/sincronizacao'].some((x) => p.startsWith(x)),
   },
+  { href: '/parceiros', label: 'Parceiros', icon: Handshake, perms: ['partners.read'], match: (p) => p.startsWith('/parceiros') },
+  { href: '/parceiro', label: 'Meu portal', icon: Handshake, perms: ['partners.portal'], match: (p) => p === '/parceiro', onlyIfMissing: 'partners.read' },
   { href: '/financeiro/relatorios', label: 'Relatórios', icon: FileBarChart, perms: ['reports.read'], match: (p) => p.startsWith('/financeiro/relatorios') },
   { href: '/admin', label: 'Administração', icon: Settings, perms: ['users.manage', 'settings.manage', 'templates.manage', 'audit.read'], match: (p) => p.startsWith('/admin') },
 ];
@@ -46,7 +48,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const isHome = pathname === '/financeiro';
   const goBack = (): void => {
     if (typeof window !== 'undefined' && window.history.length > 1) router.back();
-    else router.push('/financeiro');
+    else router.push(can('dashboard.read') ? '/financeiro' : '/parceiro');
   };
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -65,7 +67,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <nav className="hnav" aria-label="Menu principal">
-        {NAV.filter((n) => allowed(n.perms)).map((n) => (
+        {NAV.filter((n) => allowed(n.perms) && !(n.onlyIfMissing && can(n.onlyIfMissing))).map((n) => (
           <Link key={n.href} href={n.href} className={n.match(pathname) ? 'on' : ''}>
             <n.icon strokeWidth={1.8} /> {n.label}
           </Link>

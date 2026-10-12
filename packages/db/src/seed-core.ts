@@ -48,6 +48,9 @@ export const PERMISSIONS: Record<string, string> = {
   'crm.read': 'Visualizar funil, oportunidades, propostas e metas (Comercial)',
   'crm.write': 'Criar/editar oportunidades, propostas e atividades comerciais',
   'crm.manage': 'Configurar funil, catálogo e metas comerciais',
+  'partners.read': 'Visualizar parceiros, regras e comissões',
+  'partners.manage': 'Cadastrar parceiros, regras de comissão e registrar pagamentos de comissão',
+  'partners.portal': 'Portal do parceiro (somente os próprios dados)',
 };
 
 const ALL = Object.keys(PERMISSIONS);
@@ -73,6 +76,7 @@ export const ROLES: Array<{ name: string; description: string; permissions: stri
     description: 'Equipe comercial: funil, oportunidades, propostas, cadastro e agenda',
     permissions: ['crm.read', 'crm.write', 'entities.read', 'entities.write', 'contacts.read', 'contacts.write', 'contracts.read', 'tasks.read', 'tasks.manage', 'dashboard.read', 'documents.read', 'documents.write', 'reports.read'],
   },
+  { name: 'PARCEIRO', description: 'Parceiro externo: portal restrito aos próprios clientes, oportunidades e comissões', permissions: ['partners.portal'] },
 ];
 
 /** Funil padrão (PROMPT MESTRE v2, módulo 2); personalizável por organização depois de criado. */

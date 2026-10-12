@@ -189,7 +189,8 @@ function EntitiesList() {
 
 function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?: EntitySummary; onClose: () => void; onSaved: () => void }) {
   const editing = Boolean(entity);
-  const [form, setForm] = useState({ type: entity?.type ?? 'CM', name: entity?.name ?? '', shortName: entity?.shortName ?? '', municipality: entity?.municipality ?? '', uf: entity?.uf ?? 'MA', url: '', notes: '', isActive: entity?.isActive ?? true, ibgeCode: entity?.ibgeCode ?? '', segment: entity?.segment ?? '' });
+  const [form, setForm] = useState({ type: entity?.type ?? 'CM', name: entity?.name ?? '', shortName: entity?.shortName ?? '', municipality: entity?.municipality ?? '', uf: entity?.uf ?? 'MA', url: '', notes: '', isActive: entity?.isActive ?? true, ibgeCode: entity?.ibgeCode ?? '', segment: entity?.segment ?? '', partnerId: entity?.partnerId ?? '' });
+  const { data: partners } = useQuery({ queryKey: ['partners-lite'], queryFn: () => api<Array<{ id: string; name: string }>>('/parceiros'), staleTime: 60_000, retry: false });
   const [error, setError] = useState<string | null>(null);
   // Observações e fonte atual só existem na ficha completa; carrega ao editar.
   const { data: detail } = useQuery({
@@ -200,7 +201,7 @@ function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?
   useEffect(() => { if (detail) setForm((f) => ({ ...f, notes: detail.notes ?? '', url: f.url || (detail.dataSources[0]?.url ?? '') })); }, [detail]);
   const save = useMutation({
     mutationFn: async () => {
-      const body = { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null, isActive: form.isActive, ibgeCode: form.ibgeCode || null, segment: form.segment || null };
+      const body = { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null, isActive: form.isActive, ibgeCode: form.ibgeCode || null, segment: form.segment || null, partnerId: form.partnerId || null };
       if (editing) {
         await api(`/financeiro/entities/${entity!.id}`, { method: 'PATCH', body });
         if (form.url && form.url !== (detail?.dataSources[0]?.url ?? '')) await api(`/financeiro/entities/${entity!.id}/data-sources`, { method: 'POST', body: { url: form.url } });
@@ -212,7 +213,7 @@ function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?
     onSuccess: onSaved,
     onError: (e) => setError(e instanceof ApiError ? `${e.message}${e.issues ? ': ' + e.issues.map((i) => `${i.path} ${i.message}`).join('; ') : ''}` : 'Erro'),
   });
-  const f = (k: 'type' | 'name' | 'shortName' | 'municipality' | 'uf' | 'url' | 'notes' | 'ibgeCode' | 'segment') => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value }) });
+  const f = (k: 'type' | 'name' | 'shortName' | 'municipality' | 'uf' | 'url' | 'notes' | 'ibgeCode' | 'segment' | 'partnerId') => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value }) });
   return (
     <Dialog open={open} onClose={onClose} title={editing ? `Editar entidade — ${entity!.shortName ?? entity!.name}` : 'Nova entidade'}>
       <div className="grid gap-3 md:grid-cols-2">
@@ -223,6 +224,7 @@ function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?
         <Field label="Nome completo" className="md:col-span-2"><Input {...f('name')} placeholder="CÂMARA MUNICIPAL DE BOM LUGAR" /></Field>
         <Field label="Código IBGE (7 dígitos)"><Input {...f('ibgeCode')} placeholder="2102002" maxLength={7} /></Field>
         <Field label="Segmento"><Select {...f('segment')}><option value="">—</option>{['PM', 'CM', 'PREVIDENCIA', 'CONSORCIO', 'DEFENSORIA', 'OUTRO'].map((x) => <option key={x} value={x}>{x}</option>)}</Select></Field>
+        {partners && <Field label="Parceiro vinculado (comissões)" className="md:col-span-2"><Select {...f('partnerId')}><option value="">Nenhum</option>{partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>}
         <Field label={editing && detail?.dataSources[0] ? 'URL financeira atual (altere para cadastrar outra fonte)' : 'URL financeira (Portal do Cliente — Assesi ou Adois)'} className="w"><Input {...f('url')} placeholder="https://www.assesi.com.br/adm_faturas/index.php?e=…&t=1" /></Field>
         <Field label="Observações" className="md:col-span-2"><Textarea rows={2} {...f('notes')} /></Field>
         {editing && <label className="row small muted md:col-span-2" style={{ gap: 6 }}><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Entidade ativa (desmarque quando o contrato terminar; ela passa a aparecer em "encerradas")</label>}

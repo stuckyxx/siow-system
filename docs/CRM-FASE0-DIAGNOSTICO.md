@@ -242,3 +242,19 @@ do PROMPT MESTRE, alerta de renovações no Dashboard, contrato formalizado guar
 **Validação** — fluxo local e em produção: oportunidade ganha → rascunho → ativação com alarme → reajuste IPCA 5% (valor atualizado na conta
 corrente) → cron abre a renovação (idempotente) com oportunidade RENOVACAO e tarefa → prorrogação por aditivo → decisão "renovado" fecha a
 oportunidade como ganha e conclui a tarefa → encerramento com motivo; regressão do Financeiro mantida.
+
+---
+
+## Executado na Fase 4 (12/10/2026)
+
+**Banco (Neon, produção)** — backup `pre-fase4-backup-2026-10-12`. Migração aditiva e idempotente (seção "FASE 4" do `schema.sql`):
+`partners`, `commission_rules`, `commissions`, FKs de `partnerId` em entidades/contratos/oportunidades. Permissões `partners.*` e papel PARCEIRO.
+
+**Código** — cadastro de parceiros (tipo, contato, dados bancários, usuário do portal), vínculo de entidades (no parceiro e no cadastro da
+entidade), regras de comissão (base recebimento/faturamento, percentual, escopo por entidade/contrato, janela de competências, N primeiras
+competências), motor idempotente de comissões ligado ao Financeiro (manual, lote, conflitos, sincronização, cron), extrato por parceiro,
+registro de pagamento em lote (auditado), estornos, portal do parceiro (`/parceiro`) restrito ao próprio parceiro, menu "Parceiros".
+
+**Validação** — fluxo local e em produção: parceiro + usuário PARCEIRO → vínculo de entidade → regra 10% sobre recebimento → comissões
+prevista/a pagar → nota paga em lote vira "a pagar" → pagamento registrado → nota volta a pendente gera estorno (comissão já paga) →
+pagamento parcial (base = valor recebido) → recálculo idempotente (cron) → portal do parceiro vê só os próprios dados e recebe 403 fora dele.

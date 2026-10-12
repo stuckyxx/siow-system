@@ -605,3 +605,46 @@ export const renewalDecisionSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 export const renewalListFilterSchema = z.object({ status: z.enum(['OPEN', 'RENEWED', 'NOT_RENEWED', 'CANCELLED']).optional(), entityId: uuid.optional() });
+
+// ---------- Parceiros e Comissões (Fase 4) ----------
+export const partnerSchema = z.object({
+  name: z.string().min(2).max(160),
+  kind: z.enum(['REPRESENTANTE', 'INDICADOR', 'EMPRESA']).default('REPRESENTANTE'),
+  document: z.string().max(20).optional().nullable(),
+  contactName: z.string().max(120).optional().nullable(),
+  email: z.string().email().max(160).optional().nullable().or(z.literal('')),
+  phone: z.string().max(30).optional().nullable(),
+  whatsapp: z.string().max(30).optional().nullable(),
+  userId: uuid.optional().nullable(),
+  bankInfo: z.string().max(500).optional().nullable(),
+  notes: z.string().max(4000).optional().nullable(),
+  isActive: z.boolean().default(true),
+});
+export const updatePartnerSchema = partnerSchema.partial();
+export const commissionRuleSchema = z.object({
+  name: z.string().min(2).max(120),
+  basis: z.enum(['RECEIVED', 'INVOICED']).default('RECEIVED'),
+  percent: z.coerce.number().min(0).max(100),
+  entityId: uuid.optional().nullable(),
+  contractId: uuid.optional().nullable(),
+  startDate: isoDate.optional().nullable(),
+  endDate: isoDate.optional().nullable(),
+  maxMonths: z.coerce.number().int().min(1).max(240).optional().nullable(),
+  isActive: z.boolean().default(true),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const updateCommissionRuleSchema = commissionRuleSchema.partial();
+export const commissionListFilterSchema = paginationSchema.extend({
+  partnerId: uuid.optional(),
+  status: z.enum(['FORECAST', 'DUE', 'PAID', 'REVERSED']).optional(),
+  entityId: uuid.optional(),
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional(),
+});
+export const payCommissionsSchema = z.object({
+  ids: z.array(uuid).min(1).max(500),
+  paidAt: isoDate,
+  paymentRef: z.string().max(120).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const linkPartnerEntitiesSchema = z.object({ entityIds: z.array(uuid).min(1).max(500), unlink: z.boolean().default(false) });

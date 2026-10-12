@@ -274,3 +274,14 @@ export const RENEWAL_STATUSES = ['OPEN', 'RENEWED', 'NOT_RENEWED', 'CANCELLED'] 
 export type RenewalStatus = (typeof RENEWAL_STATUSES)[number];
 export const RENEWAL_STATUS_LABELS: Record<RenewalStatus, string> = { OPEN: 'Em aberto', RENEWED: 'Renovado', NOT_RENEWED: 'Não renovado', CANCELLED: 'Cancelada' };
 export const ADJUSTMENT_INDEXES = ['IPCA', 'INPC', 'IGP-M', 'IGP-DI', 'INCC', 'Negociado', 'Outro'] as const;
+
+// ---------- Parceiros e Comissões (Fase 4) ----------
+export const PARTNER_KINDS = ['REPRESENTANTE', 'INDICADOR', 'EMPRESA'] as const;
+export type PartnerKind = (typeof PARTNER_KINDS)[number];
+export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = { REPRESENTANTE: 'Representante', INDICADOR: 'Indicador', EMPRESA: 'Empresa parceira' };
+export const COMMISSION_BASES = ['RECEIVED', 'INVOICED'] as const;
+export type CommissionBasis = (typeof COMMISSION_BASES)[number];
+export const COMMISSION_BASIS_LABELS: Record<CommissionBasis, string> = { RECEIVED: 'Sobre o recebimento (nota paga)', INVOICED: 'Sobre o faturamento (nota emitida)' };
+export const COMMISSION_STATUSES = ['FORECAST', 'DUE', 'PAID', 'REVERSED'] as const;
+export type CommissionStatus = (typeof COMMISSION_STATUSES)[number];
+export const COMMISSION_STATUS_LABELS: Record<CommissionStatus, string> = { FORECAST: 'Prevista', DUE: 'A pagar', PAID: 'Paga', REVERSED: 'Estornada' };

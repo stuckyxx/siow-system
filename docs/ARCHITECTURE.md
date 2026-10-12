@@ -172,6 +172,18 @@ NOT_RENEWED marca perdida e cancela. Nenhum aditivo é criado automaticamente.
 
 Menu: Dashboard | Comercial | Entidades | Contratos | Financeiro (hub `/financeiro/central`) | Relatórios | Administração.
 
+## 6d. Parceiros e Comissões (Fase 4)
+
+Tabelas `partners`, `commission_rules`, `commissions` (todas com `organizationId`); `entities.partnerId`, `contracts.partnerId` e
+`opportunities.partnerId` ganharam FK para `partners`. Permissões `partners.read`, `partners.manage` e `partners.portal` (papel PARCEIRO:
+só o portal, com os dados do parceiro ligado ao próprio usuário via `Partner.userId`).
+
+Motor (`services/commissions.ts#recompute`): idempotente, uma comissão por (regra, nota) garantida por unicidade no banco. Regra RECEIVED
+usa o valor recebido (`paidAmount`, cobre pagamento parcial); INVOICED usa o valor da nota. Situações: FORECAST (nota emitida, não paga) →
+DUE (recebimento confirmado) → PAID (registro manual do pagamento ao parceiro, auditado). Nota cancelada/volta a pendente: FORECAST é removida,
+DUE/PAID viram REVERSED (estorno a compensar quando já paga). O recálculo roda após alteração manual, lote, conflito resolvido, exclusão,
+sincronização (por entidade) e no cron diário. O Financeiro continua sendo a única fonte dos valores.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

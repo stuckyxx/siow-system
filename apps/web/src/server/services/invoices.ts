@@ -10,6 +10,7 @@ import type { createManualInvoiceSchema, reconcileInvoiceSchema, resolveConflict
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
+import { recomputeAfterInvoiceChange } from './commissions.js';
 import { badRequest, conflict as conflictError, notFound, type Ctx } from '../http.js';
 import { storeDocument } from './documents.js';
 
@@ -188,6 +189,7 @@ export async function override(ctx: Ctx, id: string, dto: InvoiceOverrideDto) {
     return updated;
   });
   await audit(ctx, { action: 'INVOICE_OVERRIDE', resource: 'invoice', resourceId: id, before, after, justification: dto.justification });
+  await recomputeAfterInvoiceChange([id]);
   return get(id);
 }
 
@@ -217,6 +219,7 @@ export async function createManual(ctx: Ctx, dto: z.infer<typeof createManualInv
     },
   });
   await audit(ctx, { action: 'CREATE', resource: 'invoice', resourceId: inv.id, after: inv, justification: dto.justification });
+  await recomputeAfterInvoiceChange([inv.id]);
   return get(inv.id);
 }
 
@@ -276,6 +279,7 @@ export async function reconcile(ctx: Ctx, id: string, dto: z.infer<typeof reconc
     return updated;
   });
   await audit(ctx, { action: 'INVOICE_RECONCILED', resource: 'invoice', resourceId: id, before, after, justification: dto.note });
+  await recomputeAfterInvoiceChange([id]);
   return get(id);
 }
 
@@ -297,6 +301,7 @@ export async function resolveConflict(ctx: Ctx, invoiceId: string, conflictId: s
     });
   });
   await audit(ctx, { action: 'CONFLICT_RESOLVED', resource: 'invoice', resourceId: invoiceId, before: conflict, after: dto });
+  await recomputeAfterInvoiceChange([invoiceId]);
   return get(invoiceId);
 }
 
@@ -367,4 +372,5 @@ export async function softDelete(ctx: Ctx, id: string, justification: string): P
   if (!before) throw notFound('Nota não encontrada');
   await prisma.invoice.update({ where: { id }, data: { deletedAt: new Date(), events: { create: { type: 'NOTE', origin: 'MANUAL', userId: ctx.user.id, note: `Excluída: ${justification}` } } } });
   await audit(ctx, { action: 'SOFT_DELETE', resource: 'invoice', resourceId: id, before, justification });
+  await recomputeAfterInvoiceChange([id]);
 }

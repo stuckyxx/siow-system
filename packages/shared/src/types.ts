@@ -332,3 +332,24 @@ export interface ContractRenewalRow {
   monthlyValue: string | null; opportunityId: string | null; opportunityStatus: string | null; taskId: string | null; taskStatus: string | null;
   amendmentId: string | null; newContractId: string | null; notes: string | null; decidedAt: string | null; decidedBy: string | null; createdAt: string;
 }
+
+// ---------- Parceiros e Comissões (Fase 4) ----------
+export interface PartnerRow {
+  id: string; name: string; kind: string; document: string | null; contactName: string | null; email: string | null; phone: string | null; whatsapp: string | null;
+  userId: string | null; userName: string | null; bankInfo: string | null; notes: string | null; isActive: boolean;
+  entityCount: number; contractCount: number; opportunityCount: number; ruleCount: number;
+  totals: { forecast: string; due: string; paid: string; reversed: string };
+}
+export interface CommissionRuleRow { id: string; partnerId: string; name: string; basis: string; percent: string; entityId: string | null; entityName: string | null; contractId: string | null; contractNumber: string | null; startDate: string | null; endDate: string | null; maxMonths: number | null; isActive: boolean; notes: string | null }
+export interface CommissionRow {
+  id: string; partnerId: string; partnerName: string; ruleId: string; ruleName: string; invoiceId: string; invoiceNumber: string; invoiceStatus: string;
+  entity: { id: string; name: string; shortName: string | null }; contractNumber: string | null; competence: string;
+  baseAmount: string; percent: string; amount: string; status: string; dueAt: string | null; paidAt: string | null; paymentRef: string | null; notes: string | null;
+}
+export interface PartnerStatement {
+  partner: PartnerRow;
+  totals: { forecast: string; due: string; paid: string; reversed: string; dueCount: number };
+  byMonth: Array<{ competence: string; forecast: string; due: string; paid: string }>;
+  entities: Array<{ id: string; name: string; shortName: string | null; municipality: string; uf: string; activeContract: string | null }>;
+  opportunities: Array<{ id: string; title: string; status: string; stageName: string; totalAmount: string | null; entityName: string }>;
+}

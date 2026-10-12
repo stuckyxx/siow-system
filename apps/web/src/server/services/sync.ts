@@ -11,6 +11,7 @@
 import type { Prisma, SyncStatus, SyncTrigger } from '@siow/db';
 import { getProvider, ProviderError, type ProviderContext } from '@siow/integrations';
 import { applySnapshot } from '@siow/sync-core';
+import { recompute as recomputeCommissions } from './commissions.js';
 import type { z } from 'zod';
 import type { syncRunListFilterSchema } from '@siow/shared';
 import { prisma } from '../db.js';
@@ -87,6 +88,8 @@ export async function syncOne(dataSourceId: string, opts: SyncOneOptions): Promi
     const provider = getProvider(ds.provider);
     const snapshot = await provider.fetchSnapshot({ url: ds.url, config: (ds.config as Record<string, unknown> | null) ?? null }, providerCtx());
     const stats = await applySnapshot(prisma, { organizationId: currentOrgId(), dataSourceId, entityId: ds.entityId, syncRunId, snapshot });
+    // comissões da entidade (notas pagas/canceladas pela sincronização) — nunca falha a sincronização
+    if (stats.invoicesCreated || stats.invoicesUpdated || stats.statusChanges) await recomputeCommissions({ entityId: ds.entityId }).catch((e) => console.error('commissions recompute failed', e));
 
     const finishedAt = new Date();
     const status: SyncStatus = stats.warnings.length > 0 || !snapshot.invoiceListComplete ? 'PARTIAL' : 'SUCCESS';

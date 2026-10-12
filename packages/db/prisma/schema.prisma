@@ -51,6 +51,7 @@ model User {
   responsibleEntities  Entity[]
   ownedOpportunities   Opportunity[]        @relation("OpportunityOwner")
   goals                Goal[]
+  partnerProfile       Partner?
   responsibleContracts Contract[]
   collectionAttempts   CollectionAttempt[]
   collectionCases      CollectionCase[]
@@ -187,6 +188,7 @@ model Entity {
   segment           String?
   /// Parceiro/representante responsável (FK criada na Fase 4 — Parceiros)
   partnerId         String?
+  partner         Partner?   @relation(fields: [partnerId], references: [id])
   /// Saúde do cliente (0–100) calculada no cron diário; null = sem dados suficientes
   healthScore       Int?
   healthUpdatedAt   DateTime?
@@ -212,6 +214,7 @@ model Entity {
   publicAgents    PublicAgent[]
   healthSnapshots EntityHealthSnapshot[]
   opportunities   Opportunity[]
+  commissions     Commission[]
 
   @@unique([organizationId, type, municipality, uf])
   @@index([municipality])
@@ -358,6 +361,7 @@ model Contract {
   opportunityId     String?
   tenderId          String?
   partnerId         String?
+  partner           Partner?       @relation(fields: [partnerId], references: [id])
   renewalNoticeDays Int?
   activatedAt       DateTime?
   terminatedAt      DateTime?      @db.Date
@@ -372,6 +376,7 @@ model Contract {
   tasks         FinancialTask[]
   serviceOrders ServiceOrder[]
   renewals      ContractRenewal[]
+  commissions   Commission[]
 
   @@unique([entityId, number])
   @@index([entityId])
@@ -479,6 +484,8 @@ model Invoice {
   collectionCase CollectionCase?
   messages       OutboundMessage[]
   serviceOrders  ServiceOrder[]
+
+  commissions Commission[]
 
   @@unique([entityId, number])
   @@index([entityId, status])
@@ -1190,6 +1197,9 @@ model Organization {
   catalogItems     CatalogItem[]
   goals            Goal[]
   contractRenewals ContractRenewal[]
+  partners         Partner[]
+  commissionRules  CommissionRule[]
+  commissions      Commission[]
 
   @@map("organizations")
 }
@@ -1361,6 +1371,7 @@ model Opportunity {
   ownerUserId       String?
   owner             User?             @relation("OpportunityOwner", fields: [ownerUserId], references: [id])
   partnerId         String?
+  partner           Partner?          @relation(fields: [partnerId], references: [id])
   lostReason        String?
   lostNotes         String?
   wonAt             DateTime?
@@ -1537,4 +1548,104 @@ model ContractRenewal {
   @@unique([contractId, endDate])
   @@index([organizationId, status])
   @@map("contract_renewals")
+}
+
+// =====================================================================
+// FASE 4 — PARCEIROS E COMISSÕES (módulo 7)
+// =====================================================================
+
+/// Parceiro/representante/indicador. `userId` liga ao login do portal do parceiro (papel PARCEIRO, escopo restrito).
+model Partner {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  kind           String       @default("REPRESENTANTE") // REPRESENTANTE | INDICADOR | EMPRESA
+  document       String? // CPF/CNPJ
+  contactName    String?
+  email          String?
+  phone          String?
+  whatsapp       String?
+  userId         String?      @unique
+  user           User?        @relation(fields: [userId], references: [id])
+  bankInfo       String?
+  notes          String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  entities      Entity[]
+  contracts     Contract[]
+  opportunities Opportunity[]
+  rules         CommissionRule[]
+  commissions   Commission[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("partners")
+}
+
+/// Regra de remuneração. basis: RECEIVED (sobre recebimento confirmado) | INVOICED (sobre faturamento).
+/// Escopo: entidade e/ou contrato específicos, ou (ambos nulos) todas as entidades/contratos vinculados ao parceiro.
+/// maxMonths limita a quantas competências (desde o início do contrato) a comissão se aplica.
+model CommissionRule {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  partnerId      String
+  partner        Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  name           String
+  basis          String       @default("RECEIVED")
+  percent        Decimal      @db.Decimal(7, 4)
+  entityId       String?
+  contractId     String?
+  startDate      DateTime?    @db.Date
+  endDate        DateTime?    @db.Date
+  maxMonths      Int?
+  isActive       Boolean      @default(true)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  commissions Commission[]
+
+  @@index([organizationId, partnerId])
+  @@map("commission_rules")
+}
+
+/// Comissão calculada por nota (única por regra + nota). status: FORECAST (nota emitida, não paga) | DUE (recebimento confirmado,
+/// a pagar ao parceiro) | PAID (paga ao parceiro) | REVERSED (nota cancelada/voltou a pendente depois de DUE/PAID).
+model Commission {
+  id              String         @id @default(uuid())
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  partnerId       String
+  partner         Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  ruleId          String
+  rule            CommissionRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  invoiceId       String
+  invoice         Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  entityId        String
+  entity          Entity         @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  contractId      String?
+  contract        Contract?      @relation(fields: [contractId], references: [id])
+  competenceYear  Int
+  competenceMonth Int
+  baseAmount      Decimal        @db.Decimal(14, 2)
+  percent         Decimal        @db.Decimal(7, 4)
+  amount          Decimal        @db.Decimal(14, 2)
+  status          String         @default("FORECAST")
+  dueAt           DateTime?      @db.Date
+  paidAt          DateTime?      @db.Date
+  paidByUserId    String?
+  paymentRef      String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([ruleId, invoiceId])
+  @@index([organizationId, partnerId, status])
+  @@index([invoiceId])
+  @@map("commissions")
 }
