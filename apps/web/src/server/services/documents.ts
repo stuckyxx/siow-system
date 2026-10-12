@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import type { DocumentType, Prisma, RecordOrigin } from '@siow/db';
 import { isoToDate } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { blobKey, getBlobUrl, putBlob } from '../storage.js';
@@ -69,10 +70,11 @@ export async function storeDocument(input: StoreDocumentInput): Promise<{ docume
     deduplicated = false;
     const ext = EXT[input.mimeType] ?? 'bin';
     const { url } = await putBlob(blobKey(`documents/${sum.slice(0, 2)}`, sum, ext), input.buffer, input.mimeType);
-    blob = await prisma.documentBlob.create({ data: { checksum: sum, storageKey: url, size: input.buffer.length, mimeType: input.mimeType } });
+    blob = await prisma.documentBlob.create({ data: { organizationId: currentOrgId(), checksum: sum, storageKey: url, size: input.buffer.length, mimeType: input.mimeType } });
   }
   const doc = await prisma.document.create({
     data: {
+      organizationId: currentOrgId(),
       type: input.type,
       name: input.name,
       blobId: blob.id,

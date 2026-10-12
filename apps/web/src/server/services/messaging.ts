@@ -7,6 +7,7 @@ import { formatBRL, formatBrDate, renderTemplate, type TemplateVars } from '@sio
 import type { z } from 'zod';
 import type { prepareMessageSchema, sendMessageSchema, upsertTemplateSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { adapterFor } from '../messaging/adapters.js';
@@ -18,7 +19,7 @@ export function listTemplates() {
 
 export async function upsertTemplate(ctx: Ctx, input: z.infer<typeof upsertTemplateSchema>) {
   const before = await prisma.messageTemplate.findUnique({ where: { key: input.key } });
-  const t = await prisma.messageTemplate.upsert({ where: { key: input.key }, update: input, create: input });
+  const t = await prisma.messageTemplate.upsert({ where: { key: input.key }, update: input, create: { ...input, organizationId: currentOrgId() } });
   await audit(ctx, { action: before ? 'UPDATE' : 'CREATE', resource: 'messageTemplate', resourceId: t.id, before, after: t });
   return t;
 }
@@ -86,6 +87,7 @@ export async function send(ctx: Ctx, input: z.infer<typeof sendMessageSchema>) {
   const adapter = adapterFor(input.channel);
 
   const base: Prisma.OutboundMessageUncheckedCreateInput = {
+    organizationId: currentOrgId(),
     channel: input.channel,
     templateId: template?.id ?? null,
     entityId: input.entityId,

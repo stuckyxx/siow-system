@@ -7,6 +7,7 @@ import { isoToDate } from '@siow/shared';
 import type { z } from 'zod';
 import type { registerCollectionAttemptSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { notFound, type Ctx } from '../http.js';
 
@@ -16,7 +17,7 @@ export async function ensureCase(invoiceId: string) {
   return prisma.collectionCase.upsert({
     where: { invoiceId },
     update: {},
-    create: { invoiceId, entityId: invoice.entityId, status: invoice.status === 'PAID' ? 'SETTLED' : 'NOT_CHARGED' },
+    create: { organizationId: currentOrgId(), invoiceId, entityId: invoice.entityId, status: invoice.status === 'PAID' ? 'SETTLED' : 'NOT_CHARGED' },
     include: { attempts: { orderBy: { performedAt: 'desc' }, include: { performedBy: { select: { id: true, name: true } }, contact: { select: { id: true, name: true } }, outboundMessage: true } } },
   });
 }

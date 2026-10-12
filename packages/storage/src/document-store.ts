@@ -3,6 +3,8 @@ import type { DocumentType, Prisma, PrismaClient, RecordOrigin } from '@siow/db'
 import type { ObjectStorage } from './object-storage.js';
 
 export interface StoreDocumentInput {
+  /** Organização dona do documento (multi-organização) */
+  organizationId: string;
   buffer: Buffer;
   mimeType: string;
   name: string;
@@ -52,11 +54,12 @@ export class DocumentStore {
       const key = `documents/${checksum.slice(0, 2)}/${checksum.slice(2, 4)}/${checksum}.${ext}`;
       await this.storage.put(key, input.buffer, input.mimeType);
       blob = await this.prisma.documentBlob.create({
-        data: { checksum, storageKey: key, size: input.buffer.length, mimeType: input.mimeType },
+        data: { organizationId: input.organizationId, checksum, storageKey: key, size: input.buffer.length, mimeType: input.mimeType },
       });
     }
     const doc = await this.prisma.document.create({
       data: {
+        organizationId: input.organizationId,
         type: input.type,
         name: input.name,
         blobId: blob.id,

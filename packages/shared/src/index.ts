@@ -4,3 +4,4 @@ export * from './dates.js';
 export * from './schemas.js';
 export * from './types.js';
 export * from './template.js';
+export * from './permissions.js';

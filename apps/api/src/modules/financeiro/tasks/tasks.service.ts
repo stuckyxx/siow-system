@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@siow/db';
 import { isoToDate, todayIso } from '@siow/shared';
@@ -64,6 +65,7 @@ export class TasksService {
   async create(ctx: RequestContext, input: z.infer<typeof createTaskSchema>) {
     const t = await this.prisma.financialTask.create({
       data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
         ...input,
         dueDate: isoToDate(input.dueDate),
         createdByUserId: ctx.user.id,

@@ -1130,5 +1130,372 @@ DROP TRIGGER IF EXISTS audit_logs_no_truncate ON audit_logs;
 CREATE TRIGGER audit_logs_no_truncate BEFORE TRUNCATE ON audit_logs
 FOR EACH STATEMENT EXECUTE FUNCTION audit_logs_immutable();
 
+
+-- =====================================================================
+--  FASE 1 (CRM) — multi-organização, Cadastro Público e agenda única
+--  Idempotente. Ordem: organizações → coluna organizationId em cada tabela de negócio (preenchida com a
+--  organização padrão antes de virar NOT NULL) → índices/FKs → unicidades adicionais → tabelas novas.
+--  As unicidades antigas (globais) permanecem: na Edição Própria são equivalentes; serão removidas na Fase 10.
+-- =====================================================================
+
+-- Organization
+CREATE TABLE IF NOT EXISTS "organizations" (
+  "id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "slug" TEXT NOT NULL,
+  "document" TEXT NULL,
+  "plan" TEXT NOT NULL DEFAULT 'PROPRIA',
+  "modules" JSONB NOT NULL DEFAULT '[]',
+  "branding" JSONB NOT NULL DEFAULT '{}',
+  "locale" TEXT NOT NULL DEFAULT 'pt-BR',
+  "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "organizations_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "organizations_slug_key" ON "organizations"("slug");
+INSERT INTO "organizations" ("id", "name", "slug", "updatedAt") VALUES ('7a1b5c3e-5e1f-4a4e-8c0d-000000000001', 'Siow System Tecnologia', 'siow-system-tecnologia', CURRENT_TIMESTAMP) ON CONFLICT ("id") DO NOTHING;
+
+-- PlatformAdmin
+CREATE TABLE IF NOT EXISTS "platform_admins" (
+  "id" TEXT NOT NULL,
+  "email" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "passwordHash" TEXT NOT NULL,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "platform_admins_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "platform_admins_email_key" ON "platform_admins"("email");
+
+-- users.organizationId
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "users" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "users" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "users" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "users_organizationId_idx" ON "users"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_organizationId_fkey') THEN
+    ALTER TABLE "users" ADD CONSTRAINT "users_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- roles.organizationId
+ALTER TABLE "roles" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "roles" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "roles" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "roles" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "roles_organizationId_idx" ON "roles"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'roles_organizationId_fkey') THEN
+    ALTER TABLE "roles" ADD CONSTRAINT "roles_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- entities.organizationId
+ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "entities" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "entities" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "entities" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "entities_organizationId_idx" ON "entities"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entities_organizationId_fkey') THEN
+    ALTER TABLE "entities" ADD CONSTRAINT "entities_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- data_sources.organizationId
+ALTER TABLE "data_sources" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "data_sources" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "data_sources" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "data_sources" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "data_sources_organizationId_idx" ON "data_sources"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'data_sources_organizationId_fkey') THEN
+    ALTER TABLE "data_sources" ADD CONSTRAINT "data_sources_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- sync_runs.organizationId
+ALTER TABLE "sync_runs" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "sync_runs" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "sync_runs" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "sync_runs" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "sync_runs_organizationId_idx" ON "sync_runs"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sync_runs_organizationId_fkey') THEN
+    ALTER TABLE "sync_runs" ADD CONSTRAINT "sync_runs_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- contracts.organizationId
+ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "contracts" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "contracts" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "contracts" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "contracts_organizationId_idx" ON "contracts"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contracts_organizationId_fkey') THEN
+    ALTER TABLE "contracts" ADD CONSTRAINT "contracts_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- invoices.organizationId
+ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "invoices" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "invoices" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "invoices" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "invoices_organizationId_idx" ON "invoices"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoices_organizationId_fkey') THEN
+    ALTER TABLE "invoices" ADD CONSTRAINT "invoices_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- sync_conflicts.organizationId
+ALTER TABLE "sync_conflicts" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "sync_conflicts" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "sync_conflicts" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "sync_conflicts" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "sync_conflicts_organizationId_idx" ON "sync_conflicts"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sync_conflicts_organizationId_fkey') THEN
+    ALTER TABLE "sync_conflicts" ADD CONSTRAINT "sync_conflicts_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- document_blobs.organizationId
+ALTER TABLE "document_blobs" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "document_blobs" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "document_blobs" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "document_blobs" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "document_blobs_organizationId_idx" ON "document_blobs"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'document_blobs_organizationId_fkey') THEN
+    ALTER TABLE "document_blobs" ADD CONSTRAINT "document_blobs_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- documents.organizationId
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "documents" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "documents" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "documents" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "documents_organizationId_idx" ON "documents"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'documents_organizationId_fkey') THEN
+    ALTER TABLE "documents" ADD CONSTRAINT "documents_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- certificates.organizationId
+ALTER TABLE "certificates" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "certificates" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "certificates" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "certificates" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "certificates_organizationId_idx" ON "certificates"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'certificates_organizationId_fkey') THEN
+    ALTER TABLE "certificates" ADD CONSTRAINT "certificates_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- contacts.organizationId
+ALTER TABLE "contacts" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "contacts" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "contacts" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "contacts" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "contacts_organizationId_idx" ON "contacts"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contacts_organizationId_fkey') THEN
+    ALTER TABLE "contacts" ADD CONSTRAINT "contacts_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- financial_tasks.organizationId
+ALTER TABLE "financial_tasks" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "financial_tasks" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "financial_tasks" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "financial_tasks" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "financial_tasks_organizationId_idx" ON "financial_tasks"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'financial_tasks_organizationId_fkey') THEN
+    ALTER TABLE "financial_tasks" ADD CONSTRAINT "financial_tasks_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- collection_cases.organizationId
+ALTER TABLE "collection_cases" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "collection_cases" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "collection_cases" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "collection_cases" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "collection_cases_organizationId_idx" ON "collection_cases"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'collection_cases_organizationId_fkey') THEN
+    ALTER TABLE "collection_cases" ADD CONSTRAINT "collection_cases_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- message_templates.organizationId
+ALTER TABLE "message_templates" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "message_templates" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "message_templates" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "message_templates" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "message_templates_organizationId_idx" ON "message_templates"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'message_templates_organizationId_fkey') THEN
+    ALTER TABLE "message_templates" ADD CONSTRAINT "message_templates_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- outbound_messages.organizationId
+ALTER TABLE "outbound_messages" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "outbound_messages" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "outbound_messages" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "outbound_messages" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "outbound_messages_organizationId_idx" ON "outbound_messages"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'outbound_messages_organizationId_fkey') THEN
+    ALTER TABLE "outbound_messages" ADD CONSTRAINT "outbound_messages_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- service_orders.organizationId
+ALTER TABLE "service_orders" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "service_orders" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "service_orders" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "service_orders" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "service_orders_organizationId_idx" ON "service_orders"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'service_orders_organizationId_fkey') THEN
+    ALTER TABLE "service_orders" ADD CONSTRAINT "service_orders_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- signature_requests.organizationId
+ALTER TABLE "signature_requests" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "signature_requests" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "signature_requests" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "signature_requests" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "signature_requests_organizationId_idx" ON "signature_requests"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'signature_requests_organizationId_fkey') THEN
+    ALTER TABLE "signature_requests" ADD CONSTRAINT "signature_requests_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- issuance_alarms.organizationId
+ALTER TABLE "issuance_alarms" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "issuance_alarms" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "issuance_alarms" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "issuance_alarms" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "issuance_alarms_organizationId_idx" ON "issuance_alarms"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'issuance_alarms_organizationId_fkey') THEN
+    ALTER TABLE "issuance_alarms" ADD CONSTRAINT "issuance_alarms_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- notifications.organizationId
+ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "notifications" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+ALTER TABLE "notifications" ALTER COLUMN "organizationId" SET NOT NULL;
+ALTER TABLE "notifications" ALTER COLUMN "organizationId" SET DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001'; -- compatibilidade com o código anterior à Fase 1; remover na Fase 10
+CREATE INDEX IF NOT EXISTS "notifications_organizationId_idx" ON "notifications"("organizationId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notifications_organizationId_fkey') THEN
+    ALTER TABLE "notifications" ADD CONSTRAINT "notifications_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- audit_logs.organizationId (nulo em eventos de plataforma, ex.: login falho)
+ALTER TABLE "audit_logs" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
+UPDATE "audit_logs" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+CREATE INDEX IF NOT EXISTS "audit_logs_organizationId_createdAt_idx" ON "audit_logs"("organizationId", "createdAt");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'audit_logs_organizationId_fkey') THEN
+    ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- Unicidades adicionais por organização (as globais permanecem até a Fase 10)
+CREATE UNIQUE INDEX IF NOT EXISTS "users_organizationId_email_key" ON "users"("organizationId", "email");
+CREATE UNIQUE INDEX IF NOT EXISTS "roles_organizationId_name_key" ON "roles"("organizationId", "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "entities_organizationId_type_municipality_uf_key" ON "entities"("organizationId", "type", "municipality", "uf");
+
+-- Entity: Cadastro Público
+ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "ibgeCode" TEXT NULL;
+ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "segment" TEXT NULL;
+ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "partnerId" TEXT NULL;
+ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "healthScore" INTEGER NULL;
+ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "healthUpdatedAt" TIMESTAMP(3) NULL;
+
+-- FinancialTask: agenda única
+ALTER TABLE "financial_tasks" ADD COLUMN IF NOT EXISTS "module" TEXT NOT NULL DEFAULT 'FINANCEIRO';
+ALTER TABLE "financial_tasks" ADD COLUMN IF NOT EXISTS "opportunityId" TEXT NULL;
+ALTER TABLE "financial_tasks" ADD COLUMN IF NOT EXISTS "tenderId" TEXT NULL;
+ALTER TABLE "financial_tasks" ADD COLUMN IF NOT EXISTS "ticketId" TEXT NULL;
+ALTER TYPE "TaskType" ADD VALUE IF NOT EXISTS 'COMMERCIAL_FOLLOWUP';
+ALTER TYPE "TaskType" ADD VALUE IF NOT EXISTS 'VISIT';
+ALTER TYPE "TaskType" ADD VALUE IF NOT EXISTS 'MEETING';
+ALTER TYPE "TaskType" ADD VALUE IF NOT EXISTS 'CALL';
+ALTER TYPE "TaskType" ADD VALUE IF NOT EXISTS 'RENEWAL';
+ALTER TYPE "TaskType" ADD VALUE IF NOT EXISTS 'UPDATE_CONTACTS';
+
+-- PublicAgent
+CREATE TABLE IF NOT EXISTS "public_agents" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "entityId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "position" TEXT NOT NULL,
+  "party" TEXT NULL,
+  "termStart" DATE NULL,
+  "termEnd" DATE NULL,
+  "email" TEXT NULL,
+  "phone" TEXT NULL,
+  "whatsapp" TEXT NULL,
+  "isDecisionMaker" BOOLEAN NOT NULL DEFAULT false,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "public_agents_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "public_agents_organizationId_idx" ON "public_agents"("organizationId");
+CREATE INDEX IF NOT EXISTS "public_agents_entityId_idx" ON "public_agents"("entityId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'public_agents_entityId_fkey') THEN
+    ALTER TABLE "public_agents" ADD CONSTRAINT "public_agents_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'public_agents_organizationId_fkey') THEN
+    ALTER TABLE "public_agents" ADD CONSTRAINT "public_agents_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+-- EntityHealthSnapshot
+CREATE TABLE IF NOT EXISTS "entity_health_snapshots" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "entityId" TEXT NOT NULL,
+  "date" DATE NOT NULL,
+  "score" INTEGER NULL,
+  "factors" JSONB NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "entity_health_snapshots_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "entity_health_snapshots_entityId_date_key" ON "entity_health_snapshots"("entityId", "date");
+CREATE INDEX IF NOT EXISTS "entity_health_snapshots_organizationId_date_idx" ON "entity_health_snapshots"("organizationId", "date");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entity_health_snapshots_entityId_fkey') THEN
+    ALTER TABLE "entity_health_snapshots" ADD CONSTRAINT "entity_health_snapshots_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entity_health_snapshots_organizationId_fkey') THEN
+    ALTER TABLE "entity_health_snapshots" ADD CONSTRAINT "entity_health_snapshots_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
 -- Fim. Próximo passo: POST /api/admin/bootstrap (cria permissões, papéis, admin, modelos e configurações).
 

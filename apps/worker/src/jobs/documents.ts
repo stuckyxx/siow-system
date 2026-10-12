@@ -22,6 +22,7 @@ export async function runFetchDocument(ctx: WorkerContext, job: Job<DocumentJobD
     const provider = getProvider('ASSESI_PORTAL');
     const file = await provider.fetchDocument({ kind: 'CERTIFICATE', url: v.sourceUrl, method: 'GET' }, providerCtx());
     const { documentId } = await ctx.documents.store({
+      organizationId: v.certificate.organizationId,
       buffer: file.buffer,
       mimeType: file.mimeType,
       name: `${v.certificate.name}${v.validUntil ? ` - válida até ${v.validUntil.toISOString().slice(0, 10)}` : ''}.pdf`,
@@ -44,6 +45,7 @@ export async function runFetchDocument(ctx: WorkerContext, job: Job<DocumentJobD
     if (already) return;
     const file = await provider.fetchDocument({ kind: 'RECEIPT', url: invoice.receiptUrl, method: 'GET' }, providerCtx());
     await ctx.documents.store({
+      organizationId: invoice.organizationId,
       buffer: file.buffer,
       mimeType: file.mimeType,
       name: `Recibo NF ${invoice.number}.pdf`,
@@ -69,6 +71,7 @@ export async function runFetchDocument(ctx: WorkerContext, job: Job<DocumentJobD
     };
     const file = await provider.fetchDocument(ref, providerCtx());
     await ctx.documents.store({
+      organizationId: invoice.organizationId,
       buffer: file.buffer,
       mimeType: file.mimeType,
       name: `NF ${invoice.number} - ${invoice.entity.shortName ?? invoice.entity.name}.pdf`,

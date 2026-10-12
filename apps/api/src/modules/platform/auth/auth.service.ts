@@ -41,7 +41,7 @@ export class AuthService {
     const tokens = await this.issueSession(user.id, meta, { id: user.id, name: user.name, email: user.email, mustChangePassword: user.mustChangePassword });
     await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     await this.audit.log(
-      { user: { id: user.id, name: user.name, email: user.email, roles: [], permissions: [] }, ip: meta.ip, userAgent: meta.userAgent, requestId: null },
+      { user: { id: user.id, name: user.name, email: user.email, roles: [], permissions: [], organizationId: user.organizationId, organization: { id: user.organizationId, name: '', slug: '', branding: {} } }, ip: meta.ip, userAgent: meta.userAgent, requestId: null },
       { action: 'LOGIN', resource: 'auth', resourceId: tokens.sessionId },
     );
     return tokens;

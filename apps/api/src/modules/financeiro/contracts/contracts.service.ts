@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@siow/db';
 import { isoToDate } from '@siow/shared';
@@ -54,6 +55,7 @@ export class ContractsService {
   async create(ctx: RequestContext, input: z.infer<typeof createContractSchema>) {
     const c = await this.prisma.contract.create({
       data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
         entityId: input.entityId,
         number: input.number,
         object: input.object,

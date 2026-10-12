@@ -6,6 +6,7 @@ import { competencesBetween, dateToIso, isoToDate, todayIso, toDecimalString, ty
 import type { z } from 'zod';
 import type { createAmendmentSchema, createContractSchema, updateContractSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { get as getDocument, storeDocument } from './documents.js';
@@ -52,6 +53,7 @@ export async function get(id: string) {
 export async function create(ctx: Ctx, input: z.infer<typeof createContractSchema>) {
   const c = await prisma.contract.create({
     data: {
+      organizationId: currentOrgId(),
       entityId: input.entityId,
       number: input.number,
       object: input.object,

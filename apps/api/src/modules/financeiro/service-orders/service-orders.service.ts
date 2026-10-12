@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma, ServiceOrderStatus } from '@siow/db';
 import { isoToDate } from '@siow/shared';
@@ -42,6 +43,7 @@ export class ServiceOrdersService {
   async create(ctx: RequestContext, input: z.infer<typeof createServiceOrderSchema>) {
     const so = await this.prisma.serviceOrder.create({
       data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
         entityId: input.entityId,
         contractId: input.contractId,
         invoiceId: input.invoiceId ?? null,
@@ -107,6 +109,7 @@ export class ServiceOrdersService {
       await tx.serviceOrderSignatory.createMany({ data: input.signatories.map((s) => ({ serviceOrderId: id, name: s.name, role: s.role ?? null, email: s.email ?? null, signedAt })) });
       await tx.signatureRequest.create({
         data: {
+          organizationId: DEFAULT_ORGANIZATION_ID,
           serviceOrderId: id,
           provider: 'MANUAL_UPLOAD',
           status: 'COMPLETED_MANUALLY',

@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { slugify } from '@siow/sync-core';
 import { dateToIso, daysBetween, isoToDate, todayIso, type CertificateStatus, type CertificateView } from '@siow/shared';
@@ -88,7 +89,7 @@ export class CertificatesService {
   }
 
   async create(ctx: RequestContext, input: { name: string; entityId?: string | null; notes?: string | null }) {
-    const cert = await this.prisma.certificate.create({ data: { name: input.name, slug: slugify(input.name), entityId: input.entityId ?? null, notes: input.notes ?? null } });
+    const cert = await this.prisma.certificate.create({ data: { organizationId: DEFAULT_ORGANIZATION_ID, name: input.name, slug: slugify(input.name), entityId: input.entityId ?? null, notes: input.notes ?? null } });
     await this.audit.log(ctx, { action: 'CREATE', resource: 'certificate', resourceId: cert.id, after: cert });
     return cert;
   }

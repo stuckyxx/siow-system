@@ -10,6 +10,7 @@ import { daysBetween, todayIso, type IssuanceAlarm, type IssuanceDeadline, type 
 import type { z } from 'zod';
 import type { createIssuanceAlarmSchema, updateIssuanceAlarmSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 
@@ -36,7 +37,7 @@ export async function list(entityId?: string): Promise<IssuanceAlarm[]> {
 export async function create(ctx: Ctx, dto: z.infer<typeof createIssuanceAlarmSchema>): Promise<IssuanceAlarm> {
   const entity = await prisma.entity.findFirst({ where: { id: dto.entityId, deletedAt: null }, select: { id: true } });
   if (!entity) throw notFound('Entidade não encontrada');
-  const row = await prisma.issuanceAlarm.create({ data: { ...dto, createdByUserId: ctx.user.id }, include });
+  const row = await prisma.issuanceAlarm.create({ data: { ...dto, organizationId: currentOrgId(), createdByUserId: ctx.user.id }, include });
   await audit(ctx, { action: 'CREATE', resource: 'issuanceAlarm', resourceId: row.id, after: row });
   return toAlarm(row);
 }
@@ -120,6 +121,7 @@ export async function notifyDue(today = todayIso()): Promise<{ due: number; late
       where: { dedupeKey: `ISSUANCE_DUE:${d.id}:${d.competence}` },
       update: {},
       create: {
+        organizationId: currentOrgId(),
         type: 'ISSUANCE_DUE',
         title: d.status === 'LATE' ? `Nota em atraso: ${name} (dia ${d.dayOfMonth})` : `Emitir nota de ${name} até ${when}`,
         body: `${d.label}${d.contractNumber ? ` · contrato ${d.contractNumber}` : ''} · competência ${d.competence.split('-').reverse().join('/')}${d.status === 'LATE' ? ` · ${-d.daysUntil} dia(s) de atraso` : ` · faltam ${d.daysUntil} dia(s)`}`,

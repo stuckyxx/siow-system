@@ -127,6 +127,12 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
   RENEW_CERTIFICATE: 'Renovar certidão',
   VERIFY_CONTRACT: 'Verificar contrato',
   SEND_DOCUMENT: 'Enviar documento',
+  COMMERCIAL_FOLLOWUP: 'Retorno comercial',
+  VISIT: 'Visita',
+  MEETING: 'Reunião',
+  CALL: 'Ligação',
+  RENEWAL: 'Renovação de contrato',
+  UPDATE_CONTACTS: 'Atualizar contatos (troca de gestão)',
   CONFIRM_PAYMENT: 'Confirmar pagamento',
   CUSTOM: 'Tarefa personalizada',
 };
@@ -160,6 +166,8 @@ export interface SeedOptions {
   requireStrongAdminPassword?: boolean;
   /** Cria 2 entidades de exemplo com fontes do portal (apenas dev/teste). */
   sampleEntities?: boolean;
+  /** Organização dona dos registros criados (obrigatória no esquema multi-organização). */
+  organizationId: string;
   /** Logger (padrão: silencioso). */
   log?: (message: string) => void;
 }
@@ -180,7 +188,7 @@ async function protectAuditLog(prisma: PrismaClient): Promise<void> {
 }
 
 /** Executa o seed de forma idempotente (pode rodar quantas vezes for preciso). */
-export async function runSeed(prisma: PrismaClient, opts: SeedOptions = {}): Promise<SeedResult> {
+export async function runSeed(prisma: PrismaClient, opts: SeedOptions): Promise<SeedResult> {
   const log = opts.log ?? (() => undefined);
 
   log('→ permissões');
@@ -198,7 +206,7 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions = {}): Pro
     const role = await prisma.role.upsert({
       where: { name: r.name },
       update: { description: r.description, isSystem: true },
-      create: { name: r.name, description: r.description, isSystem: true },
+      create: { organizationId: opts.organizationId, name: r.name, description: r.description, isSystem: true },
     });
     const perms = await prisma.permission.findMany({ where: { code: { in: r.permissions } } });
     if (!before) {
@@ -229,7 +237,7 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions = {}): Pro
     // Fallback somente para desenvolvimento/teste.
     const password = envPassword ?? 'Admin@12345';
     const passwordHash = await hashPassword(password);
-    const admin = await prisma.user.create({ data: { name, email, passwordHash, mustChangePassword: true } });
+    const admin = await prisma.user.create({ data: { organizationId: opts.organizationId, name, email, passwordHash, mustChangePassword: true } });
     const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'ADMINISTRADOR' } });
     await prisma.userRole.create({ data: { userId: admin.id, roleId: adminRole.id } });
     adminCreated = true;
@@ -243,7 +251,7 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions = {}): Pro
     await prisma.messageTemplate.upsert({
       where: { key: t.key },
       update: {},
-      create: { ...t, isSystem: true },
+      create: { ...t, organizationId: opts.organizationId, isSystem: true },
     });
   }
 
@@ -282,12 +290,12 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions = {}): Pro
       const entity = await prisma.entity.upsert({
         where: { type_municipality_uf: { type: s.type, municipality: s.municipality, uf: s.uf } },
         update: {},
-        create: { type: s.type, name: s.name, shortName: s.shortName, municipality: s.municipality, uf: s.uf },
+        create: { organizationId: opts.organizationId, type: s.type, name: s.name, shortName: s.shortName, municipality: s.municipality, uf: s.uf },
       });
       await prisma.dataSource.upsert({
         where: { provider_url_entityId: { provider: 'ASSESI_PORTAL', url: s.url, entityId: entity.id } },
         update: {},
-        create: { entityId: entity.id, provider: 'ASSESI_PORTAL', url: s.url, label: 'Portal do Cliente' },
+        create: { organizationId: opts.organizationId, entityId: entity.id, provider: 'ASSESI_PORTAL', url: s.url, label: 'Portal do Cliente' },
       });
       sampleEntities++;
     }

@@ -5,6 +5,7 @@
 import { slugify } from '@siow/sync-core';
 import { dateToIso, daysBetween, isoToDate, todayIso, type CertificateStatus, type CertificateView } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { notFound, type Ctx } from '../http.js';
 
@@ -84,7 +85,7 @@ export async function registerVersion(ctx: Ctx, certificateId: string, input: { 
 }
 
 export async function create(ctx: Ctx, input: { name: string; entityId?: string | null; notes?: string | null }) {
-  const cert = await prisma.certificate.create({ data: { name: input.name, slug: slugify(input.name), entityId: input.entityId ?? null, notes: input.notes ?? null } });
+  const cert = await prisma.certificate.create({ data: { organizationId: currentOrgId(), name: input.name, slug: slugify(input.name), entityId: input.entityId ?? null, notes: input.notes ?? null } });
   await audit(ctx, { action: 'CREATE', resource: 'certificate', resourceId: cert.id, after: cert });
   return cert;
 }

@@ -3,8 +3,9 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
 import { createHash, randomBytes } from 'node:crypto';
-import type { CurrentUser } from '@siow/shared';
+import { effectivePermissions, type CurrentUser } from '@siow/shared';
 import { prisma } from './db.js';
+import { runAsPlatform } from './tenant.js';
 import { env } from './env.js';
 
 export const ACCESS_COOKIE = 'siow_access';
@@ -15,14 +16,18 @@ const enc = (s: string) => new TextEncoder().encode(s);
 export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 export async function loadUser(id: string): Promise<CurrentUser | null> {
-  const user = await prisma.user.findFirst({ where: { id, isActive: true, deletedAt: null }, include: { roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } } });
-  if (!user) return null;
-  const permissions = new Set<string>(); const roles: string[] = [];
-  for (const ur of user.roles) { roles.push(ur.role.name); for (const rp of ur.role.permissions) permissions.add(rp.permission.code); }
-  // ajustes individuais (UserPermission): granted=true adiciona, false remove
-  const up = await prisma.userPermission.findMany({ where: { userId: id }, include: { permission: true } }).catch(() => [] as Array<{ granted: boolean; permission: { code: string } }>);
-  for (const x of up) { if (x.granted) permissions.add(x.permission.code); else permissions.delete(x.permission.code); }
-  return { id: user.id, name: user.name, email: user.email, roles, permissions: [...permissions] };
+  // Antes de conhecer a organização do usuário não há tenant no contexto: carga em modo plataforma.
+  return runAsPlatform(async () => {
+    const user = await prisma.user.findFirst({ where: { id, isActive: true, deletedAt: null }, include: { organization: true, roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } } });
+    if (!user || user.organization.deletedAt || user.organization.status === 'SUSPENDED') return null;
+    const up = await prisma.userPermission.findMany({ where: { userId: id }, include: { permission: true } }).catch(() => [] as Array<{ granted: boolean; permission: { code: string } }>);
+    const permissions = effectivePermissions(user.roles.map((ur) => ur.role.permissions.map((rp) => rp.permission.code)), up.map((x) => ({ code: x.permission.code, granted: x.granted })));
+    return {
+      id: user.id, name: user.name, email: user.email, roles: user.roles.map((ur) => ur.role.name), permissions,
+      organizationId: user.organizationId,
+      organization: { id: user.organization.id, name: user.organization.name, slug: user.organization.slug, branding: (user.organization.branding as Record<string, unknown>) ?? {} },
+    };
+  });
 }
 
 export async function getCurrentUser(req: NextRequest): Promise<CurrentUser | null> {
@@ -32,7 +37,7 @@ export async function getCurrentUser(req: NextRequest): Promise<CurrentUser | nu
     const { payload } = await jwtVerify(token, enc(env().JWT_ACCESS_SECRET));
     if (payload['type'] !== 'access' || typeof payload.sub !== 'string') return null;
     const sid = payload['sid'] as string | undefined;
-    if (sid) { const s = await prisma.session.findUnique({ where: { id: sid }, select: { revokedAt: true } }); if (!s || s.revokedAt) return null; }
+    if (sid) { const s = await runAsPlatform(() => prisma.session.findUnique({ where: { id: sid }, select: { revokedAt: true } })); if (!s || s.revokedAt) return null; }
     return loadUser(payload.sub);
   } catch { return null; }
 }

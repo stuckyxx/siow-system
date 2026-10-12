@@ -7,6 +7,7 @@ import { isoToDate } from '@siow/shared';
 import type { z } from 'zod';
 import type { createServiceOrderSchema, registerManualSignatureSchema, updateServiceOrderSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { getConfiguredSignatureProvider } from './signature.js';
@@ -38,6 +39,7 @@ export async function get(id: string) {
 export async function create(ctx: Ctx, input: z.infer<typeof createServiceOrderSchema>) {
   const so = await prisma.serviceOrder.create({
     data: {
+      organizationId: currentOrgId(),
       entityId: input.entityId,
       contractId: input.contractId,
       invoiceId: input.invoiceId ?? null,
@@ -103,6 +105,7 @@ export async function registerManualSignature(ctx: Ctx, id: string, input: z.inf
     await tx.serviceOrderSignatory.createMany({ data: input.signatories.map((s) => ({ serviceOrderId: id, name: s.name, role: s.role ?? null, email: s.email ?? null, signedAt })) });
     await tx.signatureRequest.create({
       data: {
+        organizationId: currentOrgId(),
         serviceOrderId: id,
         provider: 'MANUAL_UPLOAD',
         status: 'COMPLETED_MANUALLY',

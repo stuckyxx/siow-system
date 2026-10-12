@@ -5,6 +5,8 @@ import { syncCertificates } from './certificates.js';
 import { resolveContractForInvoice, syncContracts } from './contracts.js';
 
 export interface ApplySnapshotInput {
+  /** Organização dona dos registros (multi-organização) */
+  organizationId: string;
   dataSourceId: string;
   entityId: string;
   syncRunId: string;
@@ -54,7 +56,7 @@ const str = (v: unknown): string | null => {
  *  - fonte voltou a mostrar como pendente uma nota paga → needsReconciliation
  */
 export async function applySnapshot(prisma: PrismaClient, input: ApplySnapshotInput): Promise<ApplySnapshotStats> {
-  const { snapshot, entityId, dataSourceId, syncRunId } = input;
+  const { organizationId, snapshot, entityId, dataSourceId, syncRunId } = input;
   const protectedFields = new Set(input.protectedFields ?? DEFAULT_PROTECTED);
   const now = new Date();
   const stats: ApplySnapshotStats = {
@@ -92,7 +94,7 @@ export async function applySnapshot(prisma: PrismaClient, input: ApplySnapshotIn
       });
 
       // ---- contratos ----
-      const contracts = await syncContracts(tx, entityId, snapshot.contracts);
+      const contracts = await syncContracts(tx, organizationId, entityId, snapshot.contracts);
       stats.contractsCreated = contracts.created;
       stats.contractsUpdated = contracts.updated;
       stats.amendmentsCreated = contracts.amendmentsCreated;
@@ -129,6 +131,7 @@ export async function applySnapshot(prisma: PrismaClient, input: ApplySnapshotIn
         if (!existing) {
           const created = await tx.invoice.create({
             data: {
+              organizationId,
               entityId,
               dataSourceId,
               number: inv.number,
@@ -186,7 +189,7 @@ export async function applySnapshot(prisma: PrismaClient, input: ApplySnapshotIn
             });
             if (!open) {
               await tx.syncConflict.create({
-                data: { invoiceId: existing.id, syncRunId, field, manualValue: oldS, sourceValue: newS },
+                data: { organizationId, invoiceId: existing.id, syncRunId, field, manualValue: oldS, sourceValue: newS },
               });
               events.push({
                 invoiceId: existing.id,
@@ -287,7 +290,7 @@ export async function applySnapshot(prisma: PrismaClient, input: ApplySnapshotIn
       }
 
       // ---- certidões ----
-      const certs = await syncCertificates(tx, snapshot.certificates);
+      const certs = await syncCertificates(tx, organizationId, snapshot.certificates);
       stats.certificatesNewVersions = certs.newVersions;
       stats.certificateVersionIdsToFetch = certs.versionIdsToFetch;
 

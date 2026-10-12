@@ -5,6 +5,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { env } from './env.js';
+import { prismaPlatform } from './db.js';
+import { runWithOrg } from './tenant.js';
 
 export function cronAuthorized(req: NextRequest): boolean {
   const secret = env().CRON_SECRET;
@@ -29,4 +31,12 @@ export function cronRoute(job: (req: NextRequest) => Promise<unknown>) {
       return NextResponse.json({ ok: false, startedAt: startedAt.toISOString(), message: e instanceof Error ? e.message : String(e) }, { status: 500 });
     }
   };
+}
+
+/** Executa `job` uma vez por organização ativa (modo cron), devolvendo os resultados por slug. */
+export async function forEachOrganization<T>(job: (org: { id: string; slug: string; name: string }) => Promise<T>): Promise<Record<string, T>> {
+  const orgs = await prismaPlatform.organization.findMany({ where: { deletedAt: null, status: { not: 'SUSPENDED' } }, select: { id: true, slug: true, name: true }, orderBy: { createdAt: 'asc' } });
+  const out: Record<string, T> = {};
+  for (const org of orgs) out[org.slug] = await runWithOrg(org.id, () => job(org));
+  return out;
 }

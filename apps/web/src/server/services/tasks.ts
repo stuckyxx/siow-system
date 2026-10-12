@@ -6,6 +6,7 @@ import { isoToDate, todayIso } from '@siow/shared';
 import type { z } from 'zod';
 import type { createTaskSchema, taskListFilterSchema, updateTaskSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { notFound, type Ctx } from '../http.js';
 
@@ -58,6 +59,7 @@ export async function get(id: string) {
 export async function create(ctx: Ctx, input: z.infer<typeof createTaskSchema>) {
   const t = await prisma.financialTask.create({
     data: {
+      organizationId: currentOrgId(),
       ...input,
       dueDate: isoToDate(input.dueDate),
       createdByUserId: ctx.user.id,

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { ENTITY_TYPES, ENTITY_TYPE_LABELS, formatBRL, type EntitySummary, type Paginated } from '@siow/shared';
+import { ENTITY_LIFECYCLE_LABELS, ENTITY_TYPES, ENTITY_TYPE_LABELS, type EntityLifecycle, formatBRL, type EntitySummary, type Paginated } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { downloadBlob } from '@/lib/utils';
@@ -50,6 +50,7 @@ function EntitiesList() {
   const [withContracts, setWithContracts] = useState<YesNo>('');
   const [withInvoices, setWithInvoices] = useState<YesNo>('');
   const [withUrl, setWithUrl] = useState<YesNo>('');
+  const [lifecycle, setLifecycle] = useState<'' | EntityLifecycle>('');
   const [editing, setEditing] = useState<EntitySummary | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -90,7 +91,8 @@ function EntitiesList() {
   const list = all
     .filter((e) => (showEnded ? isEnded(e) : !isEnded(e)))
     .filter(bySync)
-    .filter((e) => yesNo(withContracts, e.contractCount) && yesNo(withInvoices, e.invoiceCount) && yesNo(withUrl, e.sourceCount));
+    .filter((e) => yesNo(withContracts, e.contractCount) && yesNo(withInvoices, e.invoiceCount) && yesNo(withUrl, e.sourceCount))
+    .filter((e) => (lifecycle ? e.lifecycle === lifecycle : true));
   const cnt = (pred: (e: EntitySummary) => boolean): number => all.filter(pred).length;
   const endedCount = all.filter(isEnded).length;
   const syncedCount = all.filter((e) => e.lastSyncAt !== null).length;
@@ -119,6 +121,10 @@ function EntitiesList() {
           <option value="">Sincronizadas e não sincronizadas</option>
           <option value="synced">Sincronizadas ({syncedCount})</option>
           <option value="unsynced">Não sincronizadas ({unsyncedCount})</option>
+        </select>
+        <select value={lifecycle} onChange={(e) => setLifecycle(e.target.value as '' | EntityLifecycle)} aria-label="Ciclo de vida">
+          <option value="">Leads, clientes e ex-clientes</option>
+          {(['LEAD', 'CLIENTE', 'EX_CLIENTE'] as const).map((l) => <option key={l} value={l}>{ENTITY_LIFECYCLE_LABELS[l]} ({cnt((e) => e.lifecycle === l)})</option>)}
         </select>
         <select value={withContracts} onChange={(e) => setWithContracts(e.target.value as YesNo)} aria-label="Contratos">
           <option value="">Com ou sem contratos</option>
@@ -151,7 +157,7 @@ function EntitiesList() {
                     <Link href={`/financeiro/entidades/${e.id}`} style={{ fontWeight: 600, textDecoration: 'none' }}>{e.shortName ?? e.name}</Link>
                     <div className="small muted">{e.name} · {e.municipality}/{e.uf}</div>
                   </td>
-                  <td>{situation(e)}</td>
+                  <td>{situation(e)}{e.healthScore !== null && <span className={`pill ${e.healthScore >= 75 ? 'good' : e.healthScore >= 50 ? 'warn' : 'crit'}`} title="Saúde do cliente (0–100), recalculada diariamente" style={{ marginLeft: 6 }}>Saúde {e.healthScore}</span>}{e.lifecycle === 'LEAD' && <span className="pill info" style={{ marginLeft: 6 }}>Lead</span>}</td>
                   <td>
                     <div className="acts">
                       <Link className="abtn" href={link(e, 'invoices')}><Ico d={ICON.inv} />Notas fiscais</Link>
@@ -183,7 +189,7 @@ function EntitiesList() {
 
 function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?: EntitySummary; onClose: () => void; onSaved: () => void }) {
   const editing = Boolean(entity);
-  const [form, setForm] = useState({ type: entity?.type ?? 'CM', name: entity?.name ?? '', shortName: entity?.shortName ?? '', municipality: entity?.municipality ?? '', uf: entity?.uf ?? 'MA', url: '', notes: '', isActive: entity?.isActive ?? true });
+  const [form, setForm] = useState({ type: entity?.type ?? 'CM', name: entity?.name ?? '', shortName: entity?.shortName ?? '', municipality: entity?.municipality ?? '', uf: entity?.uf ?? 'MA', url: '', notes: '', isActive: entity?.isActive ?? true, ibgeCode: entity?.ibgeCode ?? '', segment: entity?.segment ?? '' });
   const [error, setError] = useState<string | null>(null);
   // Observações e fonte atual só existem na ficha completa; carrega ao editar.
   const { data: detail } = useQuery({
@@ -194,7 +200,7 @@ function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?
   useEffect(() => { if (detail) setForm((f) => ({ ...f, notes: detail.notes ?? '', url: f.url || (detail.dataSources[0]?.url ?? '') })); }, [detail]);
   const save = useMutation({
     mutationFn: async () => {
-      const body = { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null, isActive: form.isActive };
+      const body = { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null, isActive: form.isActive, ibgeCode: form.ibgeCode || null, segment: form.segment || null };
       if (editing) {
         await api(`/financeiro/entities/${entity!.id}`, { method: 'PATCH', body });
         if (form.url && form.url !== (detail?.dataSources[0]?.url ?? '')) await api(`/financeiro/entities/${entity!.id}/data-sources`, { method: 'POST', body: { url: form.url } });
@@ -206,7 +212,7 @@ function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?
     onSuccess: onSaved,
     onError: (e) => setError(e instanceof ApiError ? `${e.message}${e.issues ? ': ' + e.issues.map((i) => `${i.path} ${i.message}`).join('; ') : ''}` : 'Erro'),
   });
-  const f = (k: 'type' | 'name' | 'shortName' | 'municipality' | 'uf' | 'url' | 'notes') => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value }) });
+  const f = (k: 'type' | 'name' | 'shortName' | 'municipality' | 'uf' | 'url' | 'notes' | 'ibgeCode' | 'segment') => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value }) });
   return (
     <Dialog open={open} onClose={onClose} title={editing ? `Editar entidade — ${entity!.shortName ?? entity!.name}` : 'Nova entidade'}>
       <div className="grid gap-3 md:grid-cols-2">
@@ -215,6 +221,8 @@ function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?
         <Field label="Município"><Input {...f('municipality')} placeholder="Bom Lugar" /></Field>
         <Field label="Nome curto"><Input {...f('shortName')} placeholder="CM BOM LUGAR" /></Field>
         <Field label="Nome completo" className="md:col-span-2"><Input {...f('name')} placeholder="CÂMARA MUNICIPAL DE BOM LUGAR" /></Field>
+        <Field label="Código IBGE (7 dígitos)"><Input {...f('ibgeCode')} placeholder="2102002" maxLength={7} /></Field>
+        <Field label="Segmento"><Select {...f('segment')}><option value="">—</option>{['PM', 'CM', 'PREVIDENCIA', 'CONSORCIO', 'DEFENSORIA', 'OUTRO'].map((x) => <option key={x} value={x}>{x}</option>)}</Select></Field>
         <Field label={editing && detail?.dataSources[0] ? 'URL financeira atual (altere para cadastrar outra fonte)' : 'URL financeira (Portal do Cliente — Assesi ou Adois)'} className="w"><Input {...f('url')} placeholder="https://www.assesi.com.br/adm_faturas/index.php?e=…&t=1" /></Field>
         <Field label="Observações" className="md:col-span-2"><Textarea rows={2} {...f('notes')} /></Field>
         {editing && <label className="row small muted md:col-span-2" style={{ gap: 6 }}><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Entidade ativa (desmarque quando o contrato terminar; ela passa a aparecer em "encerradas")</label>}
@@ -326,8 +334,45 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
           </div>
         )}
       </details>
+      <IbgeImport onDone={onDone} />
       {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
       <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
     </Dialog>
+  );
+}
+
+/** Importação de municípios do IBGE como leads: prévia (nada gravado) → confirmação. */
+function IbgeImport({ onDone }: { onDone: () => void }) {
+  const [uf, setUf] = useState('MA');
+  const [types, setTypes] = useState<Array<'PM' | 'CM'>>(['PM', 'CM']);
+  const [preview, setPreview] = useState<{ municipalities: number; toCreate: number; existing: number; rows: Array<{ shortName: string; existingId: string | null }> } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: (dryRun: boolean) => api<{ municipalities: number; toCreate: number; existing: number; created: number; dryRun: boolean; rows: Array<{ shortName: string; existingId: string | null }> }>('/financeiro/entities/import-ibge', { method: 'POST', body: { uf, types, dryRun } }),
+    onSuccess: (r) => { setError(null); if (r.dryRun) setPreview(r); else { setPreview(null); onDone(); } },
+    onError: (e) => setError(e instanceof ApiError ? e.message : 'Falha ao consultar o IBGE'),
+  });
+  const toggle = (t: 'PM' | 'CM') => setTypes((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]));
+  return (
+    <details style={{ marginTop: 14 }}>
+      <summary className="small" style={{ cursor: 'pointer', color: 'var(--accent)' }}>Importar municípios do IBGE como leads</summary>
+      <p className="small muted" style={{ margin: '6px 0 8px' }}>Cadastra todas as Prefeituras e/ou Câmaras de uma UF como <b>leads</b> (sem link do portal), sem duplicar as entidades que já existem. Primeiro mostra a prévia; nada é gravado até você confirmar.</p>
+      <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+        <Select value={uf} onChange={(e) => { setUf(e.target.value); setPreview(null); }} aria-label="UF" style={{ width: 90 }}>{['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'].map((u) => <option key={u} value={u}>{u}</option>)}</Select>
+        <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={types.includes('PM')} onChange={() => toggle('PM')} /> Prefeituras</label>
+        <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={types.includes('CM')} onChange={() => toggle('CM')} /> Câmaras</label>
+        <Button variant="secondary" onClick={() => run.mutate(true)} disabled={types.length === 0 || run.isPending}>{run.isPending && !preview ? 'Consultando IBGE…' : 'Ver prévia'}</Button>
+      </div>
+      {preview && (
+        <div className="alert info" style={{ marginTop: 10 }}>
+          <div>{preview.municipalities} município(s) em {uf} · <b>{preview.toCreate}</b> entidade(s) a cadastrar · {preview.existing} já existem (serão mantidas).</div>
+          <div className="small muted" style={{ marginTop: 4, maxHeight: 120, overflow: 'auto' }}>{preview.rows.filter((r) => !r.existingId).slice(0, 60).map((r) => r.shortName).join(' · ')}{preview.toCreate > 60 ? ' …' : ''}</div>
+          <div className="row" style={{ marginTop: 8 }}>
+            <Button onClick={() => { if (window.confirm(`Cadastrar ${preview.toCreate} entidade(s) de ${uf} como leads?`)) run.mutate(false); }} disabled={preview.toCreate === 0 || run.isPending}>{run.isPending ? 'Cadastrando…' : `Cadastrar ${preview.toCreate} lead(s)`}</Button>
+          </div>
+        </div>
+      )}
+      {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
+    </details>
   );
 }

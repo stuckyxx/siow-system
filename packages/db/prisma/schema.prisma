@@ -25,6 +25,8 @@ datasource db {
 
 model User {
   id               String    @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   name             String
   email            String    @unique
   passwordHash     String
@@ -64,12 +66,16 @@ model User {
   certificateVersions  CertificateVersion[]
 
   @@index([email])
+  @@index([organizationId])
+  @@unique([organizationId, email])
   @@map("users")
   userPermissions UserPermission[]
 }
 
 model Role {
   id          String   @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   name        String   @unique // ADMINISTRADOR, FINANCEIRO, GESTOR, CONSULTA, ...
   description String?
   isSystem    Boolean  @default(false)
@@ -79,6 +85,8 @@ model Role {
   users       UserRole[]
   permissions RolePermission[]
 
+  @@index([organizationId])
+  @@unique([organizationId, name])
   @@map("roles")
 }
 
@@ -160,6 +168,8 @@ enum EntityType {
 
 model Entity {
   id                String     @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   type              EntityType
   name              String // Ex.: "CÂMARA MUNICIPAL DE BOM LUGAR"
   shortName         String? // Ex.: "CM BOM LUGAR"
@@ -169,6 +179,15 @@ model Entity {
   logoUrl           String?
   notes             String?
   isActive          Boolean    @default(true)
+  /// Código IBGE do município (7 dígitos) — preenchido pela importação IBGE ou manualmente
+  ibgeCode          String?
+  /// Segmento comercial: PM, CM, PREVIDENCIA, CONSORCIO, DEFENSORIA, OUTRO (livre para novos)
+  segment           String?
+  /// Parceiro/representante responsável (FK criada na Fase 4 — Parceiros)
+  partnerId         String?
+  /// Saúde do cliente (0–100) calculada no cron diário; null = sem dados suficientes
+  healthScore       Int?
+  healthUpdatedAt   DateTime?
   responsibleUserId String?
   responsibleUser   User?      @relation(fields: [responsibleUserId], references: [id])
   createdAt         DateTime   @default(now())
@@ -188,10 +207,14 @@ model Entity {
   notifications   Notification[]
   certificates    Certificate[]
   issuanceAlarms  IssuanceAlarm[]
+  publicAgents    PublicAgent[]
+  healthSnapshots EntityHealthSnapshot[]
 
   @@unique([type, municipality, uf])
+  @@unique([organizationId, type, municipality, uf])
   @@index([municipality])
   @@index([uf])
+  @@index([organizationId])
   @@map("entities")
 }
 
@@ -214,6 +237,8 @@ enum SyncStatus {
 /// Uma entidade pode ter uma ou mais fontes (ex.: link do Portal do Cliente).
 model DataSource {
   id                  String             @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   entityId            String
   entity              Entity             @relation(fields: [entityId], references: [id], onDelete: Cascade)
   provider            DataSourceProvider @default(ASSESI_PORTAL)
@@ -242,6 +267,7 @@ model DataSource {
   /// A mesma URL pode servir a várias entidades (link de parceiro da Adois: uma fonte por município, distinguida por `config.entityKey`).
   @@unique([provider, url, entityId])
   @@index([entityId])
+  @@index([organizationId])
   @@map("data_sources")
 }
 
@@ -254,6 +280,8 @@ enum SyncTrigger {
 
 model SyncRun {
   id                String      @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   dataSourceId      String
   dataSource        DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
   entityId          String
@@ -280,6 +308,7 @@ model SyncRun {
   @@index([dataSourceId, queuedAt])
   @@index([entityId, queuedAt])
   @@index([status])
+  @@index([organizationId])
   @@map("sync_runs")
 }
 
@@ -304,6 +333,8 @@ enum RecordOrigin {
 
 model Contract {
   id                String         @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   entityId          String
   entity            Entity         @relation(fields: [entityId], references: [id], onDelete: Cascade)
   number            String // Ex.: "070201001/2025"
@@ -334,6 +365,7 @@ model Contract {
   @@unique([entityId, number])
   @@index([entityId])
   @@index([endDate])
+  @@index([organizationId])
   @@map("contracts")
 }
 
@@ -381,6 +413,8 @@ enum InvoiceStatus {
 
 model Invoice {
   id              String        @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   entityId        String
   entity          Entity        @relation(fields: [entityId], references: [id], onDelete: Cascade)
   contractId      String?
@@ -435,6 +469,7 @@ model Invoice {
   @@index([contractId, competenceYear, competenceMonth])
   @@index([status, issueDate])
   @@index([paidAt])
+  @@index([organizationId])
   @@map("invoices")
 }
 
@@ -481,6 +516,8 @@ enum ConflictStatus {
 /// Conflito entre valor manual (protegido) e valor vindo da sincronização.
 model SyncConflict {
   id               String         @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   invoiceId        String
   invoice          Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   syncRunId        String?
@@ -496,6 +533,7 @@ model SyncConflict {
   createdAt        DateTime       @default(now())
 
   @@index([status])
+  @@index([organizationId])
   @@map("sync_conflicts")
 }
 
@@ -520,6 +558,8 @@ enum DocumentType {
 /// Conteúdo físico. Documentos idênticos (mesmo checksum) compartilham o blob.
 model DocumentBlob {
   id         String   @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   checksum   String   @unique // sha256 hex
   storageKey String   @unique
   size       Int
@@ -528,11 +568,14 @@ model DocumentBlob {
 
   documents Document[]
 
+  @@index([organizationId])
   @@map("document_blobs")
 }
 
 model Document {
   id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   type             DocumentType
   name             String
   blobId           String
@@ -564,6 +607,7 @@ model Document {
   @@index([entityId, type])
   @@index([invoiceId])
   @@index([contractId])
+  @@index([organizationId])
   @@map("documents")
 }
 
@@ -573,6 +617,8 @@ model Document {
 
 model Certificate {
   id        String    @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   /// Chave normalizada do nome (ex.: "certidao-negativa-debitos-trabalhistas")
   slug      String
   name      String
@@ -588,6 +634,7 @@ model Certificate {
   versions CertificateVersion[]
 
   @@unique([slug, entityId])
+  @@index([organizationId])
   @@map("certificates")
 }
 
@@ -618,6 +665,8 @@ model CertificateVersion {
 
 model Contact {
   id          String    @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   entityId    String
   entity      Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
   name        String
@@ -638,6 +687,7 @@ model Contact {
   messages           OutboundMessage[]
 
   @@index([entityId])
+  @@index([organizationId])
   @@map("contacts")
 }
 
@@ -655,6 +705,12 @@ enum TaskType {
   VERIFY_CONTRACT // verificar contrato
   SEND_DOCUMENT // enviar documento
   CONFIRM_PAYMENT // confirmar pagamento
+  COMMERCIAL_FOLLOWUP // retorno comercial
+  VISIT // visita
+  MEETING // reunião
+  CALL // ligação
+  RENEWAL // renovação de contrato
+  UPDATE_CONTACTS // atualizar contatos (troca de gestão)
   CUSTOM
 }
 
@@ -674,6 +730,8 @@ enum TaskStatus {
 
 model FinancialTask {
   id              String        @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   title           String
   description     String?
   type            TaskType      @default(CUSTOM)
@@ -685,6 +743,11 @@ model FinancialTask {
   invoice         Invoice?      @relation(fields: [invoiceId], references: [id])
   serviceOrderId  String?
   serviceOrder    ServiceOrder? @relation(fields: [serviceOrderId], references: [id])
+  /// Agenda única: módulo de origem (FINANCEIRO, COMERCIAL, LICITACOES, CONTRATOS, ATENDIMENTO) e vínculos dos módulos futuros
+  module          String        @default("FINANCEIRO")
+  opportunityId   String?
+  tenderId        String?
+  ticketId        String?
   assigneeUserId  String?
   assignee        User?         @relation("TaskAssignee", fields: [assigneeUserId], references: [id])
   createdByUserId String?
@@ -704,6 +767,7 @@ model FinancialTask {
   @@index([assigneeUserId, status, dueDate])
   @@index([entityId, dueDate])
   @@index([dueDate])
+  @@index([organizationId])
   @@map("financial_tasks")
 }
 
@@ -747,6 +811,8 @@ enum MessageChannel {
 
 model CollectionCase {
   id                  String           @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   invoiceId           String           @unique
   invoice             Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   entityId            String
@@ -765,6 +831,7 @@ model CollectionCase {
 
   @@index([entityId, status])
   @@index([nextActionAt])
+  @@index([organizationId])
   @@map("collection_cases")
 }
 
@@ -797,6 +864,8 @@ model CollectionAttempt {
 
 model MessageTemplate {
   id          String          @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   key         String          @unique // ex.: SERVICE_ORDER_ISSUE_REMINDER
   name        String
   channel     MessageChannel? // null = qualquer canal
@@ -811,6 +880,7 @@ model MessageTemplate {
 
   messages OutboundMessage[]
 
+  @@index([organizationId])
   @@map("message_templates")
 }
 
@@ -826,6 +896,8 @@ enum OutboundMessageStatus {
 
 model OutboundMessage {
   id                String                @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   channel           MessageChannel
   templateId        String?
   template          MessageTemplate?      @relation(fields: [templateId], references: [id])
@@ -854,6 +926,7 @@ model OutboundMessage {
   collectionAttempt CollectionAttempt?
 
   @@index([entityId, createdAt])
+  @@index([organizationId])
   @@map("outbound_messages")
 }
 
@@ -873,6 +946,8 @@ enum ServiceOrderStatus {
 
 model ServiceOrder {
   id               String             @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   entityId         String
   entity           Entity             @relation(fields: [entityId], references: [id], onDelete: Cascade)
   contractId       String
@@ -904,6 +979,7 @@ model ServiceOrder {
 
   @@unique([contractId, competenceYear, competenceMonth])
   @@index([entityId, status])
+  @@index([organizationId])
   @@map("service_orders")
 }
 
@@ -957,6 +1033,8 @@ enum SignatureRequestStatus {
 
 model SignatureRequest {
   id                 String                 @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   serviceOrderId     String
   serviceOrder       ServiceOrder           @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
   provider           SignatureProvider
@@ -974,6 +1052,7 @@ model SignatureRequest {
   updatedAt          DateTime               @updatedAt
 
   @@index([serviceOrderId])
+  @@index([organizationId])
   @@map("signature_requests")
 }
 
@@ -984,6 +1063,8 @@ model SignatureRequest {
 /// Nunca é editado/apagado pela aplicação (ver migration com REVOKE).
 model AuditLog {
   id            String   @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
   userId        String?
   user          User?    @relation(fields: [userId], references: [id])
   action        String // CREATE, UPDATE, SOFT_DELETE, STATUS_OVERRIDE, LOGIN, EXPORT, DOWNLOAD, ...
@@ -997,6 +1078,7 @@ model AuditLog {
   requestId     String?
   createdAt     DateTime @default(now())
 
+  @@index([organizationId, createdAt])
   @@index([resource, resourceId])
   @@index([userId, createdAt])
   @@index([createdAt])
@@ -1019,6 +1101,8 @@ enum NotificationType {
 /// Alarme de emissão: dia do mês em que a nota da entidade deve ser emitida; o sistema avisa `leadDays` antes.
 model IssuanceAlarm {
   id              String    @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   entityId        String
   entity          Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
   /// Contrato a que o alarme se refere (opcional; texto livre do número para não depender da sincronização)
@@ -1034,11 +1118,115 @@ model IssuanceAlarm {
   deletedAt       DateTime?
 
   @@index([entityId])
+  @@index([organizationId])
   @@map("issuance_alarms")
+}
+
+/// Organização (tenant): na Edição Própria existe uma só (Siow System Tecnologia); no SaaS, uma por cliente.
+model Organization {
+  id        String    @id @default(uuid())
+  name      String
+  slug      String    @unique
+  document  String? // CNPJ
+  plan      String    @default("PROPRIA") // PROPRIA | SAAS_BASICO | SAAS_PRO ...
+  /// Módulos habilitados (ex.: ["FINANCEIRO","CADASTRO","COMERCIAL"]); vazio = todos
+  modules   Json      @default("[]")
+  /// Marca: { productName, logoUrl, accent, accent2, domain }
+  branding  Json      @default("{}")
+  locale    String    @default("pt-BR")
+  status    String    @default("ACTIVE") // ACTIVE | SUSPENDED | READONLY
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users            User[]
+  roles            Role[]
+  entities         Entity[]
+  dataSources      DataSource[]
+  syncRuns         SyncRun[]
+  contracts        Contract[]
+  invoices         Invoice[]
+  syncConflicts    SyncConflict[]
+  documentBlobs    DocumentBlob[]
+  documents        Document[]
+  certificates     Certificate[]
+  contacts         Contact[]
+  tasks            FinancialTask[]
+  collectionCases  CollectionCase[]
+  messageTemplates MessageTemplate[]
+  outboundMessages OutboundMessage[]
+  serviceOrders    ServiceOrder[]
+  signatureRequests SignatureRequest[]
+  issuanceAlarms   IssuanceAlarm[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  publicAgents     PublicAgent[]
+  healthSnapshots  EntityHealthSnapshot[]
+
+  @@map("organizations")
+}
+
+/// Administrador da plataforma (Siow) — fora das organizações; usado pelo superadmin do SaaS (Fase 9).
+model PlatformAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@map("platform_admins")
+}
+
+/// Agente público (prefeito, presidente da câmara, secretário, controlador, contador, pregoeiro…) com mandato.
+model PublicAgent {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  entityId        String
+  entity          Entity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  name            String
+  position        String // cargo
+  party           String?
+  termStart       DateTime?    @db.Date
+  termEnd         DateTime?    @db.Date
+  email           String?
+  phone           String?
+  whatsapp        String?
+  isDecisionMaker Boolean      @default(false)
+  isActive        Boolean      @default(true)
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  @@index([organizationId])
+  @@index([entityId])
+  @@map("public_agents")
+}
+
+/// Histórico diário da saúde do cliente (uma linha por entidade e dia).
+model EntityHealthSnapshot {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  entityId       String
+  entity         Entity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  date           DateTime     @db.Date
+  score          Int?
+  /// Fatores que compuseram a nota (para explicar na interface)
+  factors        Json
+  createdAt      DateTime     @default(now())
+
+  @@unique([entityId, date])
+  @@index([organizationId, date])
+  @@map("entity_health_snapshots")
 }
 
 model Notification {
   id            String           @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
   userId        String? // null = para toda a equipe
   user          User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   type          NotificationType
@@ -1054,6 +1242,7 @@ model Notification {
   createdAt     DateTime         @default(now())
 
   @@index([userId, readAt])
+  @@index([organizationId])
   @@map("notifications")
 }
 

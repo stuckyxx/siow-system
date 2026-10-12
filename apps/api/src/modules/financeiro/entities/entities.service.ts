@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { Prisma } from '@siow/db';
@@ -103,6 +104,11 @@ export class EntitiesService {
       contractCount: 0,
       invoiceCount: Number(r['pending_count'] ?? 0) + Number(r['paid_count'] ?? 0),
       sourceCount: r['last_sync_at'] ? 1 : 0,
+      ibgeCode: null,
+      segment: null,
+      partnerId: null,
+      healthScore: null,
+      lifecycle: r['active_contract_number'] ? 'CLIENTE' : 'LEAD',
     }));
     return { items, total: count, page: f.page, pageSize: f.pageSize };
   }
@@ -123,7 +129,7 @@ export class EntitiesService {
   }
 
   async create(ctx: RequestContext, input: z.infer<typeof createEntitySchema>) {
-    const entity = await this.prisma.entity.create({ data: { ...input, uf: input.uf.toUpperCase() } });
+    const entity = await this.prisma.entity.create({ data: { organizationId: DEFAULT_ORGANIZATION_ID, ...input, uf: input.uf.toUpperCase() } });
     await this.audit.log(ctx, { action: 'CREATE', resource: 'entity', resourceId: entity.id, after: entity });
     return entity;
   }
@@ -146,7 +152,7 @@ export class EntitiesService {
   // ---------------- fontes de dados ----------------
   async addDataSource(ctx: RequestContext, entityId: string, input: z.infer<typeof createDataSourceSchema>) {
     await this.ensureEntity(entityId);
-    const ds = await this.prisma.dataSource.create({ data: { entityId, ...input, config: input.config as Prisma.InputJsonValue | undefined } });
+    const ds = await this.prisma.dataSource.create({ data: { organizationId: DEFAULT_ORGANIZATION_ID, entityId, ...input, config: input.config as Prisma.InputJsonValue | undefined } });
     await this.audit.log(ctx, { action: 'CREATE', resource: 'dataSource', resourceId: ds.id, after: ds });
     return ds;
   }
@@ -173,7 +179,7 @@ export class EntitiesService {
 
   async addContact(ctx: RequestContext, entityId: string, input: z.infer<typeof createContactSchema>) {
     await this.ensureEntity(entityId);
-    const c = await this.prisma.contact.create({ data: { entityId, ...input } });
+    const c = await this.prisma.contact.create({ data: { organizationId: DEFAULT_ORGANIZATION_ID, entityId, ...input } });
     await this.audit.log(ctx, { action: 'CREATE', resource: 'contact', resourceId: c.id, after: { entityId, name: c.name, role: c.role } });
     return c;
   }
@@ -212,12 +218,12 @@ export class EntitiesService {
       const shortName = `${row.tipo} ${row.entidade}`.toUpperCase();
       const name = row.nome_completo?.trim() || this.defaultFullName(row.tipo, row.entidade);
       const existing = await this.prisma.entity.findUnique({ where: { type_municipality_uf: { type: row.tipo, municipality, uf: row.uf } } });
-      const entity = existing ?? (await this.prisma.entity.create({ data: { type: row.tipo, name, shortName, municipality, uf: row.uf } }));
+      const entity = existing ?? (await this.prisma.entity.create({ data: { organizationId: DEFAULT_ORGANIZATION_ID, type: row.tipo, name, shortName, municipality, uf: row.uf } }));
       if (existing) result.reused += 1;
       else result.created += 1;
       const ds = await this.prisma.dataSource.findFirst({ where: { provider: 'ASSESI_PORTAL', url: row.url.trim(), entityId: entity.id, deletedAt: null } });
       if (!ds) {
-        await this.prisma.dataSource.create({ data: { entityId: entity.id, provider: 'ASSESI_PORTAL', url: row.url.trim(), label: 'Portal do Cliente' } });
+        await this.prisma.dataSource.create({ data: { organizationId: DEFAULT_ORGANIZATION_ID, entityId: entity.id, provider: 'ASSESI_PORTAL', url: row.url.trim(), label: 'Portal do Cliente' } });
         result.sourcesCreated += 1;
       }
     }

@@ -14,6 +14,7 @@ import { applySnapshot } from '@siow/sync-core';
 import type { z } from 'zod';
 import type { syncRunListFilterSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { env } from '../env.js';
 import { audit } from '../audit.js';
 import { conflict, notFound, type Ctx } from '../http.js';
@@ -72,20 +73,20 @@ export async function syncOne(dataSourceId: string, opts: SyncOneOptions): Promi
   if (await hasRecentRunning(dataSourceId)) return null;
 
   const skip = async (errorMessage: string): Promise<SyncOneResult> => {
-    const run = await prisma.syncRun.create({ data: { dataSourceId, entityId: ds.entityId, trigger: opts.trigger, requestedByUserId: opts.requestedByUserId ?? null, status: 'SKIPPED', startedAt: new Date(), finishedAt: new Date(), errorMessage } });
+    const run = await prisma.syncRun.create({ data: { organizationId: currentOrgId(), dataSourceId, entityId: ds.entityId, trigger: opts.trigger, requestedByUserId: opts.requestedByUserId ?? null, status: 'SKIPPED', startedAt: new Date(), finishedAt: new Date(), errorMessage } });
     return { runId: run.id, dataSourceId, entityId: ds.entityId, status: 'SKIPPED', durationMs: 0, errorMessage, stats: null, warnings: [], certificateVersionIdsToFetch: [] };
   };
   if (ds.deletedAt || !ds.isActive) return skip('Fonte inativa ou removida');
   if (!opts.ignoreCircuit && ds.circuitOpenUntil && ds.circuitOpenUntil > new Date()) return skip(`Circuito aberto até ${ds.circuitOpenUntil.toISOString()} após falhas consecutivas`);
 
   const startedAt = new Date();
-  const run = await prisma.syncRun.create({ data: { dataSourceId, entityId: ds.entityId, trigger: opts.trigger, requestedByUserId: opts.requestedByUserId ?? null, status: 'RUNNING', startedAt, attempt: 1 } });
+  const run = await prisma.syncRun.create({ data: { organizationId: currentOrgId(), dataSourceId, entityId: ds.entityId, trigger: opts.trigger, requestedByUserId: opts.requestedByUserId ?? null, status: 'RUNNING', startedAt, attempt: 1 } });
   const syncRunId = run.id;
 
   try {
     const provider = getProvider(ds.provider);
     const snapshot = await provider.fetchSnapshot({ url: ds.url, config: (ds.config as Record<string, unknown> | null) ?? null }, providerCtx());
-    const stats = await applySnapshot(prisma, { dataSourceId, entityId: ds.entityId, syncRunId, snapshot });
+    const stats = await applySnapshot(prisma, { organizationId: currentOrgId(), dataSourceId, entityId: ds.entityId, syncRunId, snapshot });
 
     const finishedAt = new Date();
     const status: SyncStatus = stats.warnings.length > 0 || !snapshot.invoiceListComplete ? 'PARTIAL' : 'SUCCESS';
@@ -107,6 +108,7 @@ export async function syncOne(dataSourceId: string, opts: SyncOneOptions): Promi
         where: { dedupeKey: `RECONCILIATION:${syncRunId}` },
         update: {},
         create: {
+          organizationId: currentOrgId(),
           type: 'RECONCILIATION_NEEDED',
           title: `${ds.entity.shortName ?? ds.entity.name}: ${stats.conflicts} conflito(s), ${stats.missing} nota(s) ausente(s)`,
           body: 'A sincronização encontrou divergências que precisam de verificação humana.',
@@ -147,6 +149,7 @@ export async function syncOne(dataSourceId: string, opts: SyncOneOptions): Promi
       where: { dedupeKey: `SYNC_FAILED:${syncRunId}` },
       update: {},
       create: {
+        organizationId: currentOrgId(),
         type: 'SYNC_FAILED',
         title: `Falha ao sincronizar ${ds.entity.shortName ?? ds.entity.name}`,
         body: message.slice(0, 500),

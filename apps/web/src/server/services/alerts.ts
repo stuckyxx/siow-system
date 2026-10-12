@@ -6,7 +6,9 @@
  */
 import { addDaysIso, isoToDate, todayIso } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { notifyDue } from './alarms.js';
+import { refreshHealthAll } from './health.js';
 
 async function settingNumber(key: string, fallback: number): Promise<number> {
   const s = await prisma.setting.findUnique({ where: { key } });
@@ -20,6 +22,7 @@ export interface DailyChecksResult {
   contracts: { checked: number; expiredNow: number };
   tasks: { due: number; overdue: number };
   issuance: { due: number; late: number };
+  health: { computed: number; withoutData: number };
   durationMs: number;
 }
 
@@ -45,6 +48,7 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
       where: { dedupeKey: `${type}:${v.id}` },
       update: {},
       create: {
+        organizationId: currentOrgId(),
         type,
         title: isExpired ? `Certidão vencida: ${v.certificate.name}` : `Certidão vencendo: ${v.certificate.name}`,
         body: `Validade: ${validUntil.split('-').reverse().join('/')}`,
@@ -68,6 +72,7 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
       where: { dedupeKey: `CONTRACT_EXPIRING:${c.id}:${end}` },
       update: {},
       create: {
+        organizationId: currentOrgId(),
         type: 'CONTRACT_EXPIRING',
         title: `Contrato ${c.number} de ${c.entity.shortName ?? c.entity.name} vence em ${end.split('-').reverse().join('/')}`,
         entityId: c.entityId,
@@ -94,6 +99,7 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
       where: { dedupeKey: `TASK_DUE:${t.id}:${today}` },
       update: {},
       create: {
+        organizationId: currentOrgId(),
         type: 'TASK_DUE',
         userId: t.assigneeUserId,
         title: isOverdue ? `Tarefa atrasada: ${t.title}` : `Tarefa para hoje: ${t.title}`,
@@ -107,6 +113,8 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
 
   // ---- alarmes de emissão de nota ----
   const issuance = await notifyDue(today);
+  // ---- saúde do cliente ----
+  const health = await refreshHealthAll(today);
 
   const result: DailyChecksResult = {
     date: today,
@@ -114,6 +122,7 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
     contracts: { checked: contracts.length, expiredNow },
     tasks: { due: tasks.length - overdue, overdue },
     issuance,
+    health,
     durationMs: Date.now() - startedAt,
   };
   console.info('[cron] verificações diárias concluídas', result);

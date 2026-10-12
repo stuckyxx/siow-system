@@ -8,6 +8,7 @@ import { daysBetween, dateToIso, isoToDate, todayIso, type BulkInvoiceStatusDto,
 import type { z } from 'zod';
 import type { createManualInvoiceSchema, reconcileInvoiceSchema, resolveConflictSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { badRequest, conflict as conflictError, notFound, type Ctx } from '../http.js';
 import { storeDocument } from './documents.js';
@@ -195,6 +196,7 @@ export async function createManual(ctx: Ctx, dto: z.infer<typeof createManualInv
   if (exists) throw conflictError('Já existe nota com este número para a entidade');
   const inv = await prisma.invoice.create({
     data: {
+      organizationId: currentOrgId(),
       entityId: dto.entityId,
       contractId: dto.contractId ?? null,
       number: dto.number,

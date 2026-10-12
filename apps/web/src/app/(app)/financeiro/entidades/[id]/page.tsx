@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
-import { formatBRL, formatBrDate, formatBrDateTime, type EntitySummary, type InvoiceRow, type Paginated } from '@siow/shared';
+import { ENTITY_LIFECYCLE_LABELS as LIFECYCLE, formatBRL, formatBrDate, formatBrDateTime, type EntitySummary, type InvoiceRow, type Paginated } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { InvoicesTable } from '@/components/invoices-table';
@@ -12,11 +12,13 @@ import { AlarmsPanel } from '@/components/panels/alarms-panel';
 import { TasksPanel } from '@/components/panels/tasks-panel';
 import { ServiceOrdersPanel } from '@/components/panels/service-orders-panel';
 import { ContactsPanel } from '@/components/panels/contacts-panel';
+import { PublicAgentsPanel } from '@/components/panels/public-agents-panel';
+import { TimelinePanel } from '@/components/panels/timeline-panel';
 import { SyncStatusBadge } from '@/components/status';
 import { Stat, Tabs, useToast } from '@/components/ui';
 
 interface EntityDetail {
-  id: string; type: string; name: string; shortName: string | null; municipality: string; uf: string; notes: string | null;
+  id: string; type: string; name: string; shortName: string | null; municipality: string; uf: string; notes: string | null; ibgeCode: string | null; segment: string | null;
   dataSources: Array<{ id: string; url: string; label: string | null; lastSyncAt: string | null; lastSyncStatus: string | null; syncEnabled: boolean; circuitOpenUntil: string | null }>;
   contracts: Array<{ id: string; number: string; status: string; origin: string; startDate: string | null; endDate: string | null; monthlyValue: string | null; amendments: Array<{ id: string; label: string | null; sequence: number }> }>;
   overview: EntitySummary | null;
@@ -31,6 +33,7 @@ const TABS = [
   { key: 'agenda', label: 'Agenda' },
   { key: 'orders', label: 'Ordens de serviço' },
   { key: 'contacts', label: 'Contatos' },
+  { key: 'timeline', label: 'Linha do tempo' },
 ];
 
 export default function EntityPage() {
@@ -83,7 +86,7 @@ function EntityView() {
     <div>
       <div className="row between" style={{ alignItems: 'flex-start' }}>
         <div>
-          <div className="small muted">{e.type} · {e.municipality}/{e.uf}</div>
+          <div className="small muted">{e.type} · {e.municipality}/{e.uf}{e.ibgeCode ? ` · IBGE ${e.ibgeCode}` : ''}{o ? ` · ${LIFECYCLE[o.lifecycle]}` : ''}{o?.healthScore !== null && o?.healthScore !== undefined ? ` · Saúde ${o.healthScore}` : ''}</div>
           <h1>{e.name}</h1>
           <div className="small muted row">
             <SyncStatusBadge status={o?.lastSyncStatus ?? null} />
@@ -139,7 +142,8 @@ function EntityView() {
       {tab === 'contracts' && <ContractsPanel entityId={id} manualOnly />}
       {tab === 'agenda' && <TasksPanel key={newTask ? 'new' : 'list'} entityId={id} autoCreate={newTask} />}
       {tab === 'orders' && <ServiceOrdersPanel entityId={id} contracts={e.contracts} />}
-      {tab === 'contacts' && <ContactsPanel entityId={id} />}
+      {tab === 'contacts' && <><ContactsPanel entityId={id} /><PublicAgentsPanel entityId={id} /></>}
+      {tab === 'timeline' && <TimelinePanel entityId={id} />}
 
       <InvoiceDialog id={chargeId} initialTab="collection" onClose={() => setChargeId(null)} />
       {toast}

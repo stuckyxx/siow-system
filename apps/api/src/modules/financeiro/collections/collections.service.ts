@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@siow/db';
 import { isoToDate } from '@siow/shared';
@@ -24,7 +25,7 @@ export class CollectionsService {
     return this.prisma.collectionCase.upsert({
       where: { invoiceId },
       update: {},
-      create: { invoiceId, entityId: invoice.entityId, status: invoice.status === 'PAID' ? 'SETTLED' : 'NOT_CHARGED' },
+      create: { organizationId: DEFAULT_ORGANIZATION_ID, invoiceId, entityId: invoice.entityId, status: invoice.status === 'PAID' ? 'SETTLED' : 'NOT_CHARGED' },
       include: { attempts: { orderBy: { performedAt: 'desc' }, include: { performedBy: { select: { id: true, name: true } }, contact: { select: { id: true, name: true } }, outboundMessage: true } } },
     });
   }

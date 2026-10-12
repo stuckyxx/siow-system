@@ -1,0 +1,39 @@
+/**
+ * Linha do tempo 360º da entidade: união, em ordem cronológica, dos eventos de todos os módulos.
+ * Somente leitura — nada é gravado; cada módulo continua dono dos seus registros.
+ */
+import { formatBRL, type TimelineEvent } from '@siow/shared';
+import { prisma } from '../db.js';
+
+const INVOICE_EVENT_LABEL: Record<string, string> = { CREATED: 'Nota registrada', STATUS_CHANGED: 'Situação da nota alterada', MANUAL_OVERRIDE: 'Alteração manual', CONFLICT_DETECTED: 'Conflito com a fonte', CONFLICT_RESOLVED: 'Conflito resolvido', RECONCILED: 'Nota reconciliada', NOTE: 'Observação', FIELD_CHANGED: 'Campo alterado', MISSING_FROM_SOURCE: 'Nota sumiu da fonte', REAPPEARED: 'Nota voltou à fonte' };
+
+export async function timeline(entityId: string, limit = 300): Promise<TimelineEvent[]> {
+  const [invoiceEvents, contracts, runs, tasks, attempts, documents, alarms, agents, audits, notifications] = await Promise.all([
+    prisma.invoiceEvent.findMany({ where: { invoice: { entityId } }, include: { invoice: { select: { number: true, amount: true } }, user: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 150 }),
+    prisma.contract.findMany({ where: { entityId, deletedAt: null }, include: { amendments: true }, orderBy: { createdAt: 'desc' } }),
+    prisma.syncRun.findMany({ where: { entityId, status: { in: ['SUCCESS', 'PARTIAL', 'FAILED'] } }, orderBy: { startedAt: 'desc' }, take: 40, include: { requestedBy: { select: { name: true } } } }),
+    prisma.financialTask.findMany({ where: { entityId, deletedAt: null }, include: { assignee: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 60 }),
+    prisma.collectionAttempt.findMany({ where: { case: { entityId } }, include: { performedBy: { select: { name: true } }, case: { include: { invoice: { select: { number: true } } } } }, orderBy: { performedAt: 'desc' }, take: 60 }),
+    prisma.document.findMany({ where: { entityId, deletedAt: null }, orderBy: { capturedAt: 'desc' }, take: 60 }),
+    prisma.issuanceAlarm.findMany({ where: { entityId }, orderBy: { createdAt: 'desc' } }),
+    prisma.publicAgent.findMany({ where: { entityId }, orderBy: { createdAt: 'desc' } }),
+    prisma.auditLog.findMany({ where: { resource: 'entity', resourceId: entityId }, include: { user: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 40 }),
+    prisma.notification.findMany({ where: { entityId }, orderBy: { createdAt: 'desc' }, take: 60 }),
+  ]);
+  const out: TimelineEvent[] = [];
+  const push = (e: TimelineEvent) => out.push(e);
+  for (const ev of invoiceEvents) push({ id: `inv-${ev.id}`, module: 'FINANCEIRO', kind: ev.type, title: `${INVOICE_EVENT_LABEL[ev.type] ?? ev.type} — nota ${ev.invoice.number}`, detail: [ev.field ? `${ev.field}: ${ev.oldValue ?? '—'} → ${ev.newValue ?? '—'}` : ev.newValue ? `→ ${ev.newValue}` : null, ev.note].filter(Boolean).join(' · ') || `${formatBRL(ev.invoice.amount.toString())}`, occurredAt: ev.createdAt.toISOString(), userName: ev.user?.name ?? (ev.origin === 'SYNC' ? 'Sincronização' : null), referenceType: 'invoice', referenceId: ev.invoiceId });
+  for (const c of contracts) {
+    push({ id: `ctr-${c.id}`, module: 'FINANCEIRO', kind: 'CONTRACT', title: `Contrato ${c.number} ${c.origin === 'SYNC' ? 'identificado no portal' : 'cadastrado'}`, detail: [c.startDate ? `vigência ${c.startDate.toISOString().slice(0, 10).split('-').reverse().join('/')}` : null, c.endDate ? `até ${c.endDate.toISOString().slice(0, 10).split('-').reverse().join('/')}` : null, c.monthlyValue ? `${formatBRL(c.monthlyValue.toString())}/mês` : null].filter(Boolean).join(' · ') || null, occurredAt: c.createdAt.toISOString(), userName: null, referenceType: 'contract', referenceId: c.id });
+    for (const a of c.amendments) push({ id: `amd-${a.id}`, module: 'FINANCEIRO', kind: 'AMENDMENT', title: `${a.label ?? `${a.sequence}º aditivo`} — contrato ${c.number}`, detail: a.newEndDate ? `novo fim ${a.newEndDate.toISOString().slice(0, 10).split('-').reverse().join('/')}` : a.description ?? null, occurredAt: (a.signedAt ?? a.createdAt).toISOString(), userName: null, referenceType: 'contract', referenceId: c.id });
+  }
+  for (const r of runs) push({ id: `run-${r.id}`, module: 'SINCRONIZACAO', kind: r.status, title: r.status === 'FAILED' ? 'Sincronização falhou' : r.status === 'PARTIAL' ? 'Sincronização parcial' : 'Sincronização concluída', detail: r.errorMessage ?? (r.stats ? JSON.stringify(r.stats).slice(0, 160) : null), occurredAt: (r.finishedAt ?? r.startedAt ?? r.queuedAt).toISOString(), userName: r.requestedBy?.name ?? (r.trigger === 'SCHEDULED' ? 'Agendada' : null), referenceType: 'syncRun', referenceId: r.id });
+  for (const t of tasks) push({ id: `task-${t.id}`, module: 'AGENDA', kind: t.status, title: `${t.status === 'DONE' ? 'Tarefa concluída' : 'Tarefa criada'}: ${t.title}`, detail: `vence ${t.dueDate.toISOString().slice(0, 10).split('-').reverse().join('/')}${t.assignee ? ` · ${t.assignee.name}` : ''}`, occurredAt: (t.status === 'DONE' && t.completedAt ? t.completedAt : t.createdAt).toISOString(), userName: t.assignee?.name ?? null, referenceType: 'task', referenceId: t.id });
+  for (const a of attempts) push({ id: `col-${a.id}`, module: 'COBRANCA', kind: a.channel, title: `Cobrança por ${a.channel.toLowerCase()} — nota ${a.case.invoice.number}`, detail: a.response ?? a.message?.slice(0, 160) ?? null, occurredAt: a.performedAt.toISOString(), userName: a.performedBy?.name ?? null, referenceType: 'invoice', referenceId: a.case.invoiceId });
+  for (const d of documents) push({ id: `doc-${d.id}`, module: 'DOCUMENTOS', kind: d.type, title: `Documento: ${d.name}`, detail: d.type, occurredAt: d.capturedAt.toISOString(), userName: null, referenceType: 'document', referenceId: d.id });
+  for (const a of alarms) push({ id: `alarm-${a.id}`, module: 'FINANCEIRO', kind: a.deletedAt ? 'ALARM_REMOVED' : 'ALARM', title: a.deletedAt ? `Alarme de emissão removido (dia ${a.dayOfMonth})` : `Alarme de emissão criado: dia ${a.dayOfMonth}`, detail: a.label, occurredAt: (a.deletedAt ?? a.createdAt).toISOString(), userName: null, referenceType: 'issuanceAlarm', referenceId: a.id });
+  for (const ag of agents) push({ id: `agent-${ag.id}`, module: 'CADASTRO', kind: 'PUBLIC_AGENT', title: `Agente público: ${ag.name} (${ag.position})`, detail: ag.termEnd ? `mandato até ${ag.termEnd.toISOString().slice(0, 10).split('-').reverse().join('/')}` : null, occurredAt: ag.createdAt.toISOString(), userName: null, referenceType: 'publicAgent', referenceId: ag.id });
+  for (const a of audits) push({ id: `aud-${a.id}`, module: 'AUDITORIA', kind: a.action, title: ({ CREATE: 'Entidade cadastrada', UPDATE: 'Cadastro da entidade alterado', SOFT_DELETE: 'Entidade excluída' } as Record<string, string>)[a.action] ?? a.action, detail: null, occurredAt: a.createdAt.toISOString(), userName: a.user?.name ?? null, referenceType: 'entity', referenceId: entityId });
+  for (const n of notifications) push({ id: `ntf-${n.id}`, module: 'FINANCEIRO', kind: n.type, title: n.title, detail: n.body, occurredAt: n.createdAt.toISOString(), userName: null, referenceType: n.referenceType, referenceId: n.referenceId });
+  return out.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, limit);
+}

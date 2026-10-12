@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { DocumentType } from '@siow/db';
 import type { DocumentStore } from '@siow/storage';
@@ -38,6 +39,7 @@ export class DocumentsService {
     if (!ALLOWED_MIME.has(file.mimetype)) throw new BadRequestException('Tipo de arquivo não permitido');
     if (file.size > MAX_SIZE) throw new BadRequestException('Arquivo excede 25 MB');
     const result = await this.store.store({
+      organizationId: DEFAULT_ORGANIZATION_ID,
       buffer: file.buffer,
       mimeType: file.mimetype,
       name: meta.name ?? file.originalname,

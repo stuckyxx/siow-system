@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { hashPassword } from '@siow/db';
 import { AuditService } from '../../../common/audit/audit.service.js';
@@ -45,7 +46,7 @@ export class UsersService {
   async create(ctx: RequestContext, input: { name: string; email: string; password: string; roleIds: string[] }): Promise<UserView> {
     const passwordHash = await hashPassword(input.password);
     const user = await this.prisma.user.create({
-      data: { name: input.name, email: input.email.toLowerCase(), passwordHash, roles: { create: input.roleIds.map((roleId) => ({ roleId })) } },
+      data: { organizationId: DEFAULT_ORGANIZATION_ID, name: input.name, email: input.email.toLowerCase(), passwordHash, roles: { create: input.roleIds.map((roleId) => ({ roleId })) } },
       include: { roles: { include: { role: true } } },
     });
     await this.audit.log(ctx, { action: 'CREATE', resource: 'user', resourceId: user.id, after: this.view(user) });

@@ -62,6 +62,12 @@ export const TASK_TYPES = [
   'VERIFY_CONTRACT',
   'SEND_DOCUMENT',
   'CONFIRM_PAYMENT',
+  'COMMERCIAL_FOLLOWUP',
+  'VISIT',
+  'MEETING',
+  'CALL',
+  'RENEWAL',
+  'UPDATE_CONTACTS',
   'CUSTOM',
 ] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
@@ -75,6 +81,12 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
   VERIFY_CONTRACT: 'Verificar contrato',
   SEND_DOCUMENT: 'Enviar documento',
   CONFIRM_PAYMENT: 'Confirmar pagamento',
+  COMMERCIAL_FOLLOWUP: 'Retorno comercial',
+  VISIT: 'Visita',
+  MEETING: 'Reunião',
+  CALL: 'Ligação',
+  RENEWAL: 'Renovação de contrato',
+  UPDATE_CONTACTS: 'Atualizar contatos (troca de gestão)',
   CUSTOM: 'Tarefa personalizada',
 };
 
@@ -227,3 +239,8 @@ export const isAdoisPartnerUrl = (url: string): boolean => {
     return false;
   }
 };
+
+/** Organização padrão (Edição Própria). Todas as linhas pré-existentes foram atribuídas a ela na migração multi-organização. */
+export const DEFAULT_ORGANIZATION_ID = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001';
+export const DEFAULT_ORGANIZATION_SLUG = 'siow-system-tecnologia';
+export const DEFAULT_ORGANIZATION_NAME = 'Siow System Tecnologia';

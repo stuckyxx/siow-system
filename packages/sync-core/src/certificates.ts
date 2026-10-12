@@ -27,7 +27,7 @@ export interface CertificateSyncResult {
  * aparece em todas as entidades. Cada mudança de arquivo/validade gera uma
  * nova CertificateVersion; as anteriores ficam como histórico (isCurrent=false).
  */
-export async function syncCertificates(tx: Tx, items: CertificateSnapshot[]): Promise<CertificateSyncResult> {
+export async function syncCertificates(tx: Tx, organizationId: string, items: CertificateSnapshot[]): Promise<CertificateSyncResult> {
   const result: CertificateSyncResult = { created: 0, newVersions: 0, unchanged: 0, versionIdsToFetch: [] };
 
   for (const item of items) {
@@ -35,7 +35,7 @@ export async function syncCertificates(tx: Tx, items: CertificateSnapshot[]): Pr
     if (!slug) continue;
     let cert = await tx.certificate.findFirst({ where: { slug, entityId: null } });
     if (!cert) {
-      cert = await tx.certificate.create({ data: { slug, name: item.name } });
+      cert = await tx.certificate.create({ data: { organizationId, slug, name: item.name } });
       result.created += 1;
     }
     const current = await tx.certificateVersion.findFirst({

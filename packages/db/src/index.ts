@@ -12,3 +12,4 @@ export {
   type SeedOptions,
   type SeedResult,
 } from './seed-core.js';
+export { applyTenantArgs, tenantExtension, TenantContextError, TENANT_MODELS, CHILD_TENANT_PATHS, GLOBAL_MODELS, type TenantContext } from './tenant.js';

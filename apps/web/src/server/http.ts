@@ -7,6 +7,7 @@ import { ZodError, type ZodTypeAny, type output } from 'zod';
 import type { CurrentUser } from '@siow/shared';
 import { Prisma } from '@siow/db';
 import { getCurrentUser } from './auth.js';
+import { runAsPlatform, runWithOrg } from './tenant.js';
 
 export class HttpError extends Error {
   constructor(public status: number, message: string, public issues?: Array<{ path: string; message: string }>) { super(message); }
@@ -75,7 +76,9 @@ export function route(permissions: string[] | null, fn: Handler) {
         if (missing.length) throw forbidden('Permissão necessária: ' + missing.join(', '));
       }
       const ctx: Ctx = { req, user: user as CurrentUser, params, query, ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null, userAgent: req.headers.get('user-agent')?.slice(0, 300) ?? null };
-      return toResponse(await fn(ctx));
+      // Rota autenticada: tudo roda dentro da organização do usuário. Rota pública: modo plataforma (sem tenant).
+      const result = user ? await runWithOrg(user.organizationId, () => fn(ctx)) : await runAsPlatform(() => fn(ctx));
+      return toResponse(result);
     } catch (e) { return errorResponse(e); }
   };
 }

@@ -16,7 +16,7 @@ const CIRCUIT_OPEN_MINUTES = 60;
 export async function enqueueSyncAll(ctx: WorkerContext, data: SyncAllJobData): Promise<{ enqueued: number; skipped: number }> {
   const sources = await ctx.prisma.dataSource.findMany({
     where: { isActive: true, syncEnabled: true, deletedAt: null, entity: { isActive: true, deletedAt: null } },
-    select: { id: true, entityId: true, circuitOpenUntil: true },
+    select: { id: true, entityId: true, organizationId: true, circuitOpenUntil: true },
   });
   let enqueued = 0;
   let skipped = 0;
@@ -24,6 +24,7 @@ export async function enqueueSyncAll(ctx: WorkerContext, data: SyncAllJobData): 
     if (data.trigger === 'SCHEDULED' && ds.circuitOpenUntil && ds.circuitOpenUntil > new Date()) {
       await ctx.prisma.syncRun.create({
         data: {
+          organizationId: ds.organizationId,
           dataSourceId: ds.id,
           entityId: ds.entityId,
           trigger: data.trigger,
@@ -36,7 +37,7 @@ export async function enqueueSyncAll(ctx: WorkerContext, data: SyncAllJobData): 
       continue;
     }
     const run = await ctx.prisma.syncRun.create({
-      data: { dataSourceId: ds.id, entityId: ds.entityId, trigger: data.trigger, requestedByUserId: data.requestedByUserId ?? null },
+      data: { organizationId: ds.organizationId, dataSourceId: ds.id, entityId: ds.entityId, trigger: data.trigger, requestedByUserId: data.requestedByUserId ?? null },
     });
     const job = await ctx.queues.sync.add(
       JOB_NAMES.syncOne,
@@ -79,7 +80,7 @@ export async function runSyncOne(ctx: WorkerContext, job: Job<SyncJobData>): Pro
       },
     );
 
-    const stats = await applySnapshot(ctx.prisma, { dataSourceId, entityId: ds.entityId, syncRunId, snapshot });
+    const stats = await applySnapshot(ctx.prisma, { organizationId: ds.organizationId, dataSourceId, entityId: ds.entityId, syncRunId, snapshot });
 
     // Documentos de certidões novas → fila de documentos (sem efeitos colaterais no portal)
     for (const certificateVersionId of stats.certificateVersionIdsToFetch) {
@@ -118,6 +119,7 @@ export async function runSyncOne(ctx: WorkerContext, job: Job<SyncJobData>): Pro
         where: { dedupeKey: `RECONCILIATION:${syncRunId}` },
         update: {},
         create: {
+          organizationId: ds.organizationId,
           type: 'RECONCILIATION_NEEDED',
           title: `${ds.entity.shortName ?? ds.entity.name}: ${stats.conflicts} conflito(s), ${stats.missing} nota(s) ausente(s)`,
           body: 'A sincronização encontrou divergências que precisam de verificação humana.',
@@ -165,6 +167,7 @@ export async function runSyncOne(ctx: WorkerContext, job: Job<SyncJobData>): Pro
         where: { dedupeKey: `SYNC_FAILED:${syncRunId}` },
         update: {},
         create: {
+          organizationId: ds.organizationId,
           type: 'SYNC_FAILED',
           title: `Falha ao sincronizar ${ds.entity.shortName ?? ds.entity.name}`,
           body: message.slice(0, 500),

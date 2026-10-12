@@ -56,7 +56,7 @@ export class AuthGuard implements CanActivate {
       roles.push(ur.role.name);
       for (const rp of ur.role.permissions) permissions.add(rp.permission.code);
     }
-    const current: CurrentUser = { id: user.id, name: user.name, email: user.email, roles, permissions: [...permissions] };
+    const current: CurrentUser = { id: user.id, name: user.name, email: user.email, roles, permissions: [...permissions], organizationId: user.organizationId, organization: { id: user.organizationId, name: '', slug: '', branding: {} } };
     req.user = current;
 
     const required = this.reflector.getAllAndOverride<string[] | undefined>(PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);

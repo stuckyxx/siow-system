@@ -4,6 +4,7 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import type { Prisma } from '@siow/db';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { hashPassword, isStrongPassword } from '../password.js';
 import { badRequest, forbidden, notFound, type Ctx } from '../http.js';
@@ -84,7 +85,7 @@ export async function create(ctx: Ctx, input: { name: string; email: string; pas
   if (!isStrongPassword(input.password)) throw badRequest('Senha fraca: mínimo 10 caracteres com letras, números e símbolo');
   const passwordHash = await hashPassword(input.password);
   const user = await prisma.user.create({
-    data: { name: input.name, email: input.email.toLowerCase(), passwordHash, mustChangePassword: true, roles: { create: input.roleIds.map((roleId) => ({ roleId })) } },
+    data: { organizationId: currentOrgId(), name: input.name, email: input.email.toLowerCase(), passwordHash, mustChangePassword: true, roles: { create: input.roleIds.map((roleId) => ({ roleId })) } },
     include: userInclude,
   });
   const v = view(user);

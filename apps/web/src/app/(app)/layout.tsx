@@ -57,7 +57,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <GlobalSearch />
         {can('sync.read') && <SyncIndicator />}
         <div className="user" style={{ marginLeft: 'auto' }}>
-          <div className="who"><b>{user?.name}</b><span>{user?.roles.join(', ')}</span></div>
+          <div className="who"><b>{user?.name}</b><span>{user?.roles.join(', ')}{user?.organization?.name ? ` · ${user.organization.name}` : ''}</span></div>
           <ThemeToggle />
           <Link href="/alterar-senha" className="btn sm" title="Alterar senha">Senha</Link>
           <button className="btn sm" onClick={() => void logout()}>Sair</button>

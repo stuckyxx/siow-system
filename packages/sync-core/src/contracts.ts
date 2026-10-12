@@ -24,6 +24,7 @@ export interface ContractSyncResult {
  */
 export async function syncContracts(
   tx: Tx,
+  organizationId: string,
   entityId: string,
   contracts: ContractSnapshot[],
 ): Promise<ContractSyncResult> {
@@ -51,6 +52,7 @@ export async function syncContracts(
     if (!existing) {
       existing = await tx.contract.create({
         data: {
+          organizationId,
           entityId,
           number: c.number,
           externalCode: c.externalCode,

@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@siow/db';
 import { JOB_NAMES, type QueueSet } from '@siow/queue';
@@ -24,7 +25,7 @@ export class SyncService {
     for (const ds of sources) {
       const running = await this.prisma.syncRun.findFirst({ where: { dataSourceId: ds.id, status: { in: ['QUEUED', 'RUNNING'] } } });
       if (running) throw new ConflictException('Já existe uma sincronização em andamento para esta entidade');
-      const run = await this.prisma.syncRun.create({ data: { dataSourceId: ds.id, entityId, trigger: 'MANUAL', requestedByUserId: ctx.user.id } });
+      const run = await this.prisma.syncRun.create({ data: { organizationId: DEFAULT_ORGANIZATION_ID, dataSourceId: ds.id, entityId, trigger: 'MANUAL', requestedByUserId: ctx.user.id } });
       const job = await this.queues.sync.add(
         JOB_NAMES.syncOne,
         { dataSourceId: ds.id, entityId, syncRunId: run.id, trigger: 'MANUAL', requestedByUserId: ctx.user.id },

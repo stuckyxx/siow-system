@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@siow/db';
 import { formatBRL, formatBrDate, renderTemplate, type TemplateVars } from '@siow/shared';
@@ -22,7 +23,7 @@ export class MessagingService {
 
   async upsertTemplate(ctx: RequestContext, input: z.infer<typeof upsertTemplateSchema>) {
     const before = await this.prisma.messageTemplate.findUnique({ where: { key: input.key } });
-    const t = await this.prisma.messageTemplate.upsert({ where: { key: input.key }, update: input, create: input });
+    const t = await this.prisma.messageTemplate.upsert({ where: { key: input.key }, update: input, create: { ...input, organizationId: DEFAULT_ORGANIZATION_ID } });
     await this.audit.log(ctx, { action: before ? 'UPDATE' : 'CREATE', resource: 'messageTemplate', resourceId: t.id, before, after: t });
     return t;
   }
@@ -90,6 +91,7 @@ export class MessagingService {
     const adapter = adapterFor(input.channel);
 
     const base: Prisma.OutboundMessageUncheckedCreateInput = {
+      organizationId: DEFAULT_ORGANIZATION_ID,
       channel: input.channel,
       templateId: template?.id ?? null,
       entityId: input.entityId,

@@ -13,15 +13,19 @@ if (!process.env.DATABASE_URL) {
 }
 
 const prisma = new PrismaClient();
+const ORG = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001';
 
-runSeed(prisma, {
+prisma.organization
+  .upsert({ where: { id: ORG }, update: {}, create: { id: ORG, name: 'Siow System Tecnologia', slug: 'siow-system-tecnologia' } })
+  .then(() => runSeed(prisma, {
+  organizationId: ORG,
   adminEmail: process.env.SEED_ADMIN_EMAIL,
   adminName: process.env.SEED_ADMIN_NAME,
   adminPassword: process.env.SEED_ADMIN_PASSWORD,
   requireStrongAdminPassword: process.env.NODE_ENV === 'production',
   sampleEntities: process.env.SEED_SAMPLE_ENTITIES === 'true',
   log: console.log,
-})
+}))
   .catch((e) => {
     console.error(e);
     process.exit(1);

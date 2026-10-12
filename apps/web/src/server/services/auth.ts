@@ -45,7 +45,7 @@ export async function login(email: string, password: string, meta: Meta): Promis
   await issueSession(user.id, meta.ip, meta.userAgent);
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), failedLoginCount: 0, lockedUntil: null } });
   await audit(
-    { user: { id: user.id, name: user.name, email: user.email, roles: [], permissions: [] }, ip: meta.ip, userAgent: meta.userAgent },
+    { user: { id: user.id, name: user.name, email: user.email, roles: [], permissions: [], organizationId: user.organizationId, organization: { id: user.organizationId, name: '', slug: '', branding: {} } }, ip: meta.ip, userAgent: meta.userAgent },
     { action: 'LOGIN', resource: 'auth', resourceId: user.id },
   );
   return { id: user.id, name: user.name, email: user.email, mustChangePassword: user.mustChangePassword };

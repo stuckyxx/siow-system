@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { runSeed } from '@siow/db';
 import { cronAuthorized } from '@/server/cron';
-import { prisma } from '@/server/db';
+import { DEFAULT_ORGANIZATION_ID, DEFAULT_ORGANIZATION_NAME, DEFAULT_ORGANIZATION_SLUG } from '@siow/shared';
+import { prisma, prismaPlatform } from '@/server/db';
+import { runWithOrg } from '@/server/tenant';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,14 +27,17 @@ export async function POST(req: NextRequest): Promise<Response> {
   const startedAt = new Date();
   const log: string[] = [];
   try {
-    const result = await runSeed(prisma, {
+    // Organização padrão (Edição Própria) — criada aqui para o bootstrap funcionar em banco novo.
+    await prismaPlatform.organization.upsert({ where: { id: DEFAULT_ORGANIZATION_ID }, update: {}, create: { id: DEFAULT_ORGANIZATION_ID, name: DEFAULT_ORGANIZATION_NAME, slug: DEFAULT_ORGANIZATION_SLUG } });
+    const result = await runWithOrg(DEFAULT_ORGANIZATION_ID, () => runSeed(prisma, {
+      organizationId: DEFAULT_ORGANIZATION_ID,
       adminEmail: process.env['SEED_ADMIN_EMAIL'],
       adminName: process.env['SEED_ADMIN_NAME'],
       adminPassword: process.env['SEED_ADMIN_PASSWORD'],
       requireStrongAdminPassword: process.env.NODE_ENV === 'production',
       sampleEntities: process.env['SEED_SAMPLE_ENTITIES'] === 'true',
       log: (m) => log.push(m),
-    });
+    }));
     return NextResponse.json({
       ok: true,
       startedAt: startedAt.toISOString(),

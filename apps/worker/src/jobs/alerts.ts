@@ -30,6 +30,7 @@ export async function runDailyChecks(ctx: WorkerContext): Promise<void> {
       where: { dedupeKey: `${type}:${v.id}` },
       update: {},
       create: {
+        organizationId: v.certificate.organizationId,
         type,
         title: expired ? `Certidão vencida: ${v.certificate.name}` : `Certidão vencendo: ${v.certificate.name}`,
         body: `Validade: ${validUntil.split('-').reverse().join('/')}`,
@@ -52,6 +53,7 @@ export async function runDailyChecks(ctx: WorkerContext): Promise<void> {
       where: { dedupeKey: `CONTRACT_EXPIRING:${c.id}:${end}` },
       update: {},
       create: {
+        organizationId: c.organizationId,
         type: 'CONTRACT_EXPIRING',
         title: `Contrato ${c.number} de ${c.entity.shortName ?? c.entity.name} vence em ${end.split('-').reverse().join('/')}`,
         entityId: c.entityId,
@@ -74,6 +76,7 @@ export async function runDailyChecks(ctx: WorkerContext): Promise<void> {
       where: { dedupeKey: `TASK_DUE:${t.id}:${today}` },
       update: {},
       create: {
+        organizationId: t.organizationId,
         type: 'TASK_DUE',
         userId: t.assigneeUserId,
         title: `Tarefa para hoje: ${t.title}`,

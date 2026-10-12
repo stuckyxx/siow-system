@@ -77,6 +77,9 @@ export const createEntitySchema = z.object({
   notes: z.string().max(4000).optional().nullable(),
   responsibleUserId: uuid.optional().nullable(),
   isActive: z.boolean().optional(),
+  ibgeCode: z.string().regex(/^\d{7}$/, 'Código IBGE tem 7 dígitos').optional().nullable(),
+  segment: z.string().max(40).optional().nullable(),
+  partnerId: uuid.optional().nullable(),
 });
 export const updateEntitySchema = createEntitySchema.partial();
 
@@ -415,4 +418,38 @@ export const issuanceDeadlineFilterSchema = z.object({
   entityId: uuid.optional(),
   /** horizonte em dias para "próximos" (padrão 30) */
   days: z.coerce.number().int().min(1).max(120).default(30),
+});
+
+// ---------- Cadastro Público (Fase 1 CRM) ----------
+export const createPublicAgentSchema = z.object({
+  name: z.string().min(2).max(160),
+  position: z.string().min(2).max(120),
+  party: z.string().max(40).optional().nullable(),
+  termStart: isoDate.optional().nullable(),
+  termEnd: isoDate.optional().nullable(),
+  email: z.string().email().max(200).optional().nullable(),
+  phone: z.string().max(30).optional().nullable(),
+  whatsapp: z.string().max(30).optional().nullable(),
+  isDecisionMaker: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const updatePublicAgentSchema = createPublicAgentSchema.partial();
+
+/** Importação de municípios do IBGE como entidades (lead). `dryRun` só devolve a prévia. */
+export const importIbgeSchema = z.object({
+  uf: uf,
+  types: z.array(z.enum(['PM', 'CM'])).min(1).default(['PM', 'CM']),
+  dryRun: z.boolean().default(true),
+  /** População mínima (opcional) — filtro aplicado quando o IBGE devolver população */
+  minPopulation: z.number().int().min(0).optional(),
+});
+
+export const createOrganizationSchema = z.object({
+  name: z.string().min(2).max(120),
+  slug: z.string().min(2).max(60).regex(/^[a-z0-9-]+$/),
+  document: z.string().max(20).optional().nullable(),
+  adminName: z.string().min(2).max(120),
+  adminEmail: z.string().email(),
+  adminPassword: z.string().min(12).max(200),
 });

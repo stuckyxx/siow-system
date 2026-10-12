@@ -22,6 +22,8 @@ export interface CurrentUser {
   email: string;
   roles: string[];
   permissions: string[];
+  organizationId: string;
+  organization: { id: string; name: string; slug: string; branding: Record<string, unknown> };
 }
 
 export interface EntitySummary {
@@ -51,7 +53,17 @@ export interface EntitySummary {
   contractCount: number;
   invoiceCount: number;
   sourceCount: number;
+  /** Cadastro Público */
+  ibgeCode: string | null;
+  segment: string | null;
+  partnerId: string | null;
+  /** Saúde do cliente 0–100 (null = sem dados suficientes) */
+  healthScore: number | null;
+  /** Ciclo de vida derivado: LEAD (sem contrato/nota), CLIENTE (contrato ativo), EX_CLIENTE (só contratos encerrados), PROSPECT (reservado ao CRM) */
+  lifecycle: EntityLifecycle;
 }
+export type EntityLifecycle = 'LEAD' | 'PROSPECT' | 'CLIENTE' | 'EX_CLIENTE';
+export const ENTITY_LIFECYCLE_LABELS: Record<EntityLifecycle, string> = { LEAD: 'Lead', PROSPECT: 'Prospect', CLIENTE: 'Cliente', EX_CLIENTE: 'Ex-cliente' };
 
 export interface InvoiceRow {
   id: string;
@@ -234,3 +246,23 @@ export interface IssuanceDeadline extends IssuanceAlarm {
   issuedInvoiceNumber: string | null;
   issuedAt: string | null;
 }
+
+// ---------- Cadastro Público ----------
+export interface PublicAgent {
+  id: string; entityId: string; name: string; position: string; party: string | null; termStart: string | null; termEnd: string | null;
+  email: string | null; phone: string | null; whatsapp: string | null; isDecisionMaker: boolean; isActive: boolean; notes: string | null;
+}
+/** Evento da linha do tempo 360º (união de todos os módulos; somente leitura). */
+export interface TimelineEvent {
+  id: string;
+  module: 'FINANCEIRO' | 'CADASTRO' | 'SINCRONIZACAO' | 'AGENDA' | 'COBRANCA' | 'DOCUMENTOS' | 'AUDITORIA' | 'COMERCIAL' | 'LICITACOES' | 'ATENDIMENTO';
+  kind: string;
+  title: string;
+  detail: string | null;
+  occurredAt: string;
+  userName: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+}
+export interface HealthFactor { key: string; label: string; impact: number; detail: string }
+export interface EntityHealth { score: number | null; factors: HealthFactor[]; updatedAt: string | null; band: 'SAUDAVEL' | 'ATENCAO' | 'RISCO' | 'SEM_DADOS' }

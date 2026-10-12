@@ -1,3 +1,4 @@
+import { DEFAULT_ORGANIZATION_ID } from '@siow/shared';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@siow/db';
 import { JOB_NAMES, type QueueSet } from '@siow/queue';
@@ -194,6 +195,7 @@ export class InvoicesService {
     if (exists) throw new ConflictException('Já existe nota com este número para a entidade');
     const inv = await this.prisma.invoice.create({
       data: {
+        organizationId: DEFAULT_ORGANIZATION_ID,
         entityId: dto.entityId,
         contractId: dto.contractId ?? null,
         number: dto.number,

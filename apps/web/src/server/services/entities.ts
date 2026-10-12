@@ -4,12 +4,13 @@
 import ExcelJS from 'exceljs';
 import { Prisma } from '@siow/db';
 import { dateToIso, importEntityRowSchema, isAdoisPartnerUrl, parseBRL, parseBrDate, parseCompetence, providerForUrl, toDecimalString, type EntitySummary, type ImportEntityRow, type Paginated } from '@siow/shared';
-import { getProvider, normalizeKey, type AdoisPortalProvider } from '@siow/integrations';
+import { fetchIbgeMunicipalities, getProvider, normalizeKey, type AdoisPortalProvider } from '@siow/integrations';
 import type { z } from 'zod';
 import type { createContactSchema, createDataSourceSchema, createEntitySchema, entityListFilterSchema, updateContactSchema, updateDataSourceSchema, updateEntitySchema } from '@siow/shared';
 import { prisma } from '../db.js';
 import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
+import { currentOrgId } from '../tenant.js';
 
 type EntityFilter = z.infer<typeof entityListFilterSchema>;
 
@@ -30,7 +31,8 @@ const SORTABLE: Record<string, string> = {
  * paginação/ordenação eficientes mesmo com centenas de entidades.
  */
 export async function list(f: EntityFilter, onlyId?: string): Promise<Paginated<EntitySummary>> {
-  const conds: Prisma.Sql[] = [Prisma.sql`e."deletedAt" IS NULL`];
+  // SQL cru: o filtro de organização é obrigatório (a extensão do Prisma não cobre $queryRaw).
+  const conds: Prisma.Sql[] = [Prisma.sql`e."deletedAt" IS NULL`, Prisma.sql`e."organizationId" = ${currentOrgId()}`];
   if (onlyId) conds.push(Prisma.sql`e.id = ${onlyId}`);
   if (f.q) {
     const like = `%${f.q}%`;
@@ -69,7 +71,8 @@ export async function list(f: EntityFilter, onlyId?: string): Promise<Paginated<
       (SELECT ds."lastSyncStatus" FROM data_sources ds WHERE ds."entityId" = e.id AND ds."deletedAt" IS NULL ORDER BY ds."lastSyncAt" DESC NULLS LAST LIMIT 1) AS last_sync_status,
       (SELECT COUNT(*) FROM contracts c WHERE c."entityId" = e.id AND c."deletedAt" IS NULL)::int AS contract_count,
       (SELECT COUNT(*) FROM invoices i WHERE i."entityId" = e.id AND i."deletedAt" IS NULL)::int AS invoice_count,
-      (SELECT COUNT(*) FROM data_sources ds WHERE ds."entityId" = e.id AND ds."deletedAt" IS NULL)::int AS source_count
+      (SELECT COUNT(*) FROM data_sources ds WHERE ds."entityId" = e.id AND ds."deletedAt" IS NULL)::int AS source_count,
+      (SELECT COUNT(*) FROM contracts c WHERE c."entityId" = e.id AND c."deletedAt" IS NULL AND c.status = 'ACTIVE')::int AS active_contract_count
     FROM entities e
     ${where}
     ${order}
@@ -103,6 +106,11 @@ export async function list(f: EntityFilter, onlyId?: string): Promise<Paginated<
     contractCount: Number(r['contract_count'] ?? 0),
     invoiceCount: Number(r['invoice_count'] ?? 0),
     sourceCount: Number(r['source_count'] ?? 0),
+    ibgeCode: (r['ibgeCode'] as string | null) ?? null,
+    segment: (r['segment'] as string | null) ?? null,
+    partnerId: (r['partnerId'] as string | null) ?? null,
+    healthScore: r['healthScore'] === null || r['healthScore'] === undefined ? null : Number(r['healthScore']),
+    lifecycle: Number(r['active_contract_count'] ?? 0) > 0 ? 'CLIENTE' : Number(r['contract_count'] ?? 0) > 0 || Number(r['invoice_count'] ?? 0) > 0 ? 'EX_CLIENTE' : 'LEAD',
   }));
   return { items, total: count, page: f.page, pageSize: f.pageSize };
 }
@@ -123,7 +131,7 @@ export async function get(id: string) {
 }
 
 export async function create(ctx: Ctx, input: z.infer<typeof createEntitySchema>) {
-  const entity = await prisma.entity.create({ data: { ...input, uf: input.uf.toUpperCase() } });
+  const entity = await prisma.entity.create({ data: { ...input, organizationId: currentOrgId(), uf: input.uf.toUpperCase() } });
   await audit(ctx, { action: 'CREATE', resource: 'entity', resourceId: entity.id, after: entity });
   return entity;
 }
@@ -163,7 +171,7 @@ export async function addDataSource(ctx: Ctx, entityId: string, input: z.infer<t
   if (isAdoisPartnerUrl(input.url) && !(input.config as { entityKey?: string } | null | undefined)?.entityKey) {
     throw badRequest('Este é um link de parceiro da Adois (várias entidades). Use "Importar link de parceiro" em Entidades.');
   }
-  const ds = await prisma.dataSource.create({ data: { entityId, ...input, provider, label: input.label ?? providerLabel(provider), config: input.config as Prisma.InputJsonValue | undefined } });
+  const ds = await prisma.dataSource.create({ data: { organizationId: currentOrgId(), entityId, ...input, provider, label: input.label ?? providerLabel(provider), config: input.config as Prisma.InputJsonValue | undefined } });
   await audit(ctx, { action: 'CREATE', resource: 'dataSource', resourceId: ds.id, after: ds });
   return ds;
 }
@@ -190,7 +198,7 @@ export async function listContacts(entityId: string) {
 
 export async function addContact(ctx: Ctx, entityId: string, input: z.infer<typeof createContactSchema>) {
   await ensureEntity(entityId);
-  const c = await prisma.contact.create({ data: { entityId, ...input } });
+  const c = await prisma.contact.create({ data: { organizationId: currentOrgId(), entityId, ...input } });
   await audit(ctx, { action: 'CREATE', resource: 'contact', resourceId: c.id, after: { entityId, name: c.name, role: c.role } });
   return c;
 }
@@ -240,7 +248,7 @@ export async function importBatch(ctx: Ctx, file: ImportFile) {
     const shortName = `${row.tipo} ${row.entidade}`.toUpperCase();
     const name = row.nome_completo?.trim() || defaultFullName(row.tipo, row.entidade);
     const existing = await prisma.entity.findUnique({ where: { type_municipality_uf: { type: row.tipo, municipality, uf: row.uf } } });
-    const entity = existing ?? (await prisma.entity.create({ data: { type: row.tipo, name, shortName, municipality, uf: row.uf } }));
+    const entity = existing ?? (await prisma.entity.create({ data: { organizationId: currentOrgId(), type: row.tipo, name, shortName, municipality, uf: row.uf } }));
     if (existing) result.reused += 1;
     else result.created += 1;
     const url = row.url.trim();
@@ -255,7 +263,7 @@ export async function importBatch(ctx: Ctx, file: ImportFile) {
     }
     const ds = await prisma.dataSource.findFirst({ where: { provider, url, entityId: entity.id, deletedAt: null } });
     if (!ds) {
-      await prisma.dataSource.create({ data: { entityId: entity.id, provider, url, label: providerLabel(provider) } });
+      await prisma.dataSource.create({ data: { organizationId: currentOrgId(), entityId: entity.id, provider, url, label: providerLabel(provider) } });
       result.sourcesCreated += 1;
     }
   }
@@ -298,7 +306,7 @@ async function importInvoiceRows(rows: Array<Record<string, string>>): Promise<{
     const issueDate = parseBrDate(r['emissao'] ?? '');
     const inv = await prisma.invoice.create({
       data: {
-        entityId, number, contractId: contract?.id ?? null, competenceMonth: competence.month, competenceYear: competence.year,
+        organizationId: currentOrgId(), entityId, number, contractId: contract?.id ?? null, competenceMonth: competence.month, competenceYear: competence.year,
         amount: new Prisma.Decimal(toDecimalString(amount)), issueDate: issueDate ? new Date(`${issueDate}T00:00:00Z`) : null,
         status, paidAt: paidAt ? new Date(`${paidAt}T00:00:00Z`) : null, paidAmount: status === 'PAID' ? new Prisma.Decimal(toDecimalString(amount)) : null,
         description: (r['descricao'] ?? '').trim() || null, origin: 'IMPORT', firstSeenAt: now, lastSeenAt: now,
@@ -338,14 +346,14 @@ export async function importPartner(ctx: Ctx, url: string): Promise<ImportPartne
     let entity = candidates.find((e) => normalizeKey(e.municipality) === normalizeKey(g.municipality)) ?? null;
     const created = !entity;
     if (!entity) {
-      entity = await prisma.entity.create({ data: { type: g.type, name: g.name, shortName: g.shortName, municipality: g.municipality, uf: g.uf, notes: `Cadastrada pelo link de parceiro ${discovered.company ?? 'Adois'}` } });
+      entity = await prisma.entity.create({ data: { organizationId: currentOrgId(), type: g.type, name: g.name, shortName: g.shortName, municipality: g.municipality, uf: g.uf, notes: `Cadastrada pelo link de parceiro ${discovered.company ?? 'Adois'}` } });
       await audit(ctx, { action: 'CREATE', resource: 'entity', resourceId: entity.id, after: { ...entity, via: 'importPartner' } });
     }
     let ds = await prisma.dataSource.findFirst({ where: { provider: 'ADOIS_PORTAL', url, entityId: entity.id, deletedAt: null } });
     const sourceCreated = !ds;
     if (!ds) {
       ds = await prisma.dataSource.create({
-        data: { entityId: entity.id, provider: 'ADOIS_PORTAL', url, label: `Portal Adois — parceiro ${discovered.company ?? ''}`.trim(), externalEntityType: '2', config: { partner: true, entityKey: g.key } },
+        data: { organizationId: currentOrgId(), entityId: entity.id, provider: 'ADOIS_PORTAL', url, label: `Portal Adois — parceiro ${discovered.company ?? ''}`.trim(), externalEntityType: '2', config: { partner: true, entityKey: g.key } },
       });
       await audit(ctx, { action: 'CREATE', resource: 'dataSource', resourceId: ds.id, after: ds });
     }
@@ -417,10 +425,10 @@ export async function importLink(ctx: Ctx, url: string): Promise<ImportLinkResul
   let entity = candidates.find((e) => normalizeKey(e.municipality) === normalizeKey(info.municipality)) ?? null;
   const created = !entity;
   if (!entity) {
-    entity = await prisma.entity.create({ data: { type: info.type, name: info.name, shortName: info.shortName, municipality: info.municipality, uf, logoUrl: snapshot.entity.logoUrl } });
+    entity = await prisma.entity.create({ data: { organizationId: currentOrgId(), type: info.type, name: info.name, shortName: info.shortName, municipality: info.municipality, uf, logoUrl: snapshot.entity.logoUrl } });
     await audit(ctx, { action: 'CREATE', resource: 'entity', resourceId: entity.id, after: { ...entity, via: 'importLink' } });
   }
-  const ds = await prisma.dataSource.create({ data: { entityId: entity.id, provider: providerKey, url, label: providerLabel(providerKey), externalEntityCode: snapshot.entity.externalCode, externalEntityType: snapshot.entity.externalType } });
+  const ds = await prisma.dataSource.create({ data: { organizationId: currentOrgId(), entityId: entity.id, provider: providerKey, url, label: providerLabel(providerKey), externalEntityCode: snapshot.entity.externalCode, externalEntityType: snapshot.entity.externalType } });
   await audit(ctx, { action: 'CREATE', resource: 'dataSource', resourceId: ds.id, after: ds });
   return { kind: 'entity', company: null, unassigned: 0, warnings, entities: [{ id: entity.id, shortName: entity.shortName ?? entity.name, name: entity.name, created, sourceCreated: true, contractCodes, invoices: snapshot.invoices.length, pending: pending.length, pendingAmount }] };
 }
@@ -476,4 +484,41 @@ async function parseSheets(file: ImportFile): Promise<{ entities: Array<Record<s
     return obj;
   });
   return classify([{ name: 'csv', headers, rows }]);
+}
+
+// ---------------- Cadastro Público: importação IBGE ----------------
+
+export interface IbgeImportPreviewRow { ibgeCode: string; municipality: string; uf: string; type: 'PM' | 'CM'; name: string; shortName: string; existingId: string | null; existingName: string | null }
+export interface IbgeImportResult { uf: string; municipalities: number; rows: IbgeImportPreviewRow[]; toCreate: number; existing: number; created: number; dryRun: boolean }
+
+/**
+ * Importa os municípios de uma UF (IBGE) como entidades LEAD (sem link). Com `dryRun` devolve só a prévia.
+ * Chave de duplicidade: tipo + município normalizado + UF (mesma regra do Importar entidade). Preenche `ibgeCode`
+ * nas entidades já existentes que ainda não o tinham.
+ */
+export async function importIbge(ctx: Ctx, input: { uf: string; types: Array<'PM' | 'CM'>; dryRun: boolean; minPopulation?: number }): Promise<IbgeImportResult> {
+  const uf = input.uf.toUpperCase();
+  const munis = await fetchIbgeMunicipalities(uf, { timeoutMs: 20_000, userAgent: process.env['SYNC_USER_AGENT'] ?? 'SiowSystem/1.0' });
+  const existing = await prisma.entity.findMany({ where: { deletedAt: null, uf }, select: { id: true, type: true, name: true, municipality: true, ibgeCode: true } });
+  const byKey = new Map(existing.map((e) => [`${e.type}|${normalizeKey(e.municipality)}`, e]));
+  const rows: IbgeImportPreviewRow[] = [];
+  for (const m of munis) {
+    for (const type of input.types) {
+      const ex = byKey.get(`${type}|${normalizeKey(m.name)}`) ?? null;
+      const name = `${type === 'PM' ? 'PREFEITURA MUNICIPAL DE' : 'CÂMARA MUNICIPAL DE'} ${m.name.toUpperCase()}`;
+      rows.push({ ibgeCode: m.ibgeCode, municipality: m.name, uf, type, name, shortName: `${type} ${m.name.toUpperCase()}`, existingId: ex?.id ?? null, existingName: ex?.name ?? null });
+    }
+  }
+  const toCreate = rows.filter((r) => !r.existingId);
+  let created = 0;
+  if (!input.dryRun) {
+    for (const r of toCreate) {
+      await prisma.entity.create({ data: { organizationId: currentOrgId(), type: r.type, name: r.name, shortName: r.shortName, municipality: r.municipality, uf, ibgeCode: r.ibgeCode, segment: r.type, notes: `Cadastrada como lead a partir do IBGE (${uf}) em ${new Date().toLocaleDateString('pt-BR')}. Sem link do portal.` } });
+      created += 1;
+    }
+    // preenche ibgeCode nas existentes sem código
+    for (const r of rows) if (r.existingId) { const ex = existing.find((e) => e.id === r.existingId); if (ex && !ex.ibgeCode) await prisma.entity.update({ where: { id: ex.id }, data: { ibgeCode: r.ibgeCode } }); }
+    await audit(ctx, { action: 'IMPORT', resource: 'entity', after: { source: 'IBGE', uf, types: input.types, created, existing: rows.length - toCreate.length } });
+  }
+  return { uf, municipalities: munis.length, rows, toCreate: toCreate.length, existing: rows.length - toCreate.length, created, dryRun: input.dryRun };
 }
