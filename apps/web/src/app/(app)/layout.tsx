@@ -2,16 +2,17 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, FileBadge, FileBarChart, LayoutDashboard, RefreshCw, Settings } from 'lucide-react';
+import { Briefcase, Building2, FileBadge, FileBarChart, LayoutDashboard, RefreshCw, Settings } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { GlobalSearch } from '@/components/global-search';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { QuickSearch } from '@/components/quick-search';
 
-/** Menu horizontal do protótipo aprovado: somente estes 6 itens, cada um filtrado por permissão. */
+/** Menu horizontal do protótipo aprovado + Comercial (CRM, Fase 2); cada item filtrado por permissão. */
 const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean }> = [
   { href: '/financeiro', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/financeiro' },
+  { href: '/comercial', label: 'Comercial', icon: Briefcase, perms: ['crm.read'], match: (p) => p.startsWith('/comercial') },
   {
     href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'],
     match: (p) => ['/financeiro/entidades', '/financeiro/alarmes', '/financeiro/notas', '/financeiro/contratos', '/financeiro/agenda', '/financeiro/cobrancas', '/financeiro/ordens-de-servico'].some((x) => p.startsWith(x)),

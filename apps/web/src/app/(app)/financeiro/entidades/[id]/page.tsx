@@ -14,6 +14,8 @@ import { ServiceOrdersPanel } from '@/components/panels/service-orders-panel';
 import { ContactsPanel } from '@/components/panels/contacts-panel';
 import { PublicAgentsPanel } from '@/components/panels/public-agents-panel';
 import { TimelinePanel } from '@/components/panels/timeline-panel';
+import { OpportunitiesTable } from '@/components/crm/opportunities-table';
+import { OpportunityForm } from '@/components/crm/opportunity-form';
 import { SyncStatusBadge } from '@/components/status';
 import { Stat, Tabs, useToast } from '@/components/ui';
 
@@ -33,6 +35,7 @@ const TABS = [
   { key: 'agenda', label: 'Agenda' },
   { key: 'orders', label: 'Ordens de serviço' },
   { key: 'contacts', label: 'Contatos' },
+  { key: 'comercial', label: 'Comercial' },
   { key: 'timeline', label: 'Linha do tempo' },
 ];
 
@@ -50,6 +53,7 @@ function EntityView() {
   const [tab, setTabState] = useState(TABS.some((t) => t.key === initial) ? initial! : 'overview');
   const [newTask, setNewTask] = useState(false);
   const [chargeId, setChargeId] = useState<string | null>(null);
+  const [newOpp, setNewOpp] = useState(false);
   const [toast, showToast] = useToast();
   const { data: e } = useQuery({ queryKey: ['entity', id], queryFn: () => api<EntityDetail>(`/financeiro/entities/${id}`) });
 
@@ -143,6 +147,13 @@ function EntityView() {
       {tab === 'agenda' && <TasksPanel key={newTask ? 'new' : 'list'} entityId={id} autoCreate={newTask} />}
       {tab === 'orders' && <ServiceOrdersPanel entityId={id} contracts={e.contracts} />}
       {tab === 'contacts' && <><ContactsPanel entityId={id} /><PublicAgentsPanel entityId={id} /></>}
+      {tab === 'comercial' && (
+        <div>
+          <div className="row between" style={{ marginBottom: 8 }}><span className="small muted">Oportunidades desta entidade (CRM Comercial).</span>{can('crm.write') && <button className="btn p sm" onClick={() => setNewOpp(true)}>+ Nova oportunidade</button>}</div>
+          {can('crm.read') ? <OpportunitiesTable entityId={id} compact /> : <p className="muted small">Sem permissão para ver o Comercial.</p>}
+          <OpportunityForm open={newOpp} entityId={id} onClose={() => setNewOpp(false)} onSaved={(o) => { setNewOpp(false); router.push(`/comercial/oportunidades/${o.id}`); }} />
+        </div>
+      )}
       {tab === 'timeline' && <TimelinePanel entityId={id} />}
 
       <InvoiceDialog id={chargeId} initialTab="collection" onClose={() => setChargeId(null)} />

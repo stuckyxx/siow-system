@@ -17,10 +17,11 @@ const include = {
   serviceOrder: { select: { id: true, competenceMonth: true, competenceYear: true, status: true } },
   assignee: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
+  opportunity: { select: { id: true, title: true, status: true } },
 } satisfies Prisma.FinancialTaskInclude;
 
 export async function list(f: z.infer<typeof taskListFilterSchema>) {
-  const where: Prisma.FinancialTaskWhereInput = { deletedAt: null, entityId: f.entityId, status: f.status, type: f.type, priority: f.priority };
+  const where: Prisma.FinancialTaskWhereInput = { deletedAt: null, entityId: f.entityId, status: f.status, type: f.type, priority: f.priority, module: f.module, opportunityId: f.opportunityId };
   if (f.assigneeUserId === 'unassigned') where.assigneeUserId = null;
   else if (f.assigneeUserId) where.assigneeUserId = f.assigneeUserId;
   if (f.dueFrom || f.dueTo) where.dueDate = { gte: f.dueFrom ? isoToDate(f.dueFrom) : undefined, lte: f.dueTo ? isoToDate(f.dueTo) : undefined };
@@ -36,9 +37,9 @@ export async function list(f: z.infer<typeof taskListFilterSchema>) {
 }
 
 /** Visão de agenda: tarefas agrupadas por dia num intervalo. */
-export async function calendar(from: string, to: string, assigneeUserId?: string, entityId?: string) {
+export async function calendar(from: string, to: string, assigneeUserId?: string, entityId?: string, module?: string) {
   const items = await prisma.financialTask.findMany({
-    where: { deletedAt: null, dueDate: { gte: isoToDate(from), lte: isoToDate(to) }, assigneeUserId, entityId },
+    where: { deletedAt: null, dueDate: { gte: isoToDate(from), lte: isoToDate(to) }, assigneeUserId, entityId, module },
     include,
     orderBy: [{ dueDate: 'asc' }, { dueTime: 'asc' }],
   });
@@ -62,13 +63,21 @@ export async function create(ctx: Ctx, input: z.infer<typeof createTaskSchema>) 
       organizationId: currentOrgId(),
       ...input,
       dueDate: isoToDate(input.dueDate),
+      module: input.module ?? (input.opportunityId ? 'COMERCIAL' : 'FINANCEIRO'),
       createdByUserId: ctx.user.id,
       events: { create: { action: 'CREATED', userId: ctx.user.id, toValue: input.assigneeUserId ?? null } },
     },
     include,
   });
   await audit(ctx, { action: 'CREATE', resource: 'task', resourceId: t.id, after: t });
+  if (t.opportunityId) await touchOpportunity(t.opportunityId, ctx.user.id, 'ACTIVITY_CREATED', t.title);
   return t;
+}
+
+/** Atividade ligada a uma oportunidade: registra o evento e atualiza `lastActivityAt` (regra de oportunidade parada). */
+async function touchOpportunity(opportunityId: string, userId: string, action: string, notes: string): Promise<void> {
+  await prisma.opportunity.updateMany({ where: { id: opportunityId }, data: { lastActivityAt: new Date() } });
+  await prisma.opportunityEvent.create({ data: { opportunityId, userId, action, notes } });
 }
 
 export async function update(ctx: Ctx, id: string, input: z.infer<typeof updateTaskSchema>) {
@@ -88,6 +97,7 @@ export async function update(ctx: Ctx, id: string, input: z.infer<typeof updateT
     include,
   });
   await audit(ctx, { action: 'UPDATE', resource: 'task', resourceId: id, before: { status: before.status, assigneeUserId: before.assigneeUserId, dueDate: before.dueDate }, after: { status: t.status, assigneeUserId: t.assigneeUserId, dueDate: t.dueDate } });
+  if (t.opportunityId && input.status === 'DONE' && before.status !== 'DONE') await touchOpportunity(t.opportunityId, ctx.user.id, 'ACTIVITY_DONE', t.title);
   return t;
 }
 

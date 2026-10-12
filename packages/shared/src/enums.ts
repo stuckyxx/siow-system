@@ -244,3 +244,24 @@ export const isAdoisPartnerUrl = (url: string): boolean => {
 export const DEFAULT_ORGANIZATION_ID = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001';
 export const DEFAULT_ORGANIZATION_SLUG = 'siow-system-tecnologia';
 export const DEFAULT_ORGANIZATION_NAME = 'Siow System Tecnologia';
+
+// ---------- CRM Comercial (Fase 2) ----------
+export const OPPORTUNITY_STATUSES = ['OPEN', 'WON', 'LOST'] as const;
+export type OpportunityStatus = (typeof OPPORTUNITY_STATUSES)[number];
+export const OPPORTUNITY_STATUS_LABELS: Record<OpportunityStatus, string> = { OPEN: 'Em andamento', WON: 'Ganha', LOST: 'Perdida' };
+export const STAGE_KINDS = ['OPEN', 'WON', 'LOST'] as const;
+export type StageKind = (typeof STAGE_KINDS)[number];
+export const RECURRENCES = ['MONTHLY', 'ONE_TIME', 'YEARLY'] as const;
+export type Recurrence = (typeof RECURRENCES)[number];
+export const RECURRENCE_LABELS: Record<Recurrence, string> = { MONTHLY: 'Mensal', ONE_TIME: 'Único', YEARLY: 'Anual' };
+export const OPPORTUNITY_SOURCES = ['PROSPECCAO', 'INDICACAO', 'PARCEIRO', 'LICITACAO', 'RENOVACAO', 'INBOUND', 'OUTRO'] as const;
+export type OpportunitySource = (typeof OPPORTUNITY_SOURCES)[number];
+export const OPPORTUNITY_SOURCE_LABELS: Record<OpportunitySource, string> = { PROSPECCAO: 'Prospecção', INDICACAO: 'Indicação', PARCEIRO: 'Parceiro', LICITACAO: 'Licitação', RENOVACAO: 'Renovação', INBOUND: 'Contato recebido', OUTRO: 'Outro' };
+export const PROPOSAL_STATUSES = ['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'SUPERSEDED'] as const;
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = { DRAFT: 'Rascunho', SENT: 'Enviada', ACCEPTED: 'Aceita', REJECTED: 'Recusada', SUPERSEDED: 'Substituída' };
+export const GOAL_METRICS = ['WON_AMOUNT', 'WON_COUNT', 'ACTIVITIES'] as const;
+export type GoalMetric = (typeof GOAL_METRICS)[number];
+export const GOAL_METRIC_LABELS: Record<GoalMetric, string> = { WON_AMOUNT: 'Valor ganho (R$)', WON_COUNT: 'Oportunidades ganhas', ACTIVITIES: 'Atividades concluídas' };
+/** Tipos de tarefa que contam como atividade comercial na agenda única. */
+export const COMMERCIAL_TASK_TYPES = ['COMMERCIAL_FOLLOWUP', 'VISIT', 'MEETING', 'CALL', 'RENEWAL'] as const;

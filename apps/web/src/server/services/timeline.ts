@@ -8,7 +8,7 @@ import { prisma } from '../db.js';
 const INVOICE_EVENT_LABEL: Record<string, string> = { CREATED: 'Nota registrada', STATUS_CHANGED: 'Situação da nota alterada', MANUAL_OVERRIDE: 'Alteração manual', CONFLICT_DETECTED: 'Conflito com a fonte', CONFLICT_RESOLVED: 'Conflito resolvido', RECONCILED: 'Nota reconciliada', NOTE: 'Observação', FIELD_CHANGED: 'Campo alterado', MISSING_FROM_SOURCE: 'Nota sumiu da fonte', REAPPEARED: 'Nota voltou à fonte' };
 
 export async function timeline(entityId: string, limit = 300): Promise<TimelineEvent[]> {
-  const [invoiceEvents, contracts, runs, tasks, attempts, documents, alarms, agents, audits, notifications] = await Promise.all([
+  const [invoiceEvents, contracts, runs, tasks, attempts, documents, alarms, agents, audits, notifications, opportunities] = await Promise.all([
     prisma.invoiceEvent.findMany({ where: { invoice: { entityId } }, include: { invoice: { select: { number: true, amount: true } }, user: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 150 }),
     prisma.contract.findMany({ where: { entityId, deletedAt: null }, include: { amendments: true }, orderBy: { createdAt: 'desc' } }),
     prisma.syncRun.findMany({ where: { entityId, status: { in: ['SUCCESS', 'PARTIAL', 'FAILED'] } }, orderBy: { startedAt: 'desc' }, take: 40, include: { requestedBy: { select: { name: true } } } }),
@@ -19,6 +19,7 @@ export async function timeline(entityId: string, limit = 300): Promise<TimelineE
     prisma.publicAgent.findMany({ where: { entityId }, orderBy: { createdAt: 'desc' } }),
     prisma.auditLog.findMany({ where: { resource: 'entity', resourceId: entityId }, include: { user: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 40 }),
     prisma.notification.findMany({ where: { entityId }, orderBy: { createdAt: 'desc' }, take: 60 }),
+    prisma.opportunity.findMany({ where: { entityId, deletedAt: null }, include: { stage: true, events: { orderBy: { createdAt: 'desc' }, take: 30 }, owner: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 30 }),
   ]);
   const out: TimelineEvent[] = [];
   const push = (e: TimelineEvent) => out.push(e);
@@ -34,6 +35,8 @@ export async function timeline(entityId: string, limit = 300): Promise<TimelineE
   for (const a of alarms) push({ id: `alarm-${a.id}`, module: 'FINANCEIRO', kind: a.deletedAt ? 'ALARM_REMOVED' : 'ALARM', title: a.deletedAt ? `Alarme de emissão removido (dia ${a.dayOfMonth})` : `Alarme de emissão criado: dia ${a.dayOfMonth}`, detail: a.label, occurredAt: (a.deletedAt ?? a.createdAt).toISOString(), userName: null, referenceType: 'issuanceAlarm', referenceId: a.id });
   for (const ag of agents) push({ id: `agent-${ag.id}`, module: 'CADASTRO', kind: 'PUBLIC_AGENT', title: `Agente público: ${ag.name} (${ag.position})`, detail: ag.termEnd ? `mandato até ${ag.termEnd.toISOString().slice(0, 10).split('-').reverse().join('/')}` : null, occurredAt: ag.createdAt.toISOString(), userName: null, referenceType: 'publicAgent', referenceId: ag.id });
   for (const a of audits) push({ id: `aud-${a.id}`, module: 'AUDITORIA', kind: a.action, title: ({ CREATE: 'Entidade cadastrada', UPDATE: 'Cadastro da entidade alterado', SOFT_DELETE: 'Entidade excluída' } as Record<string, string>)[a.action] ?? a.action, detail: null, occurredAt: a.createdAt.toISOString(), userName: a.user?.name ?? null, referenceType: 'entity', referenceId: entityId });
+  const OPP_LABEL: Record<string, string> = { CREATED: 'Oportunidade criada', STAGE_CHANGED: 'Mudança de etapa', WON: 'Oportunidade ganha', LOST: 'Oportunidade perdida', REOPENED: 'Oportunidade reaberta', AMOUNT_CHANGED: 'Valor alterado', REASSIGNED: 'Responsável alterado', PROPOSAL_CREATED: 'Proposta criada', PROPOSAL_STATUS: 'Situação da proposta', ACTIVITY_CREATED: 'Atividade agendada', ACTIVITY_DONE: 'Atividade concluída', FORMALIZED: 'Contrato formalizado' };
+  for (const o of opportunities) for (const ev of o.events) push({ id: `opp-${ev.id}`, module: 'COMERCIAL', kind: ev.action, title: `${OPP_LABEL[ev.action] ?? ev.action}: ${o.title}`, detail: [ev.fromValue && ev.toValue ? `${ev.fromValue} → ${ev.toValue}` : ev.toValue, ev.notes].filter(Boolean).join(' · ') || null, occurredAt: ev.createdAt.toISOString(), userName: o.owner?.name ?? null, referenceType: 'opportunity', referenceId: o.id });
   for (const n of notifications) push({ id: `ntf-${n.id}`, module: 'FINANCEIRO', kind: n.type, title: n.title, detail: n.body, occurredAt: n.createdAt.toISOString(), userName: null, referenceType: n.referenceType, referenceId: n.referenceId });
   return out.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, limit);
 }

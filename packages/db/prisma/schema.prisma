@@ -49,6 +49,8 @@ model User {
   assignedTasks        FinancialTask[]      @relation("TaskAssignee")
   createdTasks         FinancialTask[]      @relation("TaskCreator")
   responsibleEntities  Entity[]
+  ownedOpportunities   Opportunity[]        @relation("OpportunityOwner")
+  goals                Goal[]
   responsibleContracts Contract[]
   collectionAttempts   CollectionAttempt[]
   collectionCases      CollectionCase[]
@@ -209,6 +211,7 @@ model Entity {
   issuanceAlarms  IssuanceAlarm[]
   publicAgents    PublicAgent[]
   healthSnapshots EntityHealthSnapshot[]
+  opportunities   Opportunity[]
 
   @@unique([organizationId, type, municipality, uf])
   @@index([municipality])
@@ -745,6 +748,7 @@ model FinancialTask {
   /// Agenda única: módulo de origem (FINANCEIRO, COMERCIAL, LICITACOES, CONTRATOS, ATENDIMENTO) e vínculos dos módulos futuros
   module          String        @default("FINANCEIRO")
   opportunityId   String?
+  opportunity     Opportunity?  @relation(fields: [opportunityId], references: [id])
   tenderId        String?
   ticketId        String?
   assigneeUserId  String?
@@ -767,6 +771,7 @@ model FinancialTask {
   @@index([entityId, dueDate])
   @@index([dueDate])
   @@index([organizationId])
+  @@index([opportunityId])
   @@map("financial_tasks")
 }
 
@@ -1095,6 +1100,7 @@ enum NotificationType {
   TASK_DUE
   SERVICE_ORDER_PENDING
   ISSUANCE_DUE
+  OPPORTUNITY_STALLED
   GENERIC
 }
 
@@ -1162,6 +1168,13 @@ model Organization {
   auditLogs        AuditLog[]
   publicAgents     PublicAgent[]
   healthSnapshots  EntityHealthSnapshot[]
+  pipelines        Pipeline[]
+  pipelineStages   PipelineStage[]
+  opportunities    Opportunity[]
+  opportunityItems OpportunityItem[]
+  proposals        Proposal[]
+  catalogItems     CatalogItem[]
+  goals            Goal[]
 
   @@map("organizations")
 }
@@ -1255,4 +1268,229 @@ model Setting {
   updatedAt       DateTime @updatedAt
 
   @@map("settings")
+}
+
+// =====================================================================
+// FASE 2 — CRM COMERCIAL (módulo 2): funil, oportunidades, propostas, catálogo, metas
+// =====================================================================
+
+enum OpportunityStatus {
+  OPEN
+  WON
+  LOST
+}
+
+/// Funil de vendas (configurável por organização; um padrão por organização).
+model Pipeline {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  isDefault      Boolean      @default(false)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  stages        PipelineStage[]
+  opportunities Opportunity[]
+
+  @@index([organizationId])
+  @@map("pipelines")
+}
+
+/// Etapa do funil. kind: OPEN (em andamento), WON (ganho), LOST (perdido). slaDays: dias sem movimentação para alertar.
+model PipelineStage {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  pipelineId     String
+  pipeline       Pipeline     @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name           String
+  position       Int
+  probability    Int          @default(0) // 0–100 (%)
+  kind           String       @default("OPEN") // OPEN | WON | LOST
+  slaDays        Int?
+  color          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  opportunities Opportunity[]
+
+  @@index([pipelineId, position])
+  @@index([organizationId])
+  @@map("pipeline_stages")
+}
+
+/// Oportunidade comercial (lead → ... → ganho/perdido). Valores: mensal (recorrente) e único; total = mensal × prazo + único.
+model Opportunity {
+  id                String            @id @default(uuid())
+  organizationId    String
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  entityId          String
+  entity            Entity            @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  pipelineId        String
+  pipeline          Pipeline          @relation(fields: [pipelineId], references: [id])
+  stageId           String
+  stage             PipelineStage     @relation(fields: [stageId], references: [id])
+  title             String
+  description       String?
+  monthlyAmount     Decimal?          @db.Decimal(14, 2)
+  oneTimeAmount     Decimal?          @db.Decimal(14, 2)
+  termMonths        Int?
+  totalAmount       Decimal?          @db.Decimal(14, 2)
+  probability       Int? // sobrescreve a da etapa quando informado
+  expectedCloseDate DateTime?         @db.Date
+  status            OpportunityStatus @default(OPEN)
+  source            String? // INDICACAO, PROSPECCAO, LICITACAO, RENOVACAO, PARCEIRO, OUTRO
+  ownerUserId       String?
+  owner             User?             @relation("OpportunityOwner", fields: [ownerUserId], references: [id])
+  partnerId         String?
+  lostReason        String?
+  lostNotes         String?
+  wonAt             DateTime?
+  lostAt            DateTime?
+  /// Contrato criado na formalização (Fase 2 cria em rascunho; nunca ativo sem confirmação)
+  contractId        String?
+  stageEnteredAt    DateTime          @default(now())
+  lastActivityAt    DateTime?
+  createdByUserId   String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deletedAt         DateTime?
+
+  items     OpportunityItem[]
+  events    OpportunityEvent[]
+  proposals Proposal[]
+  tasks     FinancialTask[]
+
+  @@index([organizationId, status])
+  @@index([entityId])
+  @@index([stageId])
+  @@index([ownerUserId])
+  @@index([expectedCloseDate])
+  @@map("opportunities")
+}
+
+/// Item da oportunidade (produto/serviço do catálogo ou livre). recurrence: MONTHLY | ONE_TIME | YEARLY
+model OpportunityItem {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  opportunityId  String
+  opportunity    Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  catalogItemId  String?
+  catalogItem    CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  description    String
+  quantity       Decimal      @default(1) @db.Decimal(12, 2)
+  unitPrice      Decimal      @db.Decimal(14, 2)
+  recurrence     String       @default("MONTHLY")
+  total          Decimal      @db.Decimal(14, 2)
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  @@index([opportunityId])
+  @@index([organizationId])
+  @@map("opportunity_items")
+}
+
+/// Histórico da oportunidade (criação, mudança de etapa, valor, responsável, ganho, perda, proposta, atividade).
+model OpportunityEvent {
+  id            String      @id @default(uuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  userId        String?
+  action        String
+  fromValue     String?
+  toValue       String?
+  notes         String?
+  createdAt     DateTime    @default(now())
+
+  @@index([opportunityId, createdAt])
+  @@map("opportunity_events")
+}
+
+/// Proposta comercial versionada (uma oportunidade pode ter várias versões; a mais recente é a vigente).
+model Proposal {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  opportunityId   String
+  opportunity     Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  version         Int
+  title           String
+  status          String       @default("DRAFT") // DRAFT | SENT | ACCEPTED | REJECTED | SUPERSEDED
+  validUntil      DateTime?    @db.Date
+  introduction    String?
+  terms           String?
+  notes           String?
+  totalMonthly    Decimal      @default(0) @db.Decimal(14, 2)
+  totalOneTime    Decimal      @default(0) @db.Decimal(14, 2)
+  sentAt          DateTime?
+  createdByUserId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  items ProposalItem[]
+
+  @@unique([opportunityId, version])
+  @@index([organizationId])
+  @@map("proposals")
+}
+
+model ProposalItem {
+  id          String   @id @default(uuid())
+  proposalId  String
+  proposal    Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal  @default(1) @db.Decimal(12, 2)
+  unitPrice   Decimal  @db.Decimal(14, 2)
+  recurrence  String   @default("MONTHLY")
+  total       Decimal  @db.Decimal(14, 2)
+  position    Int      @default(0)
+
+  @@index([proposalId])
+  @@map("proposal_items")
+}
+
+/// Catálogo de produtos e serviços da organização.
+model CatalogItem {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  code           String?
+  name           String
+  description    String?
+  category       String?
+  unitPrice      Decimal      @db.Decimal(14, 2)
+  recurrence     String       @default("MONTHLY")
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  opportunityItems OpportunityItem[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("catalog_items")
+}
+
+/// Meta comercial por período: individual (userId) ou da equipe (userId nulo). metric: WON_AMOUNT | WON_COUNT | ACTIVITIES
+model Goal {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  metric         String       @default("WON_AMOUNT")
+  periodStart    DateTime     @db.Date
+  periodEnd      DateTime     @db.Date
+  target         Decimal      @db.Decimal(14, 2)
+  label          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, periodStart])
+  @@map("goals")
 }

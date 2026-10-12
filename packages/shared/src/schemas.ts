@@ -267,6 +267,8 @@ export const createTaskSchema = z.object({
   contractId: uuid.optional().nullable(),
   invoiceId: uuid.optional().nullable(),
   serviceOrderId: uuid.optional().nullable(),
+  opportunityId: uuid.optional().nullable(),
+  module: z.enum(['FINANCEIRO', 'COMERCIAL', 'LICITACOES', 'CONTRATOS', 'ATENDIMENTO']).optional(),
   assigneeUserId: uuid.optional().nullable(),
   priority: z.enum(TASK_PRIORITIES).default('MEDIUM'),
   dueDate: isoDate,
@@ -285,6 +287,8 @@ export const taskListFilterSchema = paginationSchema.extend({
   dueFrom: isoDate.optional(),
   dueTo: isoDate.optional(),
   overdue: boolParam,
+  module: z.enum(['FINANCEIRO', 'COMERCIAL', 'LICITACOES', 'CONTRATOS', 'ATENDIMENTO']).optional(),
+  opportunityId: uuid.optional(),
 });
 
 // ---------- cobranças ----------
@@ -452,4 +456,117 @@ export const createOrganizationSchema = z.object({
   adminName: z.string().min(2).max(120),
   adminEmail: z.string().email(),
   adminPassword: z.string().min(12).max(200),
+});
+
+// ---------- CRM Comercial (Fase 2) ----------
+const money = z.union([z.number(), z.string()]).transform((v) => (typeof v === 'number' ? v.toFixed(2) : v.replace(/\./g, '').replace(',', '.').trim() || '0')).pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Valor inválido'));
+export const moneyInput = money;
+export const opportunityItemSchema = z.object({
+  catalogItemId: uuid.optional().nullable(),
+  description: z.string().min(1).max(300),
+  quantity: z.union([z.number(), z.string()]).transform((v) => Number(String(v).replace(',', '.'))).pipe(z.number().positive().max(1_000_000)).default(1),
+  unitPrice: money,
+  recurrence: z.enum(['MONTHLY', 'ONE_TIME', 'YEARLY']).default('MONTHLY'),
+});
+export const createOpportunitySchema = z.object({
+  entityId: uuid,
+  pipelineId: uuid.optional(),
+  stageId: uuid.optional(),
+  title: z.string().min(2).max(200),
+  description: z.string().max(4000).optional().nullable(),
+  monthlyAmount: money.optional().nullable(),
+  oneTimeAmount: money.optional().nullable(),
+  termMonths: z.coerce.number().int().min(1).max(120).optional().nullable(),
+  probability: z.coerce.number().int().min(0).max(100).optional().nullable(),
+  expectedCloseDate: isoDate.optional().nullable(),
+  source: z.enum(['PROSPECCAO', 'INDICACAO', 'PARCEIRO', 'LICITACAO', 'RENOVACAO', 'INBOUND', 'OUTRO']).optional().nullable(),
+  ownerUserId: uuid.optional().nullable(),
+  items: z.array(opportunityItemSchema).max(50).optional(),
+});
+export const updateOpportunitySchema = createOpportunitySchema.omit({ entityId: true, pipelineId: true, stageId: true }).partial();
+export const moveOpportunitySchema = z.object({ stageId: uuid, notes: z.string().max(2000).optional().nullable() });
+export const winOpportunitySchema = z.object({ notes: z.string().max(2000).optional().nullable() });
+export const loseOpportunitySchema = z.object({ reason: z.string().min(2).max(120), notes: z.string().max(2000).optional().nullable() });
+export const reopenOpportunitySchema = z.object({ stageId: uuid.optional(), notes: z.string().max(2000).optional().nullable() });
+export const opportunityListFilterSchema = paginationSchema.extend({
+  q: z.string().max(120).optional(),
+  entityId: uuid.optional(),
+  pipelineId: uuid.optional(),
+  stageId: uuid.optional(),
+  status: z.enum(['OPEN', 'WON', 'LOST']).optional(),
+  ownerUserId: z.union([uuid, z.literal('unassigned')]).optional(),
+  uf: z.string().length(2).optional(),
+  source: z.string().max(30).optional(),
+  stalled: boolParam,
+  closeFrom: isoDate.optional(),
+  closeTo: isoDate.optional(),
+  sortBy: z.enum(['updatedAt', 'createdAt', 'expectedCloseDate', 'totalAmount', 'title']).default('updatedAt'),
+});
+/** Formalização: cria o contrato EM RASCUNHO a partir da oportunidade ganha (nunca ativo sem confirmação explícita). */
+export const formalizeOpportunitySchema = z.object({
+  number: z.string().min(1).max(60),
+  object: z.string().max(500).optional().nullable(),
+  monthlyValue: money.optional().nullable(),
+  totalValue: money.optional().nullable(),
+  startDate: isoDate.optional().nullable(),
+  endDate: isoDate.optional().nullable(),
+  responsibleUserId: uuid.optional().nullable(),
+  notes: z.string().max(4000).optional().nullable(),
+  /** true = o usuário confirmou a contratação e o contrato nasce ATIVO; false (padrão) = rascunho */
+  activate: z.boolean().default(false),
+  /** Dia do mês para criar o alarme de emissão (opcional, só quando ativo) */
+  issuanceDay: z.coerce.number().int().min(1).max(31).optional().nullable(),
+});
+export const proposalItemSchema = z.object({
+  description: z.string().min(1).max(300),
+  quantity: z.union([z.number(), z.string()]).transform((v) => Number(String(v).replace(',', '.'))).pipe(z.number().positive().max(1_000_000)).default(1),
+  unitPrice: money,
+  recurrence: z.enum(['MONTHLY', 'ONE_TIME', 'YEARLY']).default('MONTHLY'),
+});
+export const createProposalSchema = z.object({
+  title: z.string().min(2).max(200),
+  validUntil: isoDate.optional().nullable(),
+  introduction: z.string().max(6000).optional().nullable(),
+  terms: z.string().max(6000).optional().nullable(),
+  notes: z.string().max(4000).optional().nullable(),
+  items: z.array(proposalItemSchema).min(1).max(50),
+  /** copiar itens da oportunidade quando `items` vier vazio não é permitido: o cliente envia os itens explicitamente */
+});
+export const updateProposalStatusSchema = z.object({ status: z.enum(['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED']) });
+export const catalogItemSchema = z.object({
+  code: z.string().max(40).optional().nullable(),
+  name: z.string().min(2).max(200),
+  description: z.string().max(2000).optional().nullable(),
+  category: z.string().max(80).optional().nullable(),
+  unitPrice: money,
+  recurrence: z.enum(['MONTHLY', 'ONE_TIME', 'YEARLY']).default('MONTHLY'),
+  isActive: z.boolean().default(true),
+});
+export const updateCatalogItemSchema = catalogItemSchema.partial();
+export const goalSchema = z.object({
+  userId: uuid.optional().nullable(),
+  metric: z.enum(['WON_AMOUNT', 'WON_COUNT', 'ACTIVITIES']).default('WON_AMOUNT'),
+  periodStart: isoDate,
+  periodEnd: isoDate,
+  target: money,
+  label: z.string().max(120).optional().nullable(),
+}).refine((g) => g.periodStart <= g.periodEnd, { message: 'Período inválido', path: ['periodEnd'] });
+export const pipelineStageInputSchema = z.object({
+  id: uuid.optional(),
+  name: z.string().min(1).max(60),
+  probability: z.coerce.number().int().min(0).max(100).default(0),
+  kind: z.enum(['OPEN', 'WON', 'LOST']).default('OPEN'),
+  slaDays: z.coerce.number().int().min(1).max(365).optional().nullable(),
+  color: z.string().max(20).optional().nullable(),
+});
+export const updatePipelineSchema = z.object({
+  name: z.string().min(2).max(80).optional(),
+  stages: z.array(pipelineStageInputSchema).min(3).max(15).optional(),
+});
+export const crmDashboardFilterSchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  ownerUserId: uuid.optional(),
+  pipelineId: uuid.optional(),
+  uf: z.string().length(2).optional(),
 });

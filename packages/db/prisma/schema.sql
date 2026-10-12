@@ -1502,3 +1502,240 @@ END $$;
 
 -- Fim. Próximo passo: POST /api/admin/bootstrap (cria permissões, papéis, admin, modelos e configurações).
 
+
+-- =====================================================================
+-- FASE 2 (CRM COMERCIAL) — idempotente. Somente tabelas/valores novos; nada do Financeiro é alterado.
+-- =====================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'OpportunityStatus') THEN
+    CREATE TYPE "OpportunityStatus" AS ENUM ('OPEN', 'WON', 'LOST');
+  END IF;
+END $$;
+-- ALTER TYPE ... ADD VALUE não roda dentro de transação: executar isolado quando a migração for aplicada por transação.
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'OPPORTUNITY_STALLED';
+
+CREATE TABLE IF NOT EXISTS "pipelines" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "isDefault" BOOLEAN NOT NULL DEFAULT false,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "pipelines_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "pipelines_organizationId_idx" ON "pipelines"("organizationId");
+
+CREATE TABLE IF NOT EXISTS "pipeline_stages" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "pipelineId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "position" INTEGER NOT NULL,
+  "probability" INTEGER NOT NULL DEFAULT 0,
+  "kind" TEXT NOT NULL DEFAULT 'OPEN',
+  "slaDays" INTEGER NULL,
+  "color" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "pipeline_stages_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "pipeline_stages_pipelineId_position_idx" ON "pipeline_stages"("pipelineId", "position");
+CREATE INDEX IF NOT EXISTS "pipeline_stages_organizationId_idx" ON "pipeline_stages"("organizationId");
+
+CREATE TABLE IF NOT EXISTS "opportunities" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "entityId" TEXT NOT NULL,
+  "pipelineId" TEXT NOT NULL,
+  "stageId" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "description" TEXT NULL,
+  "monthlyAmount" DECIMAL(14,2) NULL,
+  "oneTimeAmount" DECIMAL(14,2) NULL,
+  "termMonths" INTEGER NULL,
+  "totalAmount" DECIMAL(14,2) NULL,
+  "probability" INTEGER NULL,
+  "expectedCloseDate" DATE NULL,
+  "status" "OpportunityStatus" NOT NULL DEFAULT 'OPEN',
+  "source" TEXT NULL,
+  "ownerUserId" TEXT NULL,
+  "partnerId" TEXT NULL,
+  "lostReason" TEXT NULL,
+  "lostNotes" TEXT NULL,
+  "wonAt" TIMESTAMP(3) NULL,
+  "lostAt" TIMESTAMP(3) NULL,
+  "contractId" TEXT NULL,
+  "stageEnteredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lastActivityAt" TIMESTAMP(3) NULL,
+  "createdByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "opportunities_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "opportunities_organizationId_status_idx" ON "opportunities"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "opportunities_entityId_idx" ON "opportunities"("entityId");
+CREATE INDEX IF NOT EXISTS "opportunities_stageId_idx" ON "opportunities"("stageId");
+CREATE INDEX IF NOT EXISTS "opportunities_ownerUserId_idx" ON "opportunities"("ownerUserId");
+CREATE INDEX IF NOT EXISTS "opportunities_expectedCloseDate_idx" ON "opportunities"("expectedCloseDate");
+
+CREATE TABLE IF NOT EXISTS "catalog_items" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "code" TEXT NULL,
+  "name" TEXT NOT NULL,
+  "description" TEXT NULL,
+  "category" TEXT NULL,
+  "unitPrice" DECIMAL(14,2) NOT NULL,
+  "recurrence" TEXT NOT NULL DEFAULT 'MONTHLY',
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "catalog_items_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "catalog_items_organizationId_name_key" ON "catalog_items"("organizationId", "name");
+CREATE INDEX IF NOT EXISTS "catalog_items_organizationId_idx" ON "catalog_items"("organizationId");
+
+CREATE TABLE IF NOT EXISTS "opportunity_items" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "opportunityId" TEXT NOT NULL,
+  "catalogItemId" TEXT NULL,
+  "description" TEXT NOT NULL,
+  "quantity" DECIMAL(12,2) NOT NULL DEFAULT 1,
+  "unitPrice" DECIMAL(14,2) NOT NULL,
+  "recurrence" TEXT NOT NULL DEFAULT 'MONTHLY',
+  "total" DECIMAL(14,2) NOT NULL,
+  "position" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "opportunity_items_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "opportunity_items_opportunityId_idx" ON "opportunity_items"("opportunityId");
+CREATE INDEX IF NOT EXISTS "opportunity_items_organizationId_idx" ON "opportunity_items"("organizationId");
+
+CREATE TABLE IF NOT EXISTS "opportunity_events" (
+  "id" TEXT NOT NULL,
+  "opportunityId" TEXT NOT NULL,
+  "userId" TEXT NULL,
+  "action" TEXT NOT NULL,
+  "fromValue" TEXT NULL,
+  "toValue" TEXT NULL,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "opportunity_events_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "opportunity_events_opportunityId_createdAt_idx" ON "opportunity_events"("opportunityId", "createdAt");
+
+CREATE TABLE IF NOT EXISTS "proposals" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "opportunityId" TEXT NOT NULL,
+  "version" INTEGER NOT NULL,
+  "title" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'DRAFT',
+  "validUntil" DATE NULL,
+  "introduction" TEXT NULL,
+  "terms" TEXT NULL,
+  "notes" TEXT NULL,
+  "totalMonthly" DECIMAL(14,2) NOT NULL DEFAULT 0,
+  "totalOneTime" DECIMAL(14,2) NOT NULL DEFAULT 0,
+  "sentAt" TIMESTAMP(3) NULL,
+  "createdByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "proposals_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "proposals_opportunityId_version_key" ON "proposals"("opportunityId", "version");
+CREATE INDEX IF NOT EXISTS "proposals_organizationId_idx" ON "proposals"("organizationId");
+
+CREATE TABLE IF NOT EXISTS "proposal_items" (
+  "id" TEXT NOT NULL,
+  "proposalId" TEXT NOT NULL,
+  "description" TEXT NOT NULL,
+  "quantity" DECIMAL(12,2) NOT NULL DEFAULT 1,
+  "unitPrice" DECIMAL(14,2) NOT NULL,
+  "recurrence" TEXT NOT NULL DEFAULT 'MONTHLY',
+  "total" DECIMAL(14,2) NOT NULL,
+  "position" INTEGER NOT NULL DEFAULT 0,
+  CONSTRAINT "proposal_items_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "proposal_items_proposalId_idx" ON "proposal_items"("proposalId");
+
+CREATE TABLE IF NOT EXISTS "goals" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "userId" TEXT NULL,
+  "metric" TEXT NOT NULL DEFAULT 'WON_AMOUNT',
+  "periodStart" DATE NOT NULL,
+  "periodEnd" DATE NOT NULL,
+  "target" DECIMAL(14,2) NOT NULL,
+  "label" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "goals_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "goals_organizationId_periodStart_idx" ON "goals"("organizationId", "periodStart");
+CREATE INDEX IF NOT EXISTS "financial_tasks_opportunityId_idx" ON "financial_tasks"("opportunityId");
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pipelines_organizationId_fkey') THEN
+    ALTER TABLE "pipelines" ADD CONSTRAINT "pipelines_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pipeline_stages_organizationId_fkey') THEN
+    ALTER TABLE "pipeline_stages" ADD CONSTRAINT "pipeline_stages_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pipeline_stages_pipelineId_fkey') THEN
+    ALTER TABLE "pipeline_stages" ADD CONSTRAINT "pipeline_stages_pipelineId_fkey" FOREIGN KEY ("pipelineId") REFERENCES "pipelines"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunities_organizationId_fkey') THEN
+    ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunities_entityId_fkey') THEN
+    ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunities_pipelineId_fkey') THEN
+    ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_pipelineId_fkey" FOREIGN KEY ("pipelineId") REFERENCES "pipelines"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunities_stageId_fkey') THEN
+    ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_stageId_fkey" FOREIGN KEY ("stageId") REFERENCES "pipeline_stages"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunities_ownerUserId_fkey') THEN
+    ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'catalog_items_organizationId_fkey') THEN
+    ALTER TABLE "catalog_items" ADD CONSTRAINT "catalog_items_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunity_items_organizationId_fkey') THEN
+    ALTER TABLE "opportunity_items" ADD CONSTRAINT "opportunity_items_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunity_items_opportunityId_fkey') THEN
+    ALTER TABLE "opportunity_items" ADD CONSTRAINT "opportunity_items_opportunityId_fkey" FOREIGN KEY ("opportunityId") REFERENCES "opportunities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunity_items_catalogItemId_fkey') THEN
+    ALTER TABLE "opportunity_items" ADD CONSTRAINT "opportunity_items_catalogItemId_fkey" FOREIGN KEY ("catalogItemId") REFERENCES "catalog_items"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'opportunity_events_opportunityId_fkey') THEN
+    ALTER TABLE "opportunity_events" ADD CONSTRAINT "opportunity_events_opportunityId_fkey" FOREIGN KEY ("opportunityId") REFERENCES "opportunities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'proposals_organizationId_fkey') THEN
+    ALTER TABLE "proposals" ADD CONSTRAINT "proposals_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'proposals_opportunityId_fkey') THEN
+    ALTER TABLE "proposals" ADD CONSTRAINT "proposals_opportunityId_fkey" FOREIGN KEY ("opportunityId") REFERENCES "opportunities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'proposal_items_proposalId_fkey') THEN
+    ALTER TABLE "proposal_items" ADD CONSTRAINT "proposal_items_proposalId_fkey" FOREIGN KEY ("proposalId") REFERENCES "proposals"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'goals_organizationId_fkey') THEN
+    ALTER TABLE "goals" ADD CONSTRAINT "goals_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'financial_tasks_opportunityId_fkey') THEN
+    ALTER TABLE "financial_tasks" ADD CONSTRAINT "financial_tasks_opportunityId_fkey" FOREIGN KEY ("opportunityId") REFERENCES "opportunities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'goals_userId_fkey') THEN
+    ALTER TABLE "goals" ADD CONSTRAINT "goals_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;

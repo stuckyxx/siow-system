@@ -17,7 +17,7 @@ export function useAssignees() {
 }
 
 /** Agenda financeira — geral (spec §14/15) ou por entidade (§16). */
-export function TasksPanel({ entityId, compact, autoCreate }: { entityId?: string; compact?: boolean; autoCreate?: boolean }) {
+export function TasksPanel({ entityId, compact, autoCreate, opportunityId, module }: { entityId?: string; compact?: boolean; autoCreate?: boolean; opportunityId?: string; module?: string }) {
   const { can, user } = useAuth();
   const qc = useQueryClient();
   const { data: assignees } = useAssignees();
@@ -25,7 +25,7 @@ export function TasksPanel({ entityId, compact, autoCreate }: { entityId?: strin
   const [status, setStatus] = useState<string>(compact ? 'PENDING' : '');
   const [creating, setCreating] = useState(Boolean(autoCreate));
   const [editing, setEditing] = useState<TaskRow | null>(null);
-  const query = { entityId, assigneeUserId: assignee || undefined, status: status || undefined, pageSize: compact ? 8 : 100, sortDir: 'asc' as const };
+  const query = { entityId, opportunityId, module, assigneeUserId: assignee || undefined, status: status || undefined, pageSize: compact ? 8 : 100, sortDir: 'asc' as const };
   const { data } = useQuery({ queryKey: ['tasks', query], queryFn: () => api<Paginated<TaskRow>>('/financeiro/tasks', { query }) });
   const update = useMutation({ mutationFn: (v: { id: string; status: TaskStatus }) => api(`/financeiro/tasks/${v.id}`, { method: 'PATCH', body: { status: v.status } }), onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }) });
   const today = todayIso();
@@ -39,7 +39,7 @@ export function TasksPanel({ entityId, compact, autoCreate }: { entityId?: strin
             <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-40"><option value="">Todas as situações</option>{TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>)}</Select>
           </>
         )}
-        {can('tasks.manage') && <Button size={compact ? 'sm' : 'md'} className="ml-auto" onClick={() => setCreating(true)}>Nova tarefa</Button>}
+        {can('tasks.manage') && <Button size={compact ? 'sm' : 'md'} className="ml-auto" onClick={() => setCreating(true)}>{opportunityId ? 'Nova atividade' : 'Nova tarefa'}</Button>}
       </div>
       <Card>
         {!data ? <div className="p-4 text-sm text-ink-3">Carregando…</div> : data.items.length === 0 ? <div className="p-4"><Empty>Nenhuma tarefa</Empty></div> : (
@@ -61,22 +61,22 @@ export function TasksPanel({ entityId, compact, autoCreate }: { entityId?: strin
           </Table>
         )}
       </Card>
-      <TaskForm open={creating || Boolean(editing)} task={editing} entityId={entityId} onClose={() => { setCreating(false); setEditing(null); }} onSaved={() => { setCreating(false); setEditing(null); qc.invalidateQueries({ queryKey: ['tasks'] }); }} />
+      <TaskForm open={creating || Boolean(editing)} task={editing} entityId={entityId} opportunityId={opportunityId} module={module} onClose={() => { setCreating(false); setEditing(null); }} onSaved={() => { setCreating(false); setEditing(null); qc.invalidateQueries({ queryKey: ['tasks'] }); }} />
     </div>
   );
 }
 
-function TaskForm({ open, task, entityId, onClose, onSaved }: { open: boolean; task: TaskRow | null; entityId?: string; onClose: () => void; onSaved: () => void }) {
+function TaskForm({ open, task, entityId, opportunityId, module, onClose, onSaved }: { open: boolean; task: TaskRow | null; entityId?: string; opportunityId?: string; module?: string; onClose: () => void; onSaved: () => void }) {
   const { data: assignees } = useAssignees();
   const { data: entities } = useQuery({ queryKey: ['entities-lite'], queryFn: () => api<{ entities: Array<{ id: string; name: string; shortName: string | null }> }>('/financeiro/dashboard/filter-options'), enabled: !entityId });
-  const init = { title: task?.title ?? '', type: task?.type ?? 'CUSTOM', description: task?.description ?? '', entityId: task?.entity?.id ?? entityId ?? '', assigneeUserId: task?.assignee?.id ?? '', priority: task?.priority ?? 'MEDIUM', dueDate: task?.dueDate.slice(0, 10) ?? todayIso(), dueTime: task?.dueTime ?? '', status: task?.status ?? 'PENDING', notes: task?.notes ?? '' };
+  const init = { title: task?.title ?? '', type: task?.type ?? (opportunityId || module === 'COMERCIAL' ? 'COMMERCIAL_FOLLOWUP' : 'CUSTOM'), description: task?.description ?? '', entityId: task?.entity?.id ?? entityId ?? '', assigneeUserId: task?.assignee?.id ?? '', priority: task?.priority ?? 'MEDIUM', dueDate: task?.dueDate.slice(0, 10) ?? todayIso(), dueTime: task?.dueTime ?? '', status: task?.status ?? 'PENDING', notes: task?.notes ?? '' };
   const [f, setF] = useState(init);
   const [key, setKey] = useState<string | null>(null);
   if (open && key !== (task?.id ?? 'new')) { setKey(task?.id ?? 'new'); setF(init); }
   const m = useMutation({
     mutationFn: () => {
       const body = { ...f, entityId: f.entityId || null, assigneeUserId: f.assigneeUserId || null, description: f.description || null, dueTime: f.dueTime || null, notes: f.notes || null, title: f.title || TASK_TYPE_LABELS[f.type as TaskType] };
-      return task ? api(`/financeiro/tasks/${task.id}`, { method: 'PATCH', body }) : api('/financeiro/tasks', { method: 'POST', body: { ...body, status: undefined } });
+      return task ? api(`/financeiro/tasks/${task.id}`, { method: 'PATCH', body }) : api('/financeiro/tasks', { method: 'POST', body: { ...body, status: undefined, opportunityId: opportunityId ?? null, module: module ?? (opportunityId ? 'COMERCIAL' : undefined) } });
     },
     onSuccess: onSaved,
   });

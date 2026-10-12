@@ -45,6 +45,9 @@ export const PERMISSIONS: Record<string, string> = {
   'users.manage': 'Gerenciar usuários, papéis e permissões',
   'audit.read': 'Consultar auditoria',
   'settings.manage': 'Alterar configurações do sistema',
+  'crm.read': 'Visualizar funil, oportunidades, propostas e metas (Comercial)',
+  'crm.write': 'Criar/editar oportunidades, propostas e atividades comerciais',
+  'crm.manage': 'Configurar funil, catálogo e metas comerciais',
 };
 
 const ALL = Object.keys(PERMISSIONS);
@@ -65,6 +68,23 @@ export const ROLES: Array<{ name: string; description: string; permissions: stri
     permissions: [...READ_ONLY, 'reports.export', 'tasks.manage'],
   },
   { name: 'CONSULTA', description: 'Somente leitura', permissions: READ_ONLY },
+  {
+    name: 'COMERCIAL',
+    description: 'Equipe comercial: funil, oportunidades, propostas, cadastro e agenda',
+    permissions: ['crm.read', 'crm.write', 'entities.read', 'entities.write', 'contacts.read', 'contacts.write', 'contracts.read', 'tasks.read', 'tasks.manage', 'dashboard.read', 'documents.read', 'documents.write', 'reports.read'],
+  },
+];
+
+/** Funil padrão (PROMPT MESTRE v2, módulo 2); personalizável por organização depois de criado. */
+export const DEFAULT_PIPELINE_STAGES: Array<{ name: string; probability: number; kind: 'OPEN' | 'WON' | 'LOST'; slaDays: number | null }> = [
+  { name: 'Lead', probability: 5, kind: 'OPEN', slaDays: 15 },
+  { name: 'Contato realizado', probability: 15, kind: 'OPEN', slaDays: 15 },
+  { name: 'Qualificado', probability: 30, kind: 'OPEN', slaDays: 20 },
+  { name: 'Proposta', probability: 50, kind: 'OPEN', slaDays: 20 },
+  { name: 'Negociação', probability: 70, kind: 'OPEN', slaDays: 20 },
+  { name: 'Aguardando contratação', probability: 90, kind: 'OPEN', slaDays: 30 },
+  { name: 'Ganho', probability: 100, kind: 'WON', slaDays: null },
+  { name: 'Perdido', probability: 0, kind: 'LOST', slaDays: null },
 ];
 
 export const TEMPLATES = [
@@ -116,6 +136,8 @@ export const SETTINGS: Array<{ key: string; value: unknown; description: string 
   { key: 'sync.fetchInvoiceDocuments', value: false, description: 'Baixar automaticamente PDFs de notas durante a sincronização' },
   { key: 'company.name', value: 'Sua Empresa de Tecnologia', description: 'Nome usado em mensagens e relatórios' },
   { key: 'invoices.overdueAfterDays', value: 30, description: 'Dias após a emissão para considerar a nota em atraso' },
+  { key: 'crm.lossReasons', value: ['Preço', 'Concorrente', 'Sem orçamento', 'Sem interesse', 'Troca de gestão', 'Licitação perdida', 'Outro'], description: 'Motivos de perda de oportunidade (Comercial)' },
+  { key: 'crm.stalledDays', value: 15, description: 'Dias sem movimentação para considerar uma oportunidade parada (quando a etapa não define SLA)' },
 ];
 
 export const TASK_TYPE_LABELS: Record<TaskType, string> = {
@@ -254,6 +276,18 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions): Promise<
       create: { ...t, organizationId: opts.organizationId, isSystem: true },
     });
   }
+
+  log('→ funil comercial padrão');
+  const existingPipeline = await prisma.pipeline.findFirst({ where: { organizationId: opts.organizationId, deletedAt: null } });
+  if (!existingPipeline) {
+    await prisma.pipeline.create({
+      data: {
+        organizationId: opts.organizationId, name: 'Funil comercial', isDefault: true,
+        stages: { create: DEFAULT_PIPELINE_STAGES.map((st, i) => ({ organizationId: opts.organizationId, name: st.name, position: i + 1, probability: st.probability, kind: st.kind, slaDays: st.slaDays })) },
+      },
+    });
+    log('   criado com 8 etapas');
+  } else log('   já existe, mantido');
 
   log('→ configurações');
   for (const s of SETTINGS) {

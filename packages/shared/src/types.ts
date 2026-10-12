@@ -151,7 +151,8 @@ export interface AttentionItem {
     | 'RECONCILIATION'
     | 'SYNC_FAILED'
     | 'MISSING_INVOICE'
-    | 'ISSUANCE_DUE';
+    | 'ISSUANCE_DUE'
+    | 'OPPORTUNITY_STALLED';
   title: string;
   detail: string;
   entityId: string | null;
@@ -266,3 +267,38 @@ export interface TimelineEvent {
 }
 export interface HealthFactor { key: string; label: string; impact: number; detail: string }
 export interface EntityHealth { score: number | null; factors: HealthFactor[]; updatedAt: string | null; band: 'SAUDAVEL' | 'ATENCAO' | 'RISCO' | 'SEM_DADOS' }
+
+// ---------- CRM Comercial (Fase 2) ----------
+export interface PipelineStageRow { id: string; pipelineId: string; name: string; position: number; probability: number; kind: 'OPEN' | 'WON' | 'LOST'; slaDays: number | null; color: string | null }
+export interface PipelineRow { id: string; name: string; isDefault: boolean; isActive: boolean; stages: PipelineStageRow[] }
+export interface OpportunityItemRow { id: string; catalogItemId: string | null; description: string; quantity: string; unitPrice: string; recurrence: string; total: string; position: number }
+export interface OpportunityRow {
+  id: string; title: string; description: string | null; status: 'OPEN' | 'WON' | 'LOST';
+  entity: { id: string; name: string; shortName: string | null; type: string; municipality: string; uf: string };
+  pipelineId: string; stage: PipelineStageRow;
+  monthlyAmount: string | null; oneTimeAmount: string | null; termMonths: number | null; totalAmount: string | null;
+  probability: number | null; effectiveProbability: number; weightedAmount: string;
+  expectedCloseDate: string | null; source: string | null;
+  owner: { id: string; name: string } | null; lostReason: string | null; lostNotes: string | null;
+  wonAt: string | null; lostAt: string | null; contractId: string | null;
+  stageEnteredAt: string; daysInStage: number; stalled: boolean; lastActivityAt: string | null;
+  nextTask: { id: string; title: string; dueDate: string; status: string } | null;
+  proposalCount: number; openTaskCount: number;
+  createdAt: string; updatedAt: string;
+}
+export interface OpportunityEventRow { id: string; action: string; fromValue: string | null; toValue: string | null; notes: string | null; createdAt: string; userName: string | null }
+export interface ProposalItemRow { id: string; description: string; quantity: string; unitPrice: string; recurrence: string; total: string; position: number }
+export interface ProposalRow { id: string; opportunityId: string; version: number; title: string; status: string; validUntil: string | null; introduction: string | null; terms: string | null; notes: string | null; totalMonthly: string; totalOneTime: string; sentAt: string | null; createdAt: string; items: ProposalItemRow[] }
+export interface CatalogItemRow { id: string; code: string | null; name: string; description: string | null; category: string | null; unitPrice: string; recurrence: string; isActive: boolean }
+export interface GoalRow { id: string; userId: string | null; userName: string | null; metric: string; periodStart: string; periodEnd: string; target: string; label: string | null; achieved: string; percent: number }
+export interface CrmDashboard {
+  generatedAt: string;
+  period: { from: string; to: string };
+  cards: { open: number; openAmount: string; weightedAmount: string; wonCount: number; wonAmount: string; lostCount: number; conversionRate: number | null; stalled: number; activitiesDue: number; activitiesOverdue: number; avgCycleDays: number | null };
+  funnel: Array<{ stageId: string; name: string; kind: string; count: number; amount: string; stalled: number }>;
+  byOwner: Array<{ userId: string | null; name: string; open: number; won: number; wonAmount: string; lost: number }>;
+  lossReasons: Array<{ reason: string; count: number }>;
+  forecast: Array<{ month: string; expected: string; weighted: string; count: number }>;
+  goals: GoalRow[];
+  stalledList: Array<{ id: string; title: string; entityName: string; stageName: string; daysInStage: number; ownerName: string | null }>;
+}

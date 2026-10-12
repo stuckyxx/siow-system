@@ -9,6 +9,7 @@ import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { notifyDue } from './alarms.js';
 import { refreshHealthAll } from './health.js';
+import { stalled as stalledOpportunities } from './crm/opportunities.js';
 
 async function settingNumber(key: string, fallback: number): Promise<number> {
   const s = await prisma.setting.findUnique({ where: { key } });
@@ -23,6 +24,7 @@ export interface DailyChecksResult {
   tasks: { due: number; overdue: number };
   issuance: { due: number; late: number };
   health: { computed: number; withoutData: number };
+  opportunities: { stalled: number };
   durationMs: number;
 }
 
@@ -115,6 +117,20 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
   const issuance = await notifyDue(today);
   // ---- saúde do cliente ----
   const health = await refreshHealthAll(today);
+  // ---- oportunidades paradas (CRM): uma notificação por oportunidade e por semana, para o responsável ----
+  const stalledOpps = await stalledOpportunities();
+  const week = `${today.slice(0, 4)}-W${String(Math.ceil((new Date(today).getUTCDate() + new Date(`${today.slice(0, 7)}-01`).getUTCDay()) / 7)).padStart(2, '0')}-${today.slice(5, 7)}`;
+  for (const o of stalledOpps) {
+    await prisma.notification.upsert({
+      where: { dedupeKey: `OPPORTUNITY_STALLED:${o.id}:${week}` },
+      update: {},
+      create: {
+        organizationId: currentOrgId(), type: 'OPPORTUNITY_STALLED', userId: o.ownerUserId,
+        title: `Oportunidade parada há ${o.daysInStage} dias: ${o.title} (${o.entity.shortName ?? o.entity.name}, etapa ${o.stage.name})`,
+        entityId: o.entityId, referenceType: 'opportunity', referenceId: o.id, dedupeKey: `OPPORTUNITY_STALLED:${o.id}:${week}`,
+      },
+    });
+  }
 
   const result: DailyChecksResult = {
     date: today,
@@ -123,6 +139,7 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
     tasks: { due: tasks.length - overdue, overdue },
     issuance,
     health,
+    opportunities: { stalled: stalledOpps.length },
     durationMs: Date.now() - startedAt,
   };
   console.info('[cron] verificações diárias concluídas', result);
