@@ -1739,3 +1739,48 @@ DO $$ BEGIN
     ALTER TABLE "goals" ADD CONSTRAINT "goals_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- =====================================================================
+-- FASE 3 (GESTÃO DE CONTRATOS) — idempotente. Colunas novas opcionais em contracts/contract_amendments + contract_renewals.
+-- =====================================================================
+-- ALTER TYPE ... ADD VALUE não roda dentro de transação: executar isolado.
+ALTER TYPE "AmendmentKind" ADD VALUE IF NOT EXISTS 'ADJUSTMENT';
+ALTER TYPE "AmendmentKind" ADD VALUE IF NOT EXISTS 'EXTENSION';
+
+ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "opportunityId" TEXT NULL;
+ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "tenderId" TEXT NULL;
+ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "partnerId" TEXT NULL;
+ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "renewalNoticeDays" INTEGER NULL;
+ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "activatedAt" TIMESTAMP(3) NULL;
+ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "terminatedAt" DATE NULL;
+ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "terminationReason" TEXT NULL;
+ALTER TABLE "contract_amendments" ADD COLUMN IF NOT EXISTS "adjustmentIndex" TEXT NULL;
+ALTER TABLE "contract_amendments" ADD COLUMN IF NOT EXISTS "adjustmentPercent" DECIMAL(8,4) NULL;
+
+CREATE TABLE IF NOT EXISTS "contract_renewals" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "contractId" TEXT NOT NULL,
+  "endDate" DATE NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'OPEN',
+  "opportunityId" TEXT NULL,
+  "taskId" TEXT NULL,
+  "amendmentId" TEXT NULL,
+  "newContractId" TEXT NULL,
+  "notes" TEXT NULL,
+  "decidedAt" TIMESTAMP(3) NULL,
+  "decidedByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "contract_renewals_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "contract_renewals_contractId_endDate_key" ON "contract_renewals"("contractId", "endDate");
+CREATE INDEX IF NOT EXISTS "contract_renewals_organizationId_status_idx" ON "contract_renewals"("organizationId", "status");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contract_renewals_organizationId_fkey') THEN
+    ALTER TABLE "contract_renewals" ADD CONSTRAINT "contract_renewals_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contract_renewals_contractId_fkey') THEN
+    ALTER TABLE "contract_renewals" ADD CONSTRAINT "contract_renewals_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "contracts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

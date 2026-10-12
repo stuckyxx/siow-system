@@ -102,6 +102,8 @@ export interface DashboardCards {
   /** alarmes de emissão a vencer (dentro da antecedência) ou atrasados */
   issuanceDue: number;
   contractsExpiring: number;
+  /** renovações de contrato em aberto (Fase 3) */
+  renewalsOpen: number;
   certificatesExpiring: number;
   needsReconciliation: number;
 }
@@ -301,4 +303,32 @@ export interface CrmDashboard {
   forecast: Array<{ month: string; expected: string; weighted: string; count: number }>;
   goals: GoalRow[];
   stalledList: Array<{ id: string; title: string; entityName: string; stageName: string; daysInStage: number; ownerName: string | null }>;
+}
+
+// ---------- Gestão de Contratos (Fase 3) ----------
+export interface ContractFinancialStatus {
+  contractId: string;
+  status: ContractStatus;
+  monthlyValue: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  daysToEnd: number | null;
+  /** PREVISTO (calculado a partir do contrato): valor mensal vigente × meses restantes + total já esperado */
+  forecast: { monthly: string; remainingMonths: number; remainingAmount: string; expectedToDate: string; contractTotal: string | null };
+  /** FATURADO (notas emitidas, exceto canceladas) — fonte: Financeiro */
+  invoiced: { total: string; count: number; lastAt: string | null };
+  /** RECEBIDO (notas pagas) — fonte: Financeiro */
+  received: { total: string; count: number; lastAt: string | null; lastAmount: string | null };
+  /** PENDENTE (notas emitidas e não pagas) */
+  pending: { total: string; count: number; oldestDays: number | null };
+  monthsNotInvoiced: number;
+  byYear: Array<{ year: number; expected: string; invoiced: string; received: string; pending: string }>;
+  renewal: { id: string; status: string; endDate: string; opportunityId: string | null; taskId: string | null } | null;
+  adjustments: Array<{ id: string; label: string | null; indexName: string | null; percent: string | null; effectiveFrom: string | null; newMonthlyValue: string | null }>;
+}
+export interface ContractRenewalRow {
+  id: string; contractId: string; contractNumber: string; endDate: string; status: string; daysToEnd: number;
+  entity: { id: string; name: string; shortName: string | null };
+  monthlyValue: string | null; opportunityId: string | null; opportunityStatus: string | null; taskId: string | null; taskStatus: string | null;
+  amendmentId: string | null; newContractId: string | null; notes: string | null; decidedAt: string | null; decidedBy: string | null; createdAt: string;
 }

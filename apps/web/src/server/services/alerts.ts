@@ -10,6 +10,7 @@ import { currentOrgId } from '../tenant.js';
 import { notifyDue } from './alarms.js';
 import { refreshHealthAll } from './health.js';
 import { stalled as stalledOpportunities } from './crm/opportunities.js';
+import { detectRenewals } from './renewals.js';
 
 async function settingNumber(key: string, fallback: number): Promise<number> {
   const s = await prisma.setting.findUnique({ where: { key } });
@@ -25,6 +26,7 @@ export interface DailyChecksResult {
   issuance: { due: number; late: number };
   health: { computed: number; withoutData: number };
   opportunities: { stalled: number };
+  renewals: { checked: number; created: number };
   durationMs: number;
 }
 
@@ -117,6 +119,8 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
   const issuance = await notifyDue(today);
   // ---- saúde do cliente ----
   const health = await refreshHealthAll(today);
+  // ---- renovações de contrato (Fase 3): abre oportunidade + tarefa na janela de renovação ----
+  const renewals = await detectRenewals(today);
   // ---- oportunidades paradas (CRM): uma notificação por oportunidade e por semana, para o responsável ----
   const stalledOpps = await stalledOpportunities();
   const week = `${today.slice(0, 4)}-W${String(Math.ceil((new Date(today).getUTCDate() + new Date(`${today.slice(0, 7)}-01`).getUTCDay()) / 7)).padStart(2, '0')}-${today.slice(5, 7)}`;
@@ -140,6 +144,7 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
     issuance,
     health,
     opportunities: { stalled: stalledOpps.length },
+    renewals,
     durationMs: Date.now() - startedAt,
   };
   console.info('[cron] verificações diárias concluídas', result);

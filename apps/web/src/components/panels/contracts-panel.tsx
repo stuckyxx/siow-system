@@ -7,22 +7,24 @@ import { useAuth } from '@/lib/auth';
 import { ContractStatusBadge } from '../status';
 import { Badge, Button, Dialog, Empty, Field, Input, Select, Table, Td, Textarea, Th, useToast } from '../ui';
 
-type AmendmentKind = 'TERM' | 'VALUE' | 'MIXED' | 'OBJECT' | 'OTHER';
+type AmendmentKind = 'TERM' | 'VALUE' | 'MIXED' | 'OBJECT' | 'OTHER' | 'ADJUSTMENT' | 'EXTENSION';
 export interface ContractRow {
-  id: string; number: string; object: string | null; status: ContractStatus; monthlyValue: string | null; startDate: string | null; endDate: string | null; origin: string; notes?: string | null;
+  id: string; number: string; object: string | null; status: ContractStatus; opportunityId?: string | null; terminatedAt?: string | null; terminationReason?: string | null; monthlyValue: string | null; startDate: string | null; endDate: string | null; origin: string; notes?: string | null;
   amendments: Array<{ id: string; sequence: number; label: string | null; kind: AmendmentKind; newEndDate: string | null; newMonthlyValue: string | null; newObject?: string | null; signedAt: string | null; description: string | null; origin?: string; documentId?: string | null }>;
   entity?: { id: string; name: string; shortName: string | null };
   responsibleUser: { id: string; name: string } | null;
 }
 interface DocRow { id: string; name: string; capturedAt: string; type: string; blob: { size: number; mimeType: string } }
 
-const KIND_LABEL: Record<AmendmentKind, string> = { TERM: 'Prazo', VALUE: 'Valor', MIXED: 'Prazo e valor', OBJECT: 'Objeto', OTHER: 'Outro' };
+const KIND_LABEL: Record<AmendmentKind, string> = { TERM: 'Prazo', VALUE: 'Valor', MIXED: 'Prazo e valor', OBJECT: 'Objeto', OTHER: 'Outro', ADJUSTMENT: 'Reajuste', EXTENSION: 'Prorrogação' };
 const KIND_HINT: Record<AmendmentKind, string> = {
   TERM: 'Aditivo de prazo: informe a nova data de fim. A vigência do contrato passa a ser essa data.',
   VALUE: 'Aditivo de valor: informe o novo valor mensal. A conta corrente passa a usar esse valor.',
   MIXED: 'Prazo e valor: informe a nova vigência e o novo valor mensal.',
   OBJECT: 'Aditivo de objeto: descreva o novo objeto do contrato.',
   OTHER: 'Outro: registre apenas a descrição do aditivo.',
+  ADJUSTMENT: 'Reajuste: use o botão "Reajuste" na ficha do contrato (índice + percentual).',
+  EXTENSION: 'Prorrogação: informe a nova data de fim (e o novo valor, se houver). A vigência do contrato passa a ser essa data.',
 };
 const STATE_LABEL: Record<string, string> = { NOT_INVOICED: 'Sem nota', PENDING: 'Pendente', PAID: 'Paga', PARTIAL: 'Parcial', FUTURE: 'Futura' };
 const kb = (n: number): string => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -74,6 +76,7 @@ export function ContractsPanel({ entityId, manualOnly = false }: { entityId?: st
                 </div>
                 <div className="row">
                   <ContractStatusBadge status={c.status} />
+                  <a className="btn sm" href={`/financeiro/contratos/${c.id}`}>Ficha</a>
                   {!entityId && <button className="btn sm" onClick={() => setLedgerId(c.id)}>Conta corrente</button>}
                   {write && <button className="btn sm" onClick={() => setEditing(c)}>Editar</button>}
                   {write && <button className="btn sm" onClick={() => setAmendFor(c)}>+ Aditivo</button>}
@@ -99,7 +102,7 @@ export function ContractsPanel({ entityId, manualOnly = false }: { entityId?: st
   );
 }
 
-function AttachPdf({ contractId, onDone, onError }: { contractId: string; onDone: (name: string) => void; onError: (m: string) => void }) {
+export function AttachPdf({ contractId, onDone, onError }: { contractId: string; onDone: (name: string) => void; onError: (m: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const upload = async (files: FileList | null): Promise<void> => {
@@ -130,7 +133,7 @@ function AttachPdf({ contractId, onDone, onError }: { contractId: string; onDone
   );
 }
 
-function ContractDocuments({ contractId, canDelete, onError }: { contractId: string; canDelete: boolean; onError: (m: string) => void }) {
+export function ContractDocuments({ contractId, canDelete, onError }: { contractId: string; canDelete: boolean; onError: (m: string) => void }) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['contract-docs', contractId], queryFn: () => api<DocRow[]>(`/financeiro/contracts/${contractId}/documents`) });
   const remove = useMutation({
@@ -157,7 +160,7 @@ function ContractDocuments({ contractId, canDelete, onError }: { contractId: str
   );
 }
 
-function AmendmentsTable({ contract, canWrite, onChanged, onError }: { contract: ContractRow; canWrite: boolean; onChanged: () => void; onError: (m: string) => void }) {
+export function AmendmentsTable({ contract, canWrite, onChanged, onError }: { contract: ContractRow; canWrite: boolean; onChanged: () => void; onError: (m: string) => void }) {
   const remove = useMutation({
     mutationFn: (aid: string) => api(`/financeiro/contracts/${contract.id}/amendments/${aid}`, { method: 'DELETE' }),
     onSuccess: onChanged,
@@ -186,11 +189,8 @@ function AmendmentsTable({ contract, canWrite, onChanged, onError }: { contract:
   );
 }
 
-function LedgerDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
-  const { data } = useQuery({ queryKey: ['ledger', id], queryFn: () => api<ContractLedger>(`/financeiro/contracts/${id}/ledger`), enabled: Boolean(id) });
+export function LedgerView({ data }: { data: ContractLedger }) {
   return (
-    <Dialog open={Boolean(id)} onClose={onClose} title={data ? `Conta corrente — contrato ${data.contractNumber}` : 'Conta corrente'} wide>
-      {!data ? <div className="muted">Carregando…</div> : (
         <div>
           <div className="kv">
             <div><div className="l">Deveria ter sido faturado</div><div className="num">{formatBRL(data.totals.expected)}</div></div>
@@ -215,12 +215,19 @@ function LedgerDialog({ id, onClose }: { id: string | null; onClose: () => void 
             </tbody>
           </Table>
         </div>
-      )}
+  );
+}
+
+function LedgerDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const { data } = useQuery({ queryKey: ['ledger', id], queryFn: () => api<ContractLedger>(`/financeiro/contracts/${id}/ledger`), enabled: Boolean(id) });
+  return (
+    <Dialog open={Boolean(id)} onClose={onClose} title={data ? `Conta corrente — contrato ${data.contractNumber}` : 'Conta corrente'} wide>
+      {!data ? <div className="muted">Carregando…</div> : <LedgerView data={data} />}
     </Dialog>
   );
 }
 
-function ContractForm({ contract, entityId, onClose, onSaved }: { contract: ContractRow | 'new' | null; entityId: string; onClose: () => void; onSaved: (msg: string) => void }) {
+export function ContractForm({ contract, entityId, onClose, onSaved }: { contract: ContractRow | 'new' | null; entityId: string; onClose: () => void; onSaved: (msg: string) => void }) {
   const editing = contract && contract !== 'new' ? contract : null;
   const blank = { number: '', object: '', monthlyValue: '', startDate: '', endDate: '', status: 'ACTIVE', notes: '' };
   const [f, setF] = useState(blank);
@@ -270,7 +277,7 @@ function ContractForm({ contract, entityId, onClose, onSaved }: { contract: Cont
   );
 }
 
-function AmendmentForm({ contract, onClose, onSaved }: { contract: ContractRow | null; onClose: () => void; onSaved: () => void }) {
+export function AmendmentForm({ contract, onClose, onSaved }: { contract: ContractRow | null; onClose: () => void; onSaved: () => void }) {
   const blank = { label: '', kind: 'TERM' as AmendmentKind, newEndDate: '', newMonthlyValue: '', newObject: '', signedAt: '', effectiveFrom: '', description: '' };
   const [f, setF] = useState(blank);
   const [file, setFile] = useState<File | null>(null);
@@ -282,8 +289,8 @@ function AmendmentForm({ contract, onClose, onSaved }: { contract: ContractRow |
     setFile(null);
     setF({ ...blank, label: contract ? `${contract.amendments.length + 1}º ADT` : '', newEndDate: contract?.endDate ?? '', newObject: contract?.object ?? '' });
   }
-  const term = f.kind === 'TERM' || f.kind === 'MIXED';
-  const value = f.kind === 'VALUE' || f.kind === 'MIXED';
+  const term = f.kind === 'TERM' || f.kind === 'MIXED' || f.kind === 'EXTENSION';
+  const value = f.kind === 'VALUE' || f.kind === 'MIXED' || f.kind === 'EXTENSION';
   const object = f.kind === 'OBJECT';
   const m = useMutation({
     mutationFn: async () => {
@@ -299,7 +306,7 @@ function AmendmentForm({ contract, onClose, onSaved }: { contract: ContractRow |
         method: 'POST',
         body: {
           label: f.label || null, kind: f.kind, signedAt: f.signedAt || null, effectiveFrom: f.effectiveFrom || null, description: f.description || null, documentId,
-          newEndDate: term ? f.newEndDate : null, newMonthlyValue: value ? f.newMonthlyValue.replace(',', '.') : null, newObject: object ? f.newObject : null,
+          newEndDate: term ? f.newEndDate : null, newMonthlyValue: value && f.newMonthlyValue ? f.newMonthlyValue.replace(',', '.') : null, newObject: object ? f.newObject : null,
         },
       });
     },
@@ -309,7 +316,8 @@ function AmendmentForm({ contract, onClose, onSaved }: { contract: ContractRow |
   const b = (k: keyof typeof f) => ({ value: f[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value }) });
   const submit = (): void => {
     if (term && !f.newEndDate) return setError('Informe a nova vigência (fim)');
-    if (value && !/^\d+([.,]\d{1,2})?$/.test(f.newMonthlyValue)) return setError('Informe o novo valor mensal (ex.: 1450,00)');
+    if (value && f.kind !== 'EXTENSION' && !/^\d+([.,]\d{1,2})?$/.test(f.newMonthlyValue)) return setError('Informe o novo valor mensal (ex.: 1450,00)');
+    if (f.kind === 'EXTENSION' && f.newMonthlyValue && !/^\d+([.,]\d{1,2})?$/.test(f.newMonthlyValue)) return setError('Valor mensal inválido (ex.: 1450,00)');
     if (object && f.newObject.trim().length < 3) return setError('Descreva o novo objeto do contrato');
     if (f.kind === 'OTHER' && f.description.trim().length < 3) return setError('Descreva o aditivo');
     if (file && file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) return setError('O arquivo do aditivo precisa ser PDF');
@@ -322,7 +330,7 @@ function AmendmentForm({ contract, onClose, onSaved }: { contract: ContractRow |
         <Field label="Identificação"><Input {...b('label')} /></Field>
         <Field label="Tipo">
           <Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as AmendmentKind })}>
-            {(Object.keys(KIND_LABEL) as AmendmentKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
+            {(Object.keys(KIND_LABEL) as AmendmentKind[]).filter((k) => k !== 'ADJUSTMENT').map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
           </Select>
         </Field>
         <Field label="Assinado em"><Input type="date" {...b('signedAt')} /></Field>
@@ -340,7 +348,7 @@ function AmendmentForm({ contract, onClose, onSaved }: { contract: ContractRow |
   );
 }
 
-function DeleteContract({ contract, onClose, onDone }: { contract: ContractRow | null; onClose: () => void; onDone: () => void }) {
+export function DeleteContract({ contract, onClose, onDone }: { contract: ContractRow | null; onClose: () => void; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const m = useMutation({ mutationFn: () => api(`/financeiro/contracts/${contract!.id}`, { method: 'DELETE' }), onSuccess: () => { setError(null); onDone(); }, onError: (e) => setError(errMsg(e)) });
   const n = contract?.amendments.length ?? 0;

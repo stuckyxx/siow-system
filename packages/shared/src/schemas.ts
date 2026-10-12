@@ -162,7 +162,9 @@ export const updateContractSchema = createContractSchema.omit({ entityId: true }
 export const createAmendmentSchema = z.object({
   sequence: z.number().int().min(1).optional(),
   label: z.string().max(40).optional().nullable(),
-  kind: z.enum(['TERM', 'VALUE', 'OBJECT', 'MIXED', 'OTHER']).default('OTHER'),
+  kind: z.enum(['TERM', 'VALUE', 'OBJECT', 'MIXED', 'OTHER', 'ADJUSTMENT', 'EXTENSION']).default('OTHER'),
+  adjustmentIndex: z.string().max(40).optional().nullable(),
+  adjustmentPercent: z.coerce.number().min(-100).max(1000).optional().nullable(),
   description: z.string().max(2000).optional().nullable(),
   signedAt: isoDate.optional().nullable(),
   effectiveFrom: isoDate.optional().nullable(),
@@ -570,3 +572,36 @@ export const crmDashboardFilterSchema = z.object({
   pipelineId: uuid.optional(),
   uf: z.string().length(2).optional(),
 });
+
+// ---------- Gestão de Contratos (Fase 3) ----------
+export const activateContractSchema = z.object({
+  startDate: isoDate.optional().nullable(),
+  endDate: isoDate.optional().nullable(),
+  monthlyValue: decimalString.optional().nullable(),
+  /** Dia do mês para criar o alarme de emissão da nota (opcional) */
+  issuanceDay: z.coerce.number().int().min(1).max(31).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const terminateContractSchema = z.object({
+  date: isoDate,
+  reason: z.string().min(2).max(200),
+  notes: z.string().max(2000).optional().nullable(),
+});
+/** Reajuste manual: índice informado pelo usuário e percentual; o novo valor é calculado e registrado como aditivo ADJUSTMENT. */
+export const adjustContractSchema = z.object({
+  indexName: z.string().min(2).max(40),
+  percent: z.coerce.number().min(-100).max(1000),
+  effectiveFrom: isoDate,
+  signedAt: isoDate.optional().nullable(),
+  label: z.string().max(40).optional().nullable(),
+  description: z.string().max(2000).optional().nullable(),
+  /** Valor final informado (sobrescreve o cálculo, ex.: arredondamento combinado) */
+  newMonthlyValue: decimalString.optional().nullable(),
+});
+export const renewalDecisionSchema = z.object({
+  status: z.enum(['RENEWED', 'NOT_RENEWED', 'CANCELLED']),
+  amendmentId: uuid.optional().nullable(),
+  newContractId: uuid.optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const renewalListFilterSchema = z.object({ status: z.enum(['OPEN', 'RENEWED', 'NOT_RENEWED', 'CANCELLED']).optional(), entityId: uuid.optional() });

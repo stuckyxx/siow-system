@@ -225,3 +225,20 @@ oportunidade parada no cron diário.
 proposta v1/v2 (v1 vira "substituída") → PDF → atividade (calendário comercial) → ganho → formalização em rascunho (não entra em
 "contratos ativos") → meta apurada → dashboard; oportunidade parada detectada, notificada pelo cron e listada no painel; funil editado
 com etapa nova; regressão do Financeiro mantida.
+
+---
+
+## Executado na Fase 3 (12/10/2026)
+
+**Banco (Neon, produção)** — backup prévio `pre-fase3-backup-2026-10-12`. Migração aditiva e idempotente (seção "FASE 3" do `schema.sql`):
+colunas opcionais em `contracts` e `contract_amendments`, valores `ADJUSTMENT`/`EXTENSION` em `AmendmentKind`, tabela `contract_renewals`,
+configuração `contracts.renewalDays` (90). Nenhuma coluna existente alterada; comportamento do Financeiro preservado.
+
+**Código** — ativação de rascunho, encerramento, reajuste por índice informado, prorrogação (aditivo), situação financeira do contrato
+(previsto × faturado × recebido × pendente), renovações automáticas (oportunidade + tarefa) com decisão humana, ficha do contrato
+(`/financeiro/contratos/[id]`), lista de contratos com filtros e aba Renovações, hub do Financeiro (`/financeiro/central`), menu no formato
+do PROMPT MESTRE, alerta de renovações no Dashboard, contrato formalizado guarda a oportunidade de origem.
+
+**Validação** — fluxo local e em produção: oportunidade ganha → rascunho → ativação com alarme → reajuste IPCA 5% (valor atualizado na conta
+corrente) → cron abre a renovação (idempotente) com oportunidade RENOVACAO e tarefa → prorrogação por aditivo → decisão "renovado" fecha a
+oportunidade como ganha e conclui a tarefa → encerramento com motivo; regressão do Financeiro mantida.

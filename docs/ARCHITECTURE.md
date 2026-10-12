@@ -154,6 +154,24 @@ confirmação explícita (`activate`), opcionalmente criando o alarme de emissã
 "parada" = sem movimentação há mais dias que o SLA da etapa (ou `crm.stalledDays`), notificada 1×/semana pelo cron diário
 (`OPPORTUNITY_STALLED`). O dashboard comercial é calculado a partir das oportunidades e nunca é apresentado como receita confirmada.
 
+## 6c. Gestão de Contratos (Fase 3)
+
+`contracts` ganhou `opportunityId`, `tenderId`, `partnerId` (FK na Fase 4), `renewalNoticeDays`, `activatedAt`, `terminatedAt`,
+`terminationReason`; `contract_amendments` ganhou `adjustmentIndex`/`adjustmentPercent` e os tipos `ADJUSTMENT` (reajuste) e `EXTENSION`
+(prorrogação). Nova tabela `contract_renewals` (uma por contrato/vigência).
+
+Ciclo de vida (`services/contracts.ts`): rascunho → `activate` (confirmação explícita; opcionalmente cria o alarme de emissão) → ativo →
+`adjust` (reajuste com índice e percentual informados pelo usuário, nunca consultado automaticamente; vira aditivo e passa a valer na conta
+corrente a partir da competência) → `terminate` (encerramento com data e motivo; cancela renovações e tarefas abertas).
+`financialStatus` apresenta PREVISTO (contrato), FATURADO, RECEBIDO e PENDENTE (Financeiro) sempre separados, por exercício.
+
+Renovações (`services/renewals.ts`): o cron diário (`detectRenewals`) abre a renovação quando a vigência entra na janela
+(`contracts.renewalDays`, padrão 90, ou `renewalNoticeDays` do contrato), criando uma oportunidade (origem RENOVACAO) e uma tarefa RENEWAL;
+idempotente por `(contractId, endDate)`. A decisão é humana (`decide`): RENEWED fecha a oportunidade como ganha e conclui a tarefa;
+NOT_RENEWED marca perdida e cancela. Nenhum aditivo é criado automaticamente.
+
+Menu: Dashboard | Comercial | Entidades | Contratos | Financeiro (hub `/financeiro/central`) | Relatórios | Administração.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

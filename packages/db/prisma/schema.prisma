@@ -354,6 +354,14 @@ model Contract {
   responsibleUser   User?          @relation(fields: [responsibleUserId], references: [id])
   origin            RecordOrigin   @default(MANUAL)
   notes             String?
+  /// Fase 3 — vínculos e ciclo de vida: oportunidade/licitação de origem, parceiro (FK na Fase 4), ativação e encerramento
+  opportunityId     String?
+  tenderId          String?
+  partnerId         String?
+  renewalNoticeDays Int?
+  activatedAt       DateTime?
+  terminatedAt      DateTime?      @db.Date
+  terminationReason String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   deletedAt         DateTime?
@@ -363,6 +371,7 @@ model Contract {
   documents     Document[]
   tasks         FinancialTask[]
   serviceOrders ServiceOrder[]
+  renewals      ContractRenewal[]
 
   @@unique([entityId, number])
   @@index([entityId])
@@ -377,6 +386,8 @@ enum AmendmentKind {
   OBJECT // objeto
   MIXED
   OTHER
+  ADJUSTMENT // reajuste por índice (Fase 3)
+  EXTENSION // prorrogação/renovação de vigência (Fase 3)
 }
 
 model ContractAmendment {
@@ -392,6 +403,9 @@ model ContractAmendment {
   newEndDate      DateTime?     @db.Date
   newMonthlyValue Decimal?      @db.Decimal(14, 2)
   newObject       String?
+  /// Reajuste (Fase 3): índice informado manualmente (IPCA, INPC, IGP-M…) e percentual aplicado
+  adjustmentIndex   String?
+  adjustmentPercent Decimal?    @db.Decimal(8, 4)
   origin          RecordOrigin  @default(MANUAL)
   documentId      String?
   document        Document?     @relation(fields: [documentId], references: [id])
@@ -1175,6 +1189,7 @@ model Organization {
   proposals        Proposal[]
   catalogItems     CatalogItem[]
   goals            Goal[]
+  contractRenewals ContractRenewal[]
 
   @@map("organizations")
 }
@@ -1493,4 +1508,33 @@ model Goal {
 
   @@index([organizationId, periodStart])
   @@map("goals")
+}
+
+// =====================================================================
+// FASE 3 — GESTÃO DE CONTRATOS: renovações (geradas automaticamente, decididas por pessoas)
+// =====================================================================
+
+/// Ciclo de renovação de um contrato: criado pelo cron quando a vigência entra na janela (contracts.renewalDays),
+/// com oportunidade (origem RENOVACAO) e tarefa RENEWAL. status: OPEN | RENEWED | NOT_RENEWED | CANCELLED.
+model ContractRenewal {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  contractId       String
+  contract         Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  endDate          DateTime     @db.Date
+  status           String       @default("OPEN")
+  opportunityId    String?
+  taskId           String?
+  amendmentId      String?
+  newContractId    String?
+  notes            String?
+  decidedAt        DateTime?
+  decidedByUserId  String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([contractId, endDate])
+  @@index([organizationId, status])
+  @@map("contract_renewals")
 }

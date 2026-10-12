@@ -221,6 +221,7 @@ export async function build(f: DashboardFilter): Promise<DashboardWithForecast> 
     prisma.entity.count({ where: { ...entityWhere, dataSources: { none: { deletedAt: null } } } }),
     prisma.entity.count({ where: { ...entityWhere, contracts: { some: { deletedAt: null, status: 'ACTIVE' } } } }),
   ]);
+  const renewalsOpen = await prisma.contractRenewal.count({ where: { status: 'OPEN', contract: { deletedAt: null, entityId: f.entityId } } });
   const [activeContracts, contractsExpiring, certVersions, pendingServiceOrders, failedSyncs, overdueCollections, fc] = await Promise.all([
     prisma.contract.count({ where: { deletedAt: null, status: 'ACTIVE', entityId: f.entityId } }),
     prisma.contract.findMany({
@@ -335,6 +336,7 @@ export async function build(f: DashboardFilter): Promise<DashboardWithForecast> 
       activeContracts,
       issuanceDue: issuance.length,
       contractsExpiring: contractsExpiring.length,
+      renewalsOpen,
       certificatesExpiring: certVersions.length,
       needsReconciliation: reconciliation,
     },

@@ -57,10 +57,11 @@ export default function DashboardPage() {
           <div className="alerts">
             {data.cards.needsReconciliation > 0 && <Link className="crit" href="/financeiro/notas">⚠ <b>{data.cards.needsReconciliation}</b> nota(s) a verificar</Link>}
             {(expiring?.length ?? 0) > 0 && <Link className="warn" href="/financeiro/contratos"><b>{expiring!.length}</b> contrato(s) vencendo em 120 dias</Link>}
+            {data.cards.renewalsOpen > 0 && <Link className="warn" href="/financeiro/contratos?view=renovacoes">↻ <b>{data.cards.renewalsOpen}</b> renovação(ões) de contrato em aberto</Link>}
             {data.cards.issuanceDue > 0 && <Link className="warn" href="/financeiro/alarmes">🔔 <b>{data.cards.issuanceDue}</b> nota(s) para emitir (prazo próximo ou atrasado)</Link>}
             {data.cards.certificatesExpiring > 0 && <Link className="warn" href="/financeiro/certidoes"><b>{data.cards.certificatesExpiring}</b> certidão(ões) vencendo em 30 dias</Link>}
             {pendingOs > 0 && <Link className="warn" href="/financeiro/ordens-de-servico"><b>{pendingOs}</b> OS pendente(s)</Link>}
-            {!data.cards.needsReconciliation && !expiring?.length && !data.cards.certificatesExpiring && !pendingOs && !data.cards.issuanceDue && <span className="pill good">Nenhum alerta</span>}
+            {!data.cards.needsReconciliation && !expiring?.length && !data.cards.certificatesExpiring && !pendingOs && !data.cards.issuanceDue && !data.cards.renewalsOpen && <span className="pill good">Nenhum alerta</span>}
           </div>
 
           <div className="card" style={{ marginTop: 12 }}>

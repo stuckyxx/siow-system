@@ -2,24 +2,24 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Building2, FileBadge, FileBarChart, LayoutDashboard, RefreshCw, Settings } from 'lucide-react';
+import { Briefcase, Building2, FileBarChart, FileSignature, LayoutDashboard, Settings, Wallet } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { GlobalSearch } from '@/components/global-search';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { QuickSearch } from '@/components/quick-search';
 
-/** Menu horizontal do protótipo aprovado + Comercial (CRM, Fase 2); cada item filtrado por permissão. */
+/** Menu (PROMPT MESTRE v2): Dashboard | Comercial | Entidades | Contratos | Financeiro | Relatórios | Administração — Licitações, Atendimento e Parceiros entram nas fases 4–6. Cada item filtrado por permissão. */
 const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean }> = [
   { href: '/financeiro', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/financeiro' },
   { href: '/comercial', label: 'Comercial', icon: Briefcase, perms: ['crm.read'], match: (p) => p.startsWith('/comercial') },
+  { href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'], match: (p) => p.startsWith('/financeiro/entidades') },
+  { href: '/financeiro/contratos', label: 'Contratos', icon: FileSignature, perms: ['contracts.read'], match: (p) => p.startsWith('/financeiro/contratos') },
   {
-    href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'],
-    match: (p) => ['/financeiro/entidades', '/financeiro/alarmes', '/financeiro/notas', '/financeiro/contratos', '/financeiro/agenda', '/financeiro/cobrancas', '/financeiro/ordens-de-servico'].some((x) => p.startsWith(x)),
+    href: '/financeiro/central', label: 'Financeiro', icon: Wallet, perms: ['invoices.read', 'collections.read', 'certificates.read', 'sync.read', 'tasks.read'],
+    match: (p) => ['/financeiro/central', '/financeiro/notas', '/financeiro/cobrancas', '/financeiro/alarmes', '/financeiro/agenda', '/financeiro/ordens-de-servico', '/financeiro/certidoes', '/financeiro/sincronizacao'].some((x) => p.startsWith(x)),
   },
-  { href: '/financeiro/certidoes', label: 'Certidões', icon: FileBadge, perms: ['certificates.read'], match: (p) => p.startsWith('/financeiro/certidoes') },
   { href: '/financeiro/relatorios', label: 'Relatórios', icon: FileBarChart, perms: ['reports.read'], match: (p) => p.startsWith('/financeiro/relatorios') },
-  { href: '/financeiro/sincronizacao', label: 'Sincronização', icon: RefreshCw, perms: ['sync.read'], match: (p) => p.startsWith('/financeiro/sincronizacao') },
   { href: '/admin', label: 'Administração', icon: Settings, perms: ['users.manage', 'settings.manage', 'templates.manage', 'audit.read'], match: (p) => p.startsWith('/admin') },
 ];
 

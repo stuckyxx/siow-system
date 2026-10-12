@@ -265,3 +265,12 @@ export type GoalMetric = (typeof GOAL_METRICS)[number];
 export const GOAL_METRIC_LABELS: Record<GoalMetric, string> = { WON_AMOUNT: 'Valor ganho (R$)', WON_COUNT: 'Oportunidades ganhas', ACTIVITIES: 'Atividades concluídas' };
 /** Tipos de tarefa que contam como atividade comercial na agenda única. */
 export const COMMERCIAL_TASK_TYPES = ['COMMERCIAL_FOLLOWUP', 'VISIT', 'MEETING', 'CALL', 'RENEWAL'] as const;
+
+// ---------- Gestão de Contratos (Fase 3) ----------
+export const AMENDMENT_KINDS = ['TERM', 'VALUE', 'OBJECT', 'MIXED', 'OTHER', 'ADJUSTMENT', 'EXTENSION'] as const;
+export type AmendmentKind = (typeof AMENDMENT_KINDS)[number];
+export const AMENDMENT_KIND_LABELS: Record<AmendmentKind, string> = { TERM: 'Prazo', VALUE: 'Valor', MIXED: 'Prazo e valor', OBJECT: 'Objeto', OTHER: 'Outro', ADJUSTMENT: 'Reajuste', EXTENSION: 'Prorrogação' };
+export const RENEWAL_STATUSES = ['OPEN', 'RENEWED', 'NOT_RENEWED', 'CANCELLED'] as const;
+export type RenewalStatus = (typeof RENEWAL_STATUSES)[number];
+export const RENEWAL_STATUS_LABELS: Record<RenewalStatus, string> = { OPEN: 'Em aberto', RENEWED: 'Renovado', NOT_RENEWED: 'Não renovado', CANCELLED: 'Cancelada' };
+export const ADJUSTMENT_INDEXES = ['IPCA', 'INPC', 'IGP-M', 'IGP-DI', 'INCC', 'Negociado', 'Outro'] as const;

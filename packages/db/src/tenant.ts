@@ -16,7 +16,7 @@ export const TENANT_MODELS = new Set<string>([
   'User', 'Role', 'Entity', 'DataSource', 'SyncRun', 'Contract', 'Invoice', 'SyncConflict', 'DocumentBlob', 'Document',
   'Certificate', 'Contact', 'FinancialTask', 'CollectionCase', 'MessageTemplate', 'OutboundMessage', 'ServiceOrder',
   'SignatureRequest', 'IssuanceAlarm', 'Notification', 'AuditLog', 'PublicAgent', 'EntityHealthSnapshot',
-  'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal',
+  'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal', 'ContractRenewal',
 ]);
 
 /** Modelos filhos: caminho de relação até um modelo tenant. */

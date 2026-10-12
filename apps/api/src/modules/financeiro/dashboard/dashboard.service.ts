@@ -250,6 +250,7 @@ export class DashboardService {
         activeContracts,
         issuanceDue: 0,
         contractsExpiring: contractsExpiring.length,
+        renewalsOpen: 0,
         certificatesExpiring: certVersions.length,
         needsReconciliation: reconciliation,
       },

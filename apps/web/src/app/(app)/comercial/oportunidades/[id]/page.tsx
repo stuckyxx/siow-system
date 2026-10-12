@@ -46,7 +46,7 @@ function View() {
         <div>
           <div className="small muted"><Link href={`/financeiro/entidades/${o.entity.id}?tab=comercial`}>{o.entity.name}</Link> · {o.entity.municipality}/{o.entity.uf}{o.source ? ` · ${OPPORTUNITY_SOURCE_LABELS[o.source as OpportunitySource] ?? o.source}` : ''}</div>
           <h1>{o.title}</h1>
-          <div className="row small muted"><StatusBadge o={o} /><span>{o.daysInStage} dia(s) na etapa</span>{o.owner && <span>· responsável {o.owner.name}</span>}{o.expectedCloseDate && <span>· previsão {formatBrDate(o.expectedCloseDate)}</span>}{o.contractId && <Link href={`/financeiro/entidades/${o.entity.id}?tab=contracts`}>· ver contrato</Link>}</div>
+          <div className="row small muted"><StatusBadge o={o} /><span>{o.daysInStage} dia(s) na etapa</span>{o.owner && <span>· responsável {o.owner.name}</span>}{o.expectedCloseDate && <span>· previsão {formatBrDate(o.expectedCloseDate)}</span>}{o.contractId && <Link href={`/financeiro/contratos/${o.contractId}`}>· ver contrato</Link>}</div>
         </div>
         <div className="row">
           {can('crm.write') && o.status === 'OPEN' && <Button variant="secondary" onClick={() => setEditing(true)}>Editar</Button>}

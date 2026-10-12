@@ -4,7 +4,10 @@
 import { Prisma } from '@siow/db';
 import { competencesBetween, dateToIso, isoToDate, todayIso, toDecimalString, type ContractLedger, type ContractLedgerMonth } from '@siow/shared';
 import type { z } from 'zod';
-import type { createAmendmentSchema, createContractSchema, updateContractSchema } from '@siow/shared';
+import type { activateContractSchema, adjustContractSchema, createAmendmentSchema, createContractSchema, terminateContractSchema, updateContractSchema } from '@siow/shared';
+import { daysBetween, type ContractFinancialStatus } from '@siow/shared';
+import { currentOrgId as orgId } from '../tenant.js';
+import { create as createAlarm } from './alarms.js';
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
@@ -115,19 +118,30 @@ export async function addAmendment(ctx: Ctx, contractId: string, input: z.infer<
   const contract = await get(contractId);
   const sequence = input.sequence ?? (contract.amendments.at(-1)?.sequence ?? 0) + 1;
   if (input.documentId) await getDocument(input.documentId);
+  // Reajuste: sem valor informado, calcula a partir do valor mensal vigente × (1 + percentual)
+  let newMonthlyValue = dec(input.newMonthlyValue) ?? null;
+  if (input.kind === 'ADJUSTMENT') {
+    if (input.adjustmentPercent === null || input.adjustmentPercent === undefined) throw badRequest('Informe o percentual do reajuste');
+    if (!newMonthlyValue) {
+      if (!contract.monthlyValue) throw badRequest('Contrato sem valor mensal: informe o novo valor');
+      newMonthlyValue = contract.monthlyValue.mul(new Prisma.Decimal(1).add(new Prisma.Decimal(input.adjustmentPercent).div(100))).toDecimalPlaces(2);
+    }
+  }
   const a = await prisma.$transaction(async (tx) => {
     const created = await tx.contractAmendment.create({
       data: {
         contractId,
         sequence,
-        label: input.label ?? `${sequence}º Aditivo`,
+        label: input.label ?? (input.kind === 'ADJUSTMENT' ? `Reajuste ${input.adjustmentIndex ?? ''}`.trim() : `${sequence}º Aditivo`),
         kind: input.kind,
         description: input.description,
         signedAt: date(input.signedAt) ?? null,
         effectiveFrom: date(input.effectiveFrom) ?? null,
         newEndDate: date(input.newEndDate) ?? null,
-        newMonthlyValue: dec(input.newMonthlyValue) ?? null,
+        newMonthlyValue,
         newObject: input.newObject,
+        adjustmentIndex: input.kind === 'ADJUSTMENT' ? input.adjustmentIndex ?? null : null,
+        adjustmentPercent: input.kind === 'ADJUSTMENT' && input.adjustmentPercent !== null && input.adjustmentPercent !== undefined ? new Prisma.Decimal(input.adjustmentPercent) : null,
         documentId: input.documentId,
         origin: 'MANUAL',
       },
@@ -307,3 +321,87 @@ function monthlyValueAt(
   }
   return value;
 }
+
+
+// ---------------- ciclo de vida (Fase 3) ----------------
+/** Ativa um contrato em RASCUNHO (confirmação explícita da contratação). Pode ajustar vigência/valor e criar o alarme de emissão. */
+export async function activate(ctx: Ctx, id: string, input: z.infer<typeof activateContractSchema>) {
+  const before = await get(id);
+  if (before.status !== 'DRAFT') throw badRequest('Só contratos em rascunho podem ser ativados');
+  const c = await prisma.contract.update({
+    where: { id },
+    data: { status: 'ACTIVE', activatedAt: new Date(), startDate: date(input.startDate), endDate: date(input.endDate), monthlyValue: dec(input.monthlyValue), notes: input.notes === undefined ? undefined : input.notes, origin: 'MANUAL' },
+  });
+  if (input.issuanceDay) await createAlarm(ctx, { entityId: c.entityId, contractNumber: c.number, label: 'Emissão da nota', dayOfMonth: input.issuanceDay, leadDays: 5, notes: `Criado na ativação do contrato ${c.number}` });
+  if (before.opportunityId) await prisma.opportunityEvent.create({ data: { opportunityId: before.opportunityId, userId: ctx.user.id, action: 'CONTRACT_ACTIVATED', toValue: c.number } }).catch(() => undefined);
+  await audit(ctx, { action: 'CONTRACT_ACTIVATED', resource: 'contract', resourceId: id, before: { status: before.status }, after: { status: c.status, startDate: c.startDate, endDate: c.endDate, monthlyValue: c.monthlyValue } });
+  return c;
+}
+
+/** Encerra o contrato (rescisão/término antecipado): registra data e motivo, cancela renovações em aberto e tarefas de renovação. */
+export async function terminate(ctx: Ctx, id: string, input: z.infer<typeof terminateContractSchema>) {
+  const before = await get(id);
+  if (before.status === 'TERMINATED') throw badRequest('Contrato já encerrado');
+  const c = await prisma.$transaction(async (tx) => {
+    const updated = await tx.contract.update({ where: { id }, data: { status: 'TERMINATED', terminatedAt: isoToDate(input.date), terminationReason: input.reason, notes: input.notes ? `${before.notes ? before.notes + '\n' : ''}Encerramento: ${input.notes}` : undefined, origin: 'MANUAL' } });
+    const open = await tx.contractRenewal.findMany({ where: { contractId: id, status: 'OPEN' } });
+    for (const r of open) {
+      await tx.contractRenewal.update({ where: { id: r.id }, data: { status: 'CANCELLED', decidedAt: new Date(), decidedByUserId: ctx.user.id, notes: `Contrato encerrado: ${input.reason}` } });
+      if (r.taskId) await tx.financialTask.updateMany({ where: { id: r.taskId, status: { in: ['PENDING', 'IN_PROGRESS'] } }, data: { status: 'CANCELLED' } });
+    }
+    return updated;
+  });
+  await audit(ctx, { action: 'CONTRACT_TERMINATED', resource: 'contract', resourceId: id, before: { status: before.status, endDate: before.endDate }, after: { status: 'TERMINATED', terminatedAt: input.date, reason: input.reason }, justification: input.notes ?? input.reason });
+  return c;
+}
+
+/** Reajuste manual com índice informado (nenhum índice é consultado automaticamente): vira um aditivo ADJUSTMENT. */
+export async function adjust(ctx: Ctx, id: string, input: z.infer<typeof adjustContractSchema>) {
+  const contract = await get(id);
+  if (contract.status !== 'ACTIVE') throw badRequest('Só contratos ativos podem ser reajustados');
+  return addAmendment(ctx, id, {
+    kind: 'ADJUSTMENT', label: input.label ?? `Reajuste ${input.indexName}`, description: input.description ?? `Reajuste de ${input.percent}% (${input.indexName})`,
+    signedAt: input.signedAt ?? null, effectiveFrom: input.effectiveFrom, newMonthlyValue: input.newMonthlyValue ?? null, adjustmentIndex: input.indexName, adjustmentPercent: input.percent,
+    newEndDate: null, newObject: null, documentId: null,
+  });
+}
+
+/**
+ * Situação financeira do contrato (spec módulo 4/5): PREVISTO (contrato), FATURADO e RECEBIDO (Financeiro) e PENDENTE,
+ * sempre separados. Reutiliza a conta corrente para o esperado mês a mês.
+ */
+export async function financialStatus(id: string): Promise<ContractFinancialStatus> {
+  const [c, led] = await Promise.all([
+    prisma.contract.findFirst({ where: { id, deletedAt: null }, include: { amendments: { orderBy: { sequence: 'asc' } }, invoices: { where: { deletedAt: null } }, renewals: { orderBy: { createdAt: 'desc' }, take: 1 } } }),
+    ledger(id),
+  ]);
+  if (!c) throw notFound('Contrato não encontrado');
+  const today = todayIso();
+  const end = dateToIso(c.endDate);
+  const monthly = Number(led.monthlyValue ?? 0) ? monthlyValueAt(c, today.slice(0, 7)) : 0;
+  const remainingMonths = c.status === 'ACTIVE' && end && end > today ? competencesBetween(today, end).length : 0;
+  const notCancelled = c.invoices.filter((i) => i.status !== 'CANCELLED');
+  const paid = c.invoices.filter((i) => i.status === 'PAID');
+  const pending = c.invoices.filter((i) => i.status === 'PENDING');
+  const sum = (xs: Array<{ amount: Prisma.Decimal; paidAmount?: Prisma.Decimal | null }>, usePaid = false) => xs.reduce((a, i) => a.add(usePaid ? i.paidAmount ?? i.amount : i.amount), new Prisma.Decimal(0));
+  const lastInvoiced = notCancelled.filter((i) => i.issueDate).sort((a, b) => b.issueDate!.getTime() - a.issueDate!.getTime())[0];
+  const lastPaid = paid.filter((i) => i.paidAt).sort((a, b) => b.paidAt!.getTime() - a.paidAt!.getTime())[0];
+  const oldestPending = pending.filter((i) => i.issueDate).sort((a, b) => a.issueDate!.getTime() - b.issueDate!.getTime())[0];
+  const years = new Map<number, { expected: Prisma.Decimal; invoiced: Prisma.Decimal; received: Prisma.Decimal; pending: Prisma.Decimal }>();
+  const y = (n: number) => { let e = years.get(n); if (!e) { e = { expected: new Prisma.Decimal(0), invoiced: new Prisma.Decimal(0), received: new Prisma.Decimal(0), pending: new Prisma.Decimal(0) }; years.set(n, e); } return e; };
+  for (const m of led.months) { if (m.state !== 'FUTURE') y(Number(m.competence.slice(0, 4))).expected = y(Number(m.competence.slice(0, 4))).expected.add(m.expected); }
+  for (const i of notCancelled) { const e = y(i.competenceYear); e.invoiced = e.invoiced.add(i.amount); if (i.status === 'PAID') e.received = e.received.add(i.paidAmount ?? i.amount); if (i.status === 'PENDING') e.pending = e.pending.add(i.amount); }
+  const r = c.renewals[0];
+  return {
+    contractId: c.id, status: c.status, monthlyValue: led.monthlyValue, startDate: led.startDate, endDate: end, daysToEnd: end ? daysBetween(today, end) : null,
+    forecast: { monthly: monthly.toFixed(2), remainingMonths, remainingAmount: (monthly * remainingMonths).toFixed(2), expectedToDate: led.totals.expected, contractTotal: c.totalValue ? c.totalValue.toFixed(2) : null },
+    invoiced: { total: sum(notCancelled).toFixed(2), count: notCancelled.length, lastAt: lastInvoiced ? dateToIso(lastInvoiced.issueDate) : null },
+    received: { total: sum(paid, true).toFixed(2), count: paid.length, lastAt: lastPaid ? dateToIso(lastPaid.paidAt) : null, lastAmount: lastPaid ? (lastPaid.paidAmount ?? lastPaid.amount).toFixed(2) : null },
+    pending: { total: sum(pending).toFixed(2), count: pending.length, oldestDays: oldestPending ? daysBetween(dateToIso(oldestPending.issueDate)!, today) : null },
+    monthsNotInvoiced: led.totals.monthsNotInvoiced,
+    byYear: [...years.entries()].sort(([a], [b]) => a - b).map(([year, e]) => ({ year, expected: e.expected.toFixed(2), invoiced: e.invoiced.toFixed(2), received: e.received.toFixed(2), pending: e.pending.toFixed(2) })),
+    renewal: r ? { id: r.id, status: r.status, endDate: dateToIso(r.endDate)!, opportunityId: r.opportunityId, taskId: r.taskId } : null,
+    adjustments: c.amendments.filter((a) => a.kind === 'ADJUSTMENT').map((a) => ({ id: a.id, label: a.label, indexName: a.adjustmentIndex, percent: a.adjustmentPercent ? a.adjustmentPercent.toFixed(2) : null, effectiveFrom: dateToIso(a.effectiveFrom), newMonthlyValue: a.newMonthlyValue ? a.newMonthlyValue.toFixed(2) : null })),
+  };
+}
+void orgId;

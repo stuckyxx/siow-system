@@ -137,6 +137,7 @@ export const SETTINGS: Array<{ key: string; value: unknown; description: string 
   { key: 'company.name', value: 'Sua Empresa de Tecnologia', description: 'Nome usado em mensagens e relatórios' },
   { key: 'invoices.overdueAfterDays', value: 30, description: 'Dias após a emissão para considerar a nota em atraso' },
   { key: 'crm.lossReasons', value: ['Preço', 'Concorrente', 'Sem orçamento', 'Sem interesse', 'Troca de gestão', 'Licitação perdida', 'Outro'], description: 'Motivos de perda de oportunidade (Comercial)' },
+  { key: 'contracts.renewalDays', value: 90, description: 'Dias antes do fim da vigência para abrir a renovação (oportunidade + tarefa)' },
   { key: 'crm.stalledDays', value: 15, description: 'Dias sem movimentação para considerar uma oportunidade parada (quando a etapa não define SLA)' },
 ];
 

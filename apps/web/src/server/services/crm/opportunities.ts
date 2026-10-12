@@ -280,6 +280,7 @@ export async function formalize(ctx: Ctx, id: string, input: z.infer<typeof form
     startDate: input.startDate ?? null, endDate: input.endDate ?? null, status: input.activate ? 'ACTIVE' : 'DRAFT', expectsMonthlyBilling: Boolean(o.monthlyAmount && o.monthlyAmount.gt(0)),
     responsibleUserId: input.responsibleUserId ?? o.ownerUserId ?? null, notes: input.notes ?? `Origem: oportunidade "${o.title}" (CRM)`,
   });
+  await prisma.contract.update({ where: { id: contract.id }, data: { opportunityId: id } });
   if (input.activate && input.issuanceDay) {
     await createAlarm(ctx, { entityId: o.entityId, contractNumber: input.number, label: 'Emissão da nota', dayOfMonth: input.issuanceDay, leadDays: 5, notes: `Criado na formalização da oportunidade "${o.title}"` });
   }
