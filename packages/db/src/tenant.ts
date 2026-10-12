@@ -16,7 +16,7 @@ export const TENANT_MODELS = new Set<string>([
   'User', 'Role', 'Entity', 'DataSource', 'SyncRun', 'Contract', 'Invoice', 'SyncConflict', 'DocumentBlob', 'Document',
   'Certificate', 'Contact', 'FinancialTask', 'CollectionCase', 'MessageTemplate', 'OutboundMessage', 'ServiceOrder',
   'SignatureRequest', 'IssuanceAlarm', 'Notification', 'AuditLog', 'PublicAgent', 'EntityHealthSnapshot',
-  'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal', 'ContractRenewal', 'Partner', 'CommissionRule', 'Commission',
+  'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal', 'ContractRenewal', 'Partner', 'CommissionRule', 'Commission', 'Tender',
 ]);
 
 /** Modelos filhos: caminho de relação até um modelo tenant. */
@@ -25,6 +25,7 @@ export const CHILD_TENANT_PATHS: Record<string, string> = {
   ContractAmendment: 'contract', InvoiceEvent: 'invoice', CertificateVersion: 'certificate', TaskEvent: 'task',
   CollectionAttempt: 'case', ServiceOrderSignatory: 'serviceOrder', ServiceOrderEvent: 'serviceOrder',
   OpportunityEvent: 'opportunity', ProposalItem: 'proposal',
+  TenderDeadline: 'tender', TenderCompetitor: 'tender', TenderChecklistItem: 'tender', TenderEvent: 'tender',
 };
 
 /** Modelos globais (sem tenant): catálogo de permissões, configurações da plataforma, organizações, superadmin. */
@@ -73,7 +74,13 @@ export function applyTenantArgs(model: string, operation: string, args: Args, or
     return out;
   }
   // filho: filtra pela relação com o pai (só leituras/escritas com where)
-  if (READ_OPS.has(operation)) out = withWhere(out, { [childPath!]: { organizationId: orgId } });
+  if (READ_OPS.has(operation)) {
+    // preserva filtros já informados na relação com o pai (ex.: `tender: { deletedAt: null }`)
+    const where = (out['where'] as Args | undefined) ?? {};
+    const existing = where[childPath!];
+    const parent = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...(existing as Args), organizationId: orgId } : { organizationId: orgId };
+    out = { ...out, where: { ...where, [childPath!]: parent } };
+  }
   return out;
 }
 

@@ -16,6 +16,7 @@ import { PublicAgentsPanel } from '@/components/panels/public-agents-panel';
 import { TimelinePanel } from '@/components/panels/timeline-panel';
 import { OpportunitiesTable } from '@/components/crm/opportunities-table';
 import { OpportunityForm } from '@/components/crm/opportunity-form';
+import { TendersTable } from '@/components/tenders/tenders-table';
 import { SyncStatusBadge } from '@/components/status';
 import { Stat, Tabs, useToast } from '@/components/ui';
 
@@ -36,6 +37,7 @@ const TABS = [
   { key: 'orders', label: 'Ordens de serviço' },
   { key: 'contacts', label: 'Contatos' },
   { key: 'comercial', label: 'Comercial' },
+  { key: 'licitacoes', label: 'Licitações' },
   { key: 'timeline', label: 'Linha do tempo' },
 ];
 
@@ -154,6 +156,7 @@ function EntityView() {
           <OpportunityForm open={newOpp} entityId={id} onClose={() => setNewOpp(false)} onSaved={(o) => { setNewOpp(false); router.push(`/comercial/oportunidades/${o.id}`); }} />
         </div>
       )}
+      {tab === 'licitacoes' && (can('tenders.read') ? <TendersTable entityId={id} compact /> : <p className="muted small">Sem permissão para ver licitações.</p>)}
       {tab === 'timeline' && <TimelinePanel entityId={id} />}
 
       <InvoiceDialog id={chargeId} initialTab="collection" onClose={() => setChargeId(null)} />

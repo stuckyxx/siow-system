@@ -6,3 +6,4 @@ export * from './providers/assesi/provider.js';
 export * from './providers/adois/parser.js';
 export * from './providers/adois/provider.js';
 export * from './providers/ibge.js';
+export * from './providers/pncp.js';

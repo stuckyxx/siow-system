@@ -1900,3 +1900,142 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS "entities_partnerId_idx" ON "entities"("partnerId");
+
+-- =====================================================================
+-- FASE 5 (LICITAÇÕES) — idempotente. Tabelas novas + tenderId em documents (coluna nova) e FKs em contracts/financial_tasks.
+-- =====================================================================
+-- ALTER TYPE ... ADD VALUE não roda dentro de transação: executar isolado.
+ALTER TYPE "DocumentType" ADD VALUE IF NOT EXISTS 'TENDER';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'TENDER_DEADLINE';
+
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "tenderId" TEXT NULL;
+
+CREATE TABLE IF NOT EXISTS "tenders" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "entityId" TEXT NOT NULL,
+  "opportunityId" TEXT NULL,
+  "modality" TEXT NOT NULL DEFAULT 'PREGAO_ELETRONICO',
+  "number" TEXT NOT NULL,
+  "year" INTEGER NULL,
+  "officialId" TEXT NULL,
+  "object" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'IDENTIFIED',
+  "estimatedValue" DECIMAL(14,2) NULL,
+  "ourProposalValue" DECIMAL(14,2) NULL,
+  "winnerValue" DECIMAL(14,2) NULL,
+  "publishedAt" DATE NULL,
+  "proposalDeadline" TIMESTAMP(3) NULL,
+  "sessionAt" TIMESTAMP(3) NULL,
+  "resultAt" DATE NULL,
+  "homologatedAt" DATE NULL,
+  "portalUrl" TEXT NULL,
+  "source" TEXT NOT NULL DEFAULT 'MANUAL',
+  "ownerUserId" TEXT NULL,
+  "lossReason" TEXT NULL,
+  "notes" TEXT NULL,
+  "createdByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "tenders_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "tenders_organizationId_officialId_key" ON "tenders"("organizationId", "officialId");
+CREATE INDEX IF NOT EXISTS "tenders_organizationId_status_idx" ON "tenders"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "tenders_entityId_idx" ON "tenders"("entityId");
+CREATE INDEX IF NOT EXISTS "tenders_sessionAt_idx" ON "tenders"("sessionAt");
+
+CREATE TABLE IF NOT EXISTS "tender_deadlines" (
+  "id" TEXT NOT NULL,
+  "tenderId" TEXT NOT NULL,
+  "kind" TEXT NOT NULL DEFAULT 'OTHER',
+  "title" TEXT NOT NULL,
+  "dueAt" TIMESTAMP(3) NOT NULL,
+  "done" BOOLEAN NOT NULL DEFAULT false,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "tender_deadlines_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "tender_deadlines_tenderId_dueAt_idx" ON "tender_deadlines"("tenderId", "dueAt");
+CREATE INDEX IF NOT EXISTS "tender_deadlines_dueAt_idx" ON "tender_deadlines"("dueAt");
+
+CREATE TABLE IF NOT EXISTS "tender_competitors" (
+  "id" TEXT NOT NULL,
+  "tenderId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "document" TEXT NULL,
+  "proposalValue" DECIMAL(14,2) NULL,
+  "rank" INTEGER NULL,
+  "isWinner" BOOLEAN NOT NULL DEFAULT false,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "tender_competitors_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "tender_competitors_tenderId_idx" ON "tender_competitors"("tenderId");
+
+CREATE TABLE IF NOT EXISTS "tender_checklist_items" (
+  "id" TEXT NOT NULL,
+  "tenderId" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "certificateId" TEXT NULL,
+  "documentId" TEXT NULL,
+  "required" BOOLEAN NOT NULL DEFAULT true,
+  "done" BOOLEAN NOT NULL DEFAULT false,
+  "position" INTEGER NOT NULL DEFAULT 0,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "tender_checklist_items_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "tender_checklist_items_tenderId_idx" ON "tender_checklist_items"("tenderId");
+
+CREATE TABLE IF NOT EXISTS "tender_events" (
+  "id" TEXT NOT NULL,
+  "tenderId" TEXT NOT NULL,
+  "userId" TEXT NULL,
+  "action" TEXT NOT NULL,
+  "fromValue" TEXT NULL,
+  "toValue" TEXT NULL,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "tender_events_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "tender_events_tenderId_createdAt_idx" ON "tender_events"("tenderId", "createdAt");
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tenders_organizationId_fkey') THEN
+    ALTER TABLE "tenders" ADD CONSTRAINT "tenders_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tenders_entityId_fkey') THEN
+    ALTER TABLE "tenders" ADD CONSTRAINT "tenders_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tenders_opportunityId_fkey') THEN
+    ALTER TABLE "tenders" ADD CONSTRAINT "tenders_opportunityId_fkey" FOREIGN KEY ("opportunityId") REFERENCES "opportunities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tenders_ownerUserId_fkey') THEN
+    ALTER TABLE "tenders" ADD CONSTRAINT "tenders_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tender_deadlines_tenderId_fkey') THEN
+    ALTER TABLE "tender_deadlines" ADD CONSTRAINT "tender_deadlines_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "tenders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tender_competitors_tenderId_fkey') THEN
+    ALTER TABLE "tender_competitors" ADD CONSTRAINT "tender_competitors_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "tenders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tender_checklist_items_tenderId_fkey') THEN
+    ALTER TABLE "tender_checklist_items" ADD CONSTRAINT "tender_checklist_items_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "tenders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tender_events_tenderId_fkey') THEN
+    ALTER TABLE "tender_events" ADD CONSTRAINT "tender_events_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "tenders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'documents_tenderId_fkey') THEN
+    ALTER TABLE "documents" ADD CONSTRAINT "documents_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "tenders"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contracts_tenderId_fkey') THEN
+    ALTER TABLE "contracts" ADD CONSTRAINT "contracts_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "tenders"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'financial_tasks_tenderId_fkey') THEN
+    ALTER TABLE "financial_tasks" ADD CONSTRAINT "financial_tasks_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "tenders"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "documents_tenderId_idx" ON "documents"("tenderId");

@@ -122,3 +122,16 @@ export function competencesBetween(startIso: string, endIso: string): Competence
   }
   return out;
 }
+
+/** ISO/Date → valor para <input type="datetime-local"> no horário de Brasília (YYYY-MM-DDTHH:mm). */
+export function toBrDateTimeInput(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  const d = typeof value === 'string' ? new Date(value) : value;
+  return d.toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).slice(0, 16).replace(' ', 'T');
+}
+/** Interpreta "YYYY-MM-DDTHH:mm" (ou data pura) como horário de Brasília e devolve Date (UTC). */
+export function brDateTimeToDate(value: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T00:00:00-03:00`);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) return new Date(`${value}${value.length === 16 ? ':00' : ''}-03:00`);
+  return new Date(value);
+}

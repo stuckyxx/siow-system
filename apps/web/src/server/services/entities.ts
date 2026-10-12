@@ -439,7 +439,7 @@ function defaultFullName(type: string, entity: string): string {
 }
 
 /** Lê a planilha: aba de entidades (cabeçalho com "tipo") e aba de notas (cabeçalho com "numero"); CSV = uma aba só. */
-async function parseSheets(file: ImportFile): Promise<{ entities: Array<Record<string, string>>; invoices: Array<Record<string, string>> }> {
+export async function parseSheets(file: ImportFile): Promise<{ entities: Array<Record<string, string>>; invoices: Array<Record<string, string>> }> {
   const classify = (sheets: Array<{ name: string; rows: Array<Record<string, string>>; headers: string[] }>) => {
     const out = { entities: [] as Array<Record<string, string>>, invoices: [] as Array<Record<string, string>> };
     for (const sh of sheets) {

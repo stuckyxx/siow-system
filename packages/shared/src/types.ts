@@ -154,7 +154,8 @@ export interface AttentionItem {
     | 'SYNC_FAILED'
     | 'MISSING_INVOICE'
     | 'ISSUANCE_DUE'
-    | 'OPPORTUNITY_STALLED';
+    | 'OPPORTUNITY_STALLED'
+    | 'TENDER_DEADLINE';
   title: string;
   detail: string;
   entityId: string | null;
@@ -352,4 +353,28 @@ export interface PartnerStatement {
   byMonth: Array<{ competence: string; forecast: string; due: string; paid: string }>;
   entities: Array<{ id: string; name: string; shortName: string | null; municipality: string; uf: string; activeContract: string | null }>;
   opportunities: Array<{ id: string; title: string; status: string; stageName: string; totalAmount: string | null; entityName: string }>;
+}
+
+// ---------- Licitações (Fase 5) ----------
+export interface TenderDeadlineRow { id: string; kind: string; title: string; dueAt: string; done: boolean; notes: string | null; overdue: boolean; daysLeft: number }
+export interface TenderCompetitorRow { id: string; name: string; document: string | null; proposalValue: string | null; rank: number | null; isWinner: boolean; notes: string | null }
+export interface TenderChecklistRow { id: string; title: string; certificateId: string | null; certificateName: string | null; certificateValidUntil: string | null; certificateStatus: 'VALID' | 'EXPIRING' | 'EXPIRED' | 'MISSING' | null; documentId: string | null; required: boolean; done: boolean; position: number; notes: string | null }
+export interface TenderRow {
+  id: string; entity: { id: string; name: string; shortName: string | null; municipality: string; uf: string }; opportunityId: string | null;
+  modality: string; number: string; year: number | null; officialId: string | null; object: string; status: string;
+  estimatedValue: string | null; ourProposalValue: string | null; winnerValue: string | null;
+  publishedAt: string | null; proposalDeadline: string | null; sessionAt: string | null; resultAt: string | null; homologatedAt: string | null;
+  portalUrl: string | null; source: string; owner: { id: string; name: string } | null; lossReason: string | null; notes: string | null;
+  nextDeadline: { title: string; dueAt: string; overdue: boolean } | null; openDeadlines: number; checklistDone: number; checklistTotal: number; checklistBlocked: number;
+  contractId: string | null; createdAt: string; updatedAt: string;
+}
+export interface TenderDetail extends TenderRow {
+  deadlines: TenderDeadlineRow[]; competitors: TenderCompetitorRow[]; checklist: TenderChecklistRow[];
+  events: Array<{ id: string; action: string; fromValue: string | null; toValue: string | null; notes: string | null; createdAt: string; userName: string | null }>;
+}
+export interface PncpPublication {
+  officialId: string; modalityCode: number; modality: string; number: string; year: number | null; object: string; estimatedValue: string | null;
+  publishedAt: string | null; proposalOpensAt: string | null; proposalDeadline: string | null; orgName: string; orgDocument: string | null; unitName: string | null;
+  municipality: string | null; uf: string | null; portalUrl: string | null; situation: string | null;
+  match: { entityId: string | null; entityName: string | null; alreadyImportedId: string | null };
 }

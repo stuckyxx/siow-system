@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Building2, FileBarChart, FileSignature, Handshake, LayoutDashboard, Settings, Wallet } from 'lucide-react';
+import { Briefcase, Building2, FileBarChart, FileSignature, Gavel, Handshake, LayoutDashboard, Settings, Wallet } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { GlobalSearch } from '@/components/global-search';
@@ -13,6 +13,7 @@ import { QuickSearch } from '@/components/quick-search';
 const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean; onlyIfMissing?: string }> = [
   { href: '/financeiro', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/financeiro' },
   { href: '/comercial', label: 'Comercial', icon: Briefcase, perms: ['crm.read'], match: (p) => p.startsWith('/comercial') },
+  { href: '/licitacoes', label: 'Licitações', icon: Gavel, perms: ['tenders.read'], match: (p) => p.startsWith('/licitacoes') },
   { href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'], match: (p) => p.startsWith('/financeiro/entidades') },
   { href: '/financeiro/contratos', label: 'Contratos', icon: FileSignature, perms: ['contracts.read'], match: (p) => p.startsWith('/financeiro/contratos') },
   {

@@ -13,6 +13,7 @@ export interface StoreDocumentInput {
   contractId?: string | null;
   invoiceId?: string | null;
   serviceOrderId?: string | null;
+  tenderId?: string | null;
   originalUrl?: string | null;
   sourceDate?: Date | null;
   uploadedByUserId?: string | null;

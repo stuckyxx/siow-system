@@ -151,6 +151,7 @@ export const DOCUMENT_TYPES = [
   'CONTRACT',
   'SERVICE_ORDER',
   'SERVICE_ORDER_SIGNED',
+  'TENDER',
   'OTHER',
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
@@ -165,6 +166,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   CONTRACT: 'Contrato',
   SERVICE_ORDER: 'Ordem de Serviço',
   SERVICE_ORDER_SIGNED: 'Ordem de Serviço assinada',
+  TENDER: 'Licitação (edital, anexo, proposta)',
   OTHER: 'Outro',
 };
 
@@ -285,3 +287,17 @@ export const COMMISSION_BASIS_LABELS: Record<CommissionBasis, string> = { RECEIV
 export const COMMISSION_STATUSES = ['FORECAST', 'DUE', 'PAID', 'REVERSED'] as const;
 export type CommissionStatus = (typeof COMMISSION_STATUSES)[number];
 export const COMMISSION_STATUS_LABELS: Record<CommissionStatus, string> = { FORECAST: 'Prevista', DUE: 'A pagar', PAID: 'Paga', REVERSED: 'Estornada' };
+
+// ---------- Licitações (Fase 5) ----------
+export const TENDER_MODALITIES = ['PREGAO_ELETRONICO', 'PREGAO_PRESENCIAL', 'CONCORRENCIA', 'DISPENSA', 'INEXIGIBILIDADE', 'CREDENCIAMENTO', 'REGISTRO_PRECOS', 'ADESAO_ATA', 'LEILAO', 'CONCURSO', 'DIALOGO_COMPETITIVO', 'OUTRA'] as const;
+export type TenderModality = (typeof TENDER_MODALITIES)[number];
+export const TENDER_MODALITY_LABELS: Record<TenderModality, string> = { PREGAO_ELETRONICO: 'Pregão eletrônico', PREGAO_PRESENCIAL: 'Pregão presencial', CONCORRENCIA: 'Concorrência', DISPENSA: 'Dispensa', INEXIGIBILIDADE: 'Inexigibilidade', CREDENCIAMENTO: 'Credenciamento', REGISTRO_PRECOS: 'Registro de preços', ADESAO_ATA: 'Adesão a ata', LEILAO: 'Leilão', CONCURSO: 'Concurso', DIALOGO_COMPETITIVO: 'Diálogo competitivo', OUTRA: 'Outra' };
+export const TENDER_STATUSES = ['IDENTIFIED', 'ANALYZING', 'PREPARING', 'SUBMITTED', 'IN_SESSION', 'WON', 'LOST', 'HOMOLOGATED', 'CANCELLED', 'DESERTED', 'NOT_PARTICIPATING'] as const;
+export type TenderStatus = (typeof TENDER_STATUSES)[number];
+export const TENDER_STATUS_LABELS: Record<TenderStatus, string> = { IDENTIFIED: 'Identificada', ANALYZING: 'Em análise', PREPARING: 'Preparando proposta', SUBMITTED: 'Proposta enviada', IN_SESSION: 'Em sessão', WON: 'Vencida', LOST: 'Perdida', HOMOLOGATED: 'Homologada', CANCELLED: 'Cancelada/revogada', DESERTED: 'Deserta', NOT_PARTICIPATING: 'Não participamos' };
+export const TENDER_OPEN_STATUSES: TenderStatus[] = ['IDENTIFIED', 'ANALYZING', 'PREPARING', 'SUBMITTED', 'IN_SESSION', 'WON'];
+export const TENDER_DEADLINE_KINDS = ['PUBLICATION', 'QUESTIONS', 'IMPUGNATION', 'PROPOSAL', 'SESSION', 'APPEAL', 'RESULT', 'HOMOLOGATION', 'SIGNATURE', 'OTHER'] as const;
+export type TenderDeadlineKind = (typeof TENDER_DEADLINE_KINDS)[number];
+export const TENDER_DEADLINE_KIND_LABELS: Record<TenderDeadlineKind, string> = { PUBLICATION: 'Publicação', QUESTIONS: 'Esclarecimentos', IMPUGNATION: 'Impugnação', PROPOSAL: 'Envio da proposta', SESSION: 'Sessão pública', APPEAL: 'Recurso', RESULT: 'Resultado', HOMOLOGATION: 'Homologação', SIGNATURE: 'Assinatura do contrato', OTHER: 'Outro' };
+/** Modalidades do PNCP (codigoModalidadeContratacao) → modalidade interna. */
+export const PNCP_MODALITIES: Record<number, TenderModality> = { 1: 'LEILAO', 2: 'DIALOGO_COMPETITIVO', 3: 'CONCURSO', 4: 'CONCORRENCIA', 5: 'CONCORRENCIA', 6: 'PREGAO_ELETRONICO', 7: 'PREGAO_PRESENCIAL', 8: 'DISPENSA', 9: 'INEXIGIBILIDADE', 10: 'OUTRA', 11: 'OUTRA', 12: 'CREDENCIAMENTO', 13: 'LEILAO' };

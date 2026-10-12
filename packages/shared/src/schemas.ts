@@ -648,3 +648,84 @@ export const payCommissionsSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 export const linkPartnerEntitiesSchema = z.object({ entityIds: z.array(uuid).min(1).max(500), unlink: z.boolean().default(false) });
+
+// ---------- Licitações (Fase 5) ----------
+const isoDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/, 'Data/hora inválida');
+export const tenderSchema = z.object({
+  entityId: uuid,
+  opportunityId: uuid.optional().nullable(),
+  modality: z.enum(['PREGAO_ELETRONICO', 'PREGAO_PRESENCIAL', 'CONCORRENCIA', 'DISPENSA', 'INEXIGIBILIDADE', 'CREDENCIAMENTO', 'REGISTRO_PRECOS', 'ADESAO_ATA', 'LEILAO', 'CONCURSO', 'DIALOGO_COMPETITIVO', 'OUTRA']).default('PREGAO_ELETRONICO'),
+  number: z.string().min(1).max(60),
+  year: z.coerce.number().int().min(2000).max(2100).optional().nullable(),
+  officialId: z.string().max(80).optional().nullable(),
+  object: z.string().min(3).max(4000),
+  estimatedValue: decimalString.optional().nullable(),
+  ourProposalValue: decimalString.optional().nullable(),
+  publishedAt: isoDate.optional().nullable(),
+  proposalDeadline: isoDateTime.optional().nullable(),
+  sessionAt: isoDateTime.optional().nullable(),
+  portalUrl: z.string().url().max(500).optional().nullable().or(z.literal('')),
+  ownerUserId: uuid.optional().nullable(),
+  notes: z.string().max(4000).optional().nullable(),
+});
+export const updateTenderSchema = tenderSchema.omit({ entityId: true }).partial();
+export const tenderStatusSchema = z.object({
+  status: z.enum(['IDENTIFIED', 'ANALYZING', 'PREPARING', 'SUBMITTED', 'IN_SESSION', 'WON', 'LOST', 'HOMOLOGATED', 'CANCELLED', 'DESERTED', 'NOT_PARTICIPATING']),
+  notes: z.string().max(2000).optional().nullable(),
+  lossReason: z.string().max(200).optional().nullable(),
+  winnerValue: decimalString.optional().nullable(),
+  ourProposalValue: decimalString.optional().nullable(),
+  resultAt: isoDate.optional().nullable(),
+  homologatedAt: isoDate.optional().nullable(),
+});
+export const tenderListFilterSchema = paginationSchema.extend({
+  q: z.string().max(120).optional(),
+  entityId: uuid.optional(),
+  status: z.string().max(30).optional(),
+  modality: z.string().max(30).optional(),
+  uf: z.string().length(2).optional(),
+  open: boolParam,
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+export const tenderDeadlineSchema = z.object({
+  kind: z.enum(['PUBLICATION', 'QUESTIONS', 'IMPUGNATION', 'PROPOSAL', 'SESSION', 'APPEAL', 'RESULT', 'HOMOLOGATION', 'SIGNATURE', 'OTHER']).default('OTHER'),
+  title: z.string().min(2).max(160),
+  dueAt: isoDateTime,
+  done: z.boolean().optional(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const tenderCompetitorSchema = z.object({
+  name: z.string().min(2).max(200),
+  document: z.string().max(20).optional().nullable(),
+  proposalValue: decimalString.optional().nullable(),
+  rank: z.coerce.number().int().min(1).max(999).optional().nullable(),
+  isWinner: z.boolean().default(false),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const tenderChecklistItemSchema = z.object({
+  title: z.string().min(2).max(200),
+  certificateId: uuid.optional().nullable(),
+  documentId: uuid.optional().nullable(),
+  required: z.boolean().default(true),
+  done: z.boolean().default(false),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const updateTenderChecklistItemSchema = tenderChecklistItemSchema.partial();
+export const pncpSearchSchema = z.object({
+  uf: z.string().length(2),
+  from: isoDate,
+  to: isoDate,
+  modalities: z.array(z.coerce.number().int().min(1).max(13)).min(1).max(13).default([6, 8, 4]),
+  q: z.string().max(120).optional().nullable(),
+  onlyLinkedEntities: z.boolean().default(false),
+});
+export const pncpImportSchema = z.object({
+  items: z.array(z.object({ officialId: z.string().min(5).max(80), entityId: uuid.optional().nullable(), createEntity: z.boolean().default(true) })).min(1).max(200),
+  uf: z.string().length(2),
+  from: isoDate,
+  to: isoDate,
+  modalities: z.array(z.coerce.number().int().min(1).max(13)).min(1).max(13),
+});
+/** Formalização a partir de licitação homologada: contrato em rascunho por padrão (mesma regra do CRM). */
+export const formalizeTenderSchema = formalizeOpportunitySchema;

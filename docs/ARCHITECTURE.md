@@ -184,6 +184,24 @@ DUE (recebimento confirmado) → PAID (registro manual do pagamento ao parceiro,
 DUE/PAID viram REVERSED (estorno a compensar quando já paga). O recálculo roda após alteração manual, lote, conflito resolvido, exclusão,
 sincronização (por entidade) e no cron diário. O Financeiro continua sendo a única fonte dos valores.
 
+## 6e. Licitações (Fase 5)
+
+Tabelas `tenders` (única por `organizationId + officialId`, o número de controle do PNCP), `tender_deadlines`, `tender_competitors`,
+`tender_checklist_items` (opcionalmente ligados a `certificates`/`documents`) e `tender_events`; `documents.tenderId` (tipo `TENDER`),
+`contracts.tenderId` e `financial_tasks.tenderId`. Permissões `tenders.read` e `tenders.write` (papel COMERCIAL recebe ambas).
+Situações: IDENTIFIED → ANALYZING → PREPARING → SUBMITTED → IN_SESSION → WON/LOST → HOMOLOGATED (ou CANCELLED/DESERTED/NOT_PARTICIPATING).
+
+Regras (`services/tenders.ts`): ao criar, prazos padrão (proposta e sessão) e checklist padrão (certidões ativas da empresa + itens fixos);
+o status de cada certidão do checklist é calculado na data da sessão (válida / vence em breve / vencida / sem validade) e bloqueia a
+habilitação quando vencida. Mudar a situação reflete na oportunidade ligada (ganha/perdida). Formalizar (WON/HOMOLOGATED) cria o contrato
+em RASCUNHO com `tenderId` (ativação continua manual, na ficha do contrato); uma licitação gera no máximo um contrato. Exclusão é lógica
+e libera o identificador oficial. Importações (PNCP por UF/período/modalidade — consulta pública somente leitura — e planilha) são
+idempotentes pelo identificador oficial e, no PNCP, o órgão vira entidade LEAD quando não existe. Cron diário: alertas `TENDER_DEADLINE`
+N dias antes (`tenders.alertDays`, padrão 3) e para vencidos, um por prazo por dia. Datas/horas de prazos são interpretadas no horário de Brasília.
+
+A extensão de tenant passou a **mesclar** filtros já informados na relação com o pai (ex.: `tender: { deletedAt: null }`) em vez de
+substituí-los — correção que vale para todos os modelos filhos.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

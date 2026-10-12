@@ -45,14 +45,14 @@ export function WinDialog({ open, opportunity, onClose, onDone }: { open: boolea
 }
 
 /** Assistente de formalização: cria o contrato em RASCUNHO (padrão) ou ATIVO quando o usuário confirma a contratação. */
-export function FormalizeDialog({ open, opportunity, onClose, onDone }: { open: boolean; opportunity: OpportunityRow; onClose: () => void; onDone: (r: { contractId: string; status: string }) => void }) {
+export function FormalizeDialog({ open, opportunity, endpoint, onClose, onDone }: { open: boolean; opportunity: OpportunityRow; endpoint?: string; onClose: () => void; onDone: (r: { contractId: string; status: string }) => void }) {
   const { data: assignees } = useAssignees();
   const year = todayIso().slice(0, 4);
   const [f, setF] = useState({ number: '', object: opportunity.title, monthlyValue: opportunity.monthlyAmount?.replace('.', ',') ?? '', totalValue: opportunity.totalAmount?.replace('.', ',') ?? '', startDate: todayIso(), endDate: '', responsibleUserId: opportunity.owner?.id ?? '', notes: '', activate: false, issuanceDay: '' });
   const [error, setError] = useState<string | null>(null);
   const b = (k: keyof typeof f) => ({ value: String(f[k]), onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value }) });
   const m = useMutation({
-    mutationFn: () => api<{ contractId: string; status: string }>(`/comercial/opportunities/${opportunity.id}/formalize`, { method: 'POST', body: { number: f.number, object: f.object || null, monthlyValue: f.monthlyValue || null, totalValue: f.totalValue || null, startDate: f.startDate || null, endDate: f.endDate || null, responsibleUserId: f.responsibleUserId || null, notes: f.notes || null, activate: f.activate, issuanceDay: f.activate && f.issuanceDay ? Number(f.issuanceDay) : null } }),
+    mutationFn: () => api<{ contractId: string; status: string }>(endpoint ?? `/comercial/opportunities/${opportunity.id}/formalize`, { method: 'POST', body: { number: f.number, object: f.object || null, monthlyValue: f.monthlyValue || null, totalValue: f.totalValue || null, startDate: f.startDate || null, endDate: f.endDate || null, responsibleUserId: f.responsibleUserId || null, notes: f.notes || null, activate: f.activate, issuanceDay: f.activate && f.issuanceDay ? Number(f.issuanceDay) : null } }),
     onSuccess: onDone, onError: (e) => setError(errMsg(e)),
   });
   return (

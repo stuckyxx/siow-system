@@ -25,6 +25,11 @@ describe('applyTenantArgs — isolamento por organização', () => {
     expect(applyTenantArgs('CertificateVersion', 'findMany', {}, ORG)).toEqual({ where: { certificate: { organizationId: ORG } } });
     expect(applyTenantArgs('ContractAmendment', 'deleteMany', { where: { contractId: 'c' } }, ORG)).toEqual({ where: { contractId: 'c', contract: { organizationId: ORG } } });
   });
+  it('mantém filtros já informados na relação com o pai', () => {
+    expect(applyTenantArgs('TenderDeadline', 'findMany', { where: { done: false, tender: { deletedAt: null } } }, ORG)).toEqual({ where: { done: false, tender: { deletedAt: null, organizationId: ORG } } });
+    expect(applyTenantArgs('TenderDeadline', 'findMany', { where: { tender: { organizationId: 'outra' } } }, ORG)).toEqual({ where: { tender: { organizationId: ORG } } });
+  });
+
   it('não toca em modelos globais', () => {
     expect(applyTenantArgs('Permission', 'findMany', {}, ORG)).toEqual({});
     expect(applyTenantArgs('Setting', 'findUnique', { where: { key: 'x' } }, null)).toEqual({ where: { key: 'x' } });

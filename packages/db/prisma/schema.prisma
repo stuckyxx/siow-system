@@ -52,6 +52,7 @@ model User {
   ownedOpportunities   Opportunity[]        @relation("OpportunityOwner")
   goals                Goal[]
   partnerProfile       Partner?
+  ownedTenders         Tender[]             @relation("TenderOwner")
   responsibleContracts Contract[]
   collectionAttempts   CollectionAttempt[]
   collectionCases      CollectionCase[]
@@ -215,6 +216,7 @@ model Entity {
   healthSnapshots EntityHealthSnapshot[]
   opportunities   Opportunity[]
   commissions     Commission[]
+  tenders         Tender[]
 
   @@unique([organizationId, type, municipality, uf])
   @@index([municipality])
@@ -360,6 +362,7 @@ model Contract {
   /// Fase 3 — vínculos e ciclo de vida: oportunidade/licitação de origem, parceiro (FK na Fase 4), ativação e encerramento
   opportunityId     String?
   tenderId          String?
+  tender            Tender?        @relation(fields: [tenderId], references: [id])
   partnerId         String?
   partner           Partner?       @relation(fields: [partnerId], references: [id])
   renewalNoticeDays Int?
@@ -575,6 +578,7 @@ enum DocumentType {
   CONTRACT // Contrato
   SERVICE_ORDER // Ordem de Serviço
   SERVICE_ORDER_SIGNED // OS assinada
+  TENDER // Edital/anexo/proposta de licitação (Fase 5)
   OTHER
 }
 
@@ -611,6 +615,8 @@ model Document {
   invoice          Invoice?     @relation(fields: [invoiceId], references: [id])
   serviceOrderId   String?
   serviceOrder     ServiceOrder? @relation("ServiceOrderDocuments", fields: [serviceOrderId], references: [id])
+  tenderId         String?
+  tender           Tender?      @relation(fields: [tenderId], references: [id])
   originalUrl      String?
   sourceDate       DateTime?    @db.Date
   capturedAt       DateTime     @default(now())
@@ -771,6 +777,7 @@ model FinancialTask {
   opportunityId   String?
   opportunity     Opportunity?  @relation(fields: [opportunityId], references: [id])
   tenderId        String?
+  tender          Tender?       @relation(fields: [tenderId], references: [id])
   ticketId        String?
   assigneeUserId  String?
   assignee        User?         @relation("TaskAssignee", fields: [assigneeUserId], references: [id])
@@ -1122,6 +1129,7 @@ enum NotificationType {
   SERVICE_ORDER_PENDING
   ISSUANCE_DUE
   OPPORTUNITY_STALLED
+  TENDER_DEADLINE
   GENERIC
 }
 
@@ -1200,6 +1208,7 @@ model Organization {
   partners         Partner[]
   commissionRules  CommissionRule[]
   commissions      Commission[]
+  tenders          Tender[]
 
   @@map("organizations")
 }
@@ -1389,6 +1398,7 @@ model Opportunity {
   events    OpportunityEvent[]
   proposals Proposal[]
   tasks     FinancialTask[]
+  tenders   Tender[]
 
   @@index([organizationId, status])
   @@index([entityId])
@@ -1648,4 +1658,125 @@ model Commission {
   @@index([organizationId, partnerId, status])
   @@index([invoiceId])
   @@map("commissions")
+}
+
+// =====================================================================
+// FASE 5 — LICITAÇÕES E CONTRATAÇÕES (módulo 3)
+// =====================================================================
+
+/// Processo licitatório. officialId = identificador oficial (ex.: número de controle PNCP) — único por organização contra duplicidade.
+model Tender {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  entityId         String
+  entity           Entity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  opportunityId    String?
+  opportunity      Opportunity? @relation(fields: [opportunityId], references: [id])
+  modality         String       @default("PREGAO_ELETRONICO")
+  number           String
+  year             Int?
+  officialId       String?
+  object           String
+  status           String       @default("IDENTIFIED")
+  estimatedValue   Decimal?     @db.Decimal(14, 2)
+  ourProposalValue Decimal?     @db.Decimal(14, 2)
+  winnerValue      Decimal?     @db.Decimal(14, 2)
+  publishedAt      DateTime?    @db.Date
+  proposalDeadline DateTime?
+  sessionAt        DateTime?
+  resultAt         DateTime?    @db.Date
+  homologatedAt    DateTime?    @db.Date
+  portalUrl        String?
+  source           String       @default("MANUAL") // MANUAL | PNCP | PLANILHA
+  ownerUserId      String?
+  owner            User?        @relation("TenderOwner", fields: [ownerUserId], references: [id])
+  lossReason       String?
+  notes            String?
+  createdByUserId  String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  deadlines   TenderDeadline[]
+  competitors TenderCompetitor[]
+  checklist   TenderChecklistItem[]
+  events      TenderEvent[]
+  documents   Document[]
+  contracts   Contract[]
+  tasks       FinancialTask[]
+
+  @@unique([organizationId, officialId])
+  @@index([organizationId, status])
+  @@index([entityId])
+  @@index([sessionAt])
+  @@map("tenders")
+}
+
+/// Prazo do processo (impugnação, esclarecimentos, proposta, sessão, recurso, resultado, homologação, assinatura…).
+model TenderDeadline {
+  id        String   @id @default(uuid())
+  tenderId  String
+  tender    Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  kind      String   @default("OTHER")
+  title     String
+  dueAt     DateTime
+  done      Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenderId, dueAt])
+  @@index([dueAt])
+  @@map("tender_deadlines")
+}
+
+model TenderCompetitor {
+  id            String   @id @default(uuid())
+  tenderId      String
+  tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  name          String
+  document      String?
+  proposalValue Decimal? @db.Decimal(14, 2)
+  rank          Int?
+  isWinner      Boolean  @default(false)
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenderId])
+  @@map("tender_competitors")
+}
+
+/// Checklist de habilitação: item livre ou ligado a uma certidão (situação calculada pela validade na data da sessão).
+model TenderChecklistItem {
+  id            String   @id @default(uuid())
+  tenderId      String
+  tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  title         String
+  certificateId String?
+  documentId    String?
+  required      Boolean  @default(true)
+  done          Boolean  @default(false)
+  position      Int      @default(0)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenderId])
+  @@map("tender_checklist_items")
+}
+
+model TenderEvent {
+  id        String   @id @default(uuid())
+  tenderId  String
+  tender    Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  userId    String?
+  action    String
+  fromValue String?
+  toValue   String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([tenderId, createdAt])
+  @@map("tender_events")
 }

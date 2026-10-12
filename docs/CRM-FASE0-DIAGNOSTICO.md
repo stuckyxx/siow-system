@@ -258,3 +258,19 @@ registro de pagamento em lote (auditado), estornos, portal do parceiro (`/parcei
 **Validação** — fluxo local e em produção: parceiro + usuário PARCEIRO → vínculo de entidade → regra 10% sobre recebimento → comissões
 prevista/a pagar → nota paga em lote vira "a pagar" → pagamento registrado → nota volta a pendente gera estorno (comissão já paga) →
 pagamento parcial (base = valor recebido) → recálculo idempotente (cron) → portal do parceiro vê só os próprios dados e recebe 403 fora dele.
+
+## Executado na Fase 5 (12/10/2026)
+
+**Banco (Neon, produção)** — backup `pre-fase5-backup-2026-10-12`. Migração aditiva e idempotente (seção "FASE 5" do `schema.sql`):
+`tenders`, `tender_deadlines`, `tender_competitors`, `tender_checklist_items`, `tender_events`, `documents.tenderId`, FKs `tenderId` em
+contratos e tarefas, enums `TENDER` (documento) e `TENDER_DEADLINE` (notificação). Permissões `tenders.read`/`tenders.write`; ajuste `tenders.alertDays`.
+
+**Código** — módulo Licitações (`/licitacoes`): lista com filtros, calendário de prazos, ficha com prazos, checklist de habilitação ligado
+às certidões (validade na data da sessão), concorrentes e resultado, documentos (edital/anexos/proposta), histórico; mudança de situação com
+motivo de perda e valores; formalização em contrato (rascunho) ligada ao Financeiro; importação do PNCP e por planilha (idempotentes);
+alertas de prazo no cron diário; aba "Licitações" na entidade; eventos na linha do tempo; menu "Licitações".
+
+**Validação** — fluxo local e em produção: criar licitação → prazos/checklist padrão → prazo extra, concorrente, item de checklist →
+calendário → SUBMITTED → WON → HOMOLOGATED → formalizar (contrato DRAFT com `tenderId`; 2ª vez recusada) → cron com alertas deduplicados →
+busca no PNCP → importação de planilha (linha inválida reportada; 2ª importação ignora duplicata). Regressão do Financeiro inalterada.
+
