@@ -205,3 +205,23 @@ e, sem isso, a consulta executava fora do contexto e toda requisição autentica
 
 **Testes de aceite** — ver relatório de entrega no chat/commit: regressão do Financeiro ao vivo, teste de isolamento com organização
 `isolamento-teste` (lista vazia, 404 para entidade da Siow, dashboard zerado, cron por organização), depois removida (exclusão lógica).
+
+---
+
+## Executado na Fase 2 (12/10/2026)
+
+**Banco (Neon, produção)** — backup prévio no branch `pre-fase2-backup-2026-10-12` (`br-ancient-fog-b4vepg9v`). Migração aditiva e idempotente
+(seção "FASE 2" do `schema.sql`): tipo `OpportunityStatus`, valor `OPPORTUNITY_STALLED` em `NotificationType`, 9 tabelas novas
+(`pipelines`, `pipeline_stages`, `opportunities`, `opportunity_items`, `opportunity_events`, `proposals`, `proposal_items`, `catalog_items`,
+`goals`), índice/FK de `financial_tasks.opportunityId`. Nenhuma coluna existente alterada. Bootstrap aplica permissões `crm.*`, papel
+COMERCIAL, funil padrão e configurações `crm.lossReasons` / `crm.stalledDays`.
+
+**Código** — commit `c301e77`: serviços `crm/*` (funil, oportunidades, propostas com PDF, catálogo, metas, dashboard), rotas
+`/api/comercial/*`, telas Comercial (Painel, Kanban, Lista, Calendário), ficha da oportunidade (etapas, itens, propostas versionadas,
+atividades, histórico), catálogo, metas, configurar funil, aba Comercial na entidade, eventos do CRM na linha do tempo, alerta de
+oportunidade parada no cron diário.
+
+**Validação** — fluxo completo testado localmente (Postgres 16 + Next) e em produção: catálogo → oportunidade com itens → mover etapa →
+proposta v1/v2 (v1 vira "substituída") → PDF → atividade (calendário comercial) → ganho → formalização em rascunho (não entra em
+"contratos ativos") → meta apurada → dashboard; oportunidade parada detectada, notificada pelo cron e listada no painel; funil editado
+com etapa nova; regressão do Financeiro mantida.

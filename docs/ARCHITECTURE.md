@@ -141,6 +141,19 @@ Cadastro Público (módulo 1) acrescenta `public_agents` (agentes públicos por 
 pesos em `Setting health.weights`), campos `ibgeCode/segment/partnerId/healthScore` em `entities`, importação de municípios do IBGE como leads
 (`entities/import-ibge`) e a linha do tempo unificada (`services/timeline.ts`).
 
+## 6b. CRM Comercial (Fase 2)
+
+Tabelas (todas com `organizationId`): `pipelines`/`pipeline_stages` (funil configurável; padrão Lead → Contato realizado → Qualificado →
+Proposta → Negociação → Aguardando contratação → Ganho/Perdido, com probabilidade e SLA por etapa), `opportunities` (+ `opportunity_items`,
+`opportunity_events`), `proposals` (+ `proposal_items`, versionadas por oportunidade), `catalog_items`, `goals`. A agenda única
+(`financial_tasks`) recebe as atividades comerciais via `module = 'COMERCIAL'` + `opportunityId`.
+
+Serviços em `apps/web/src/server/services/crm/*` e rotas em `/api/comercial/*` (permissões `crm.read`, `crm.write`, `crm.manage`).
+Regras: "Ganho" só pelas ações da oportunidade (nunca arrastando no Kanban); a formalização cria o contrato em **rascunho** e só o ativa com
+confirmação explícita (`activate`), opcionalmente criando o alarme de emissão; oportunidade formalizada não pode ser perdida/reaberta/excluída;
+"parada" = sem movimentação há mais dias que o SLA da etapa (ou `crm.stalledDays`), notificada 1×/semana pelo cron diário
+(`OPPORTUNITY_STALLED`). O dashboard comercial é calculado a partir das oportunidades e nunca é apresentado como receita confirmada.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`
