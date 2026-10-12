@@ -1410,8 +1410,9 @@ DO $$ BEGIN
 END $$;
 
 -- audit_logs.organizationId (nulo em eventos de plataforma, ex.: login falho)
-ALTER TABLE "audit_logs" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL;
-UPDATE "audit_logs" SET "organizationId" = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001' WHERE "organizationId" IS NULL;
+-- audit_logs é append-only (trigger bloqueia UPDATE): as linhas antigas recebem a organização padrão pelo DEFAULT do ADD COLUMN; depois o DEFAULT é removido (eventos de plataforma ficam nulos)
+ALTER TABLE "audit_logs" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NULL DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001';
+ALTER TABLE "audit_logs" ALTER COLUMN "organizationId" DROP DEFAULT;
 CREATE INDEX IF NOT EXISTS "audit_logs_organizationId_createdAt_idx" ON "audit_logs"("organizationId", "createdAt");
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'audit_logs_organizationId_fkey') THEN
