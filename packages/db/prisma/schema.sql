@@ -2304,3 +2304,74 @@ DO $$ BEGIN
     ALTER TABLE "webhook_deliveries" ADD CONSTRAINT "webhook_deliveries_webhookId_fkey" FOREIGN KEY ("webhookId") REFERENCES "webhooks"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- =====================================================================
+-- FASE 6b (CENTRAL WHATSAPP) — idempotente. Conversas e mensagens do WhatsApp.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "wa_conversations" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "waId" TEXT NOT NULL,
+  "displayName" TEXT NULL,
+  "contactId" TEXT NULL,
+  "entityId" TEXT NULL,
+  "ticketId" TEXT NULL,
+  "status" TEXT NOT NULL DEFAULT 'OPEN',
+  "assigneeUserId" TEXT NULL,
+  "unreadCount" INTEGER NOT NULL DEFAULT 0,
+  "lastInboundAt" TIMESTAMP(3) NULL,
+  "lastOutboundAt" TIMESTAMP(3) NULL,
+  "lastMessageAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lastMessagePreview" TEXT NULL,
+  "closedAt" TIMESTAMP(3) NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "wa_conversations_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "wa_conversations_organizationId_waId_key" ON "wa_conversations"("organizationId", "waId");
+CREATE INDEX IF NOT EXISTS "wa_conversations_organizationId_status_lastMessageAt_idx" ON "wa_conversations"("organizationId", "status", "lastMessageAt");
+CREATE INDEX IF NOT EXISTS "wa_conversations_assigneeUserId_status_idx" ON "wa_conversations"("assigneeUserId", "status");
+
+CREATE TABLE IF NOT EXISTS "wa_messages" (
+  "id" TEXT NOT NULL,
+  "conversationId" TEXT NOT NULL,
+  "direction" TEXT NOT NULL,
+  "providerMessageId" TEXT NULL,
+  "type" TEXT NOT NULL DEFAULT 'text',
+  "body" TEXT NULL,
+  "mediaId" TEXT NULL,
+  "mediaMimeType" TEXT NULL,
+  "mediaFileName" TEXT NULL,
+  "documentId" TEXT NULL,
+  "status" TEXT NOT NULL DEFAULT 'RECEIVED',
+  "error" TEXT NULL,
+  "userId" TEXT NULL,
+  "templateName" TEXT NULL,
+  "outboundMessageId" TEXT NULL,
+  "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "wa_messages_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "wa_messages_providerMessageId_key" ON "wa_messages"("providerMessageId");
+CREATE INDEX IF NOT EXISTS "wa_messages_conversationId_timestamp_idx" ON "wa_messages"("conversationId", "timestamp");
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wa_conversations_organizationId_fkey') THEN
+    ALTER TABLE "wa_conversations" ADD CONSTRAINT "wa_conversations_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wa_conversations_contactId_fkey') THEN
+    ALTER TABLE "wa_conversations" ADD CONSTRAINT "wa_conversations_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "contacts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wa_conversations_entityId_fkey') THEN
+    ALTER TABLE "wa_conversations" ADD CONSTRAINT "wa_conversations_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wa_conversations_ticketId_fkey') THEN
+    ALTER TABLE "wa_conversations" ADD CONSTRAINT "wa_conversations_ticketId_fkey" FOREIGN KEY ("ticketId") REFERENCES "tickets"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wa_conversations_assigneeUserId_fkey') THEN
+    ALTER TABLE "wa_conversations" ADD CONSTRAINT "wa_conversations_assigneeUserId_fkey" FOREIGN KEY ("assigneeUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wa_messages_conversationId_fkey') THEN
+    ALTER TABLE "wa_messages" ADD CONSTRAINT "wa_messages_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "wa_conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

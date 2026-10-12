@@ -19,11 +19,13 @@ function View() {
   const [creating, setCreating] = useState(false);
   const view = search.get('fila') ?? 'todos';
   const { data: s } = useQuery({ queryKey: ['ticket-stats'], queryFn: () => api<TicketStats>('/atendimento/tickets/stats'), refetchInterval: 60_000 });
+  const { data: wa } = useQuery({ queryKey: ['wa-stats'], queryFn: () => api<{ unread: number; unassigned: number }>('/atendimento/whatsapp/stats'), refetchInterval: 30_000 });
+  const waUnread = (wa?.unread ?? 0) + (wa?.unassigned ?? 0);
   const preset = view === 'meus' ? { assigneeUserId: 'me' } : view === 'sla' ? { slaBreached: true } : view === 'sem' ? { assigneeUserId: 'unassigned' } : undefined;
   return (
     <div>
       <div className="row between"><div><h1>Atendimento</h1><p className="sub">Chamados, solicitações comerciais e financeiras, suporte técnico, visitas e reuniões — com responsáveis, prazos (SLA), histórico e satisfação. Tudo aparece na ficha 360º da entidade.</p></div>
-        <div className="row">{can('tickets.manage') && <Link href="/atendimento/campanhas" className="btn">Campanhas</Link>}{can('tickets.write') && <Button onClick={() => setCreating(true)}>+ Abrir chamado</Button>}</div></div>
+        <div className="row"><Link href="/atendimento/whatsapp" className="btn">Central WhatsApp{waUnread ? ` (${waUnread})` : ''}</Link>{can('tickets.manage') && <Link href="/atendimento/campanhas" className="btn">Campanhas</Link>}{can('tickets.write') && <Button onClick={() => setCreating(true)}>+ Abrir chamado</Button>}</div></div>
       <div className="g4" style={{ marginTop: 12 }}>
         <Stat label="Em aberto" value={s ? s.open + s.inProgress + s.waiting : '—'} hint={s ? `${s.open} novos · ${s.inProgress} em atendimento · ${s.waiting} aguardando` : undefined} tone="info" onClick={() => router.replace('/atendimento?fila=todos')} />
         <Stat label="Meus chamados" value={s?.mine ?? '—'} hint="atribuídos a mim" onClick={() => router.replace('/atendimento?fila=meus')} />

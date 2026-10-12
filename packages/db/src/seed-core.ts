@@ -152,6 +152,8 @@ export const SETTINGS: Array<{ key: string; value: unknown; description: string 
   { key: 'invoices.overdueAfterDays', value: 30, description: 'Dias após a emissão para considerar a nota em atraso' },
   { key: 'crm.lossReasons', value: ['Preço', 'Concorrente', 'Sem orçamento', 'Sem interesse', 'Troca de gestão', 'Licitação perdida', 'Outro'], description: 'Motivos de perda de oportunidade (Comercial)' },
   { key: 'contracts.renewalDays', value: 90, description: 'Dias antes do fim da vigência para abrir a renovação (oportunidade + tarefa)' },
+  { key: 'whatsapp.autoAssign', value: true, description: 'Central WhatsApp: distribuir conversas novas automaticamente entre os atendentes (menos conversas abertas primeiro)' },
+  { key: 'whatsapp.maxPerAgent', value: 8, description: 'Central WhatsApp: máximo de conversas abertas por atendente na distribuição automática' },
   { key: 'tickets.sla', value: { URGENT: { response: 2, resolution: 8 }, HIGH: { response: 4, resolution: 24 }, MEDIUM: { response: 8, resolution: 72 }, LOW: { response: 24, resolution: 120 } }, description: 'SLA de atendimento em horas corridas por prioridade (primeira resposta / resolução)' },
   { key: 'tenders.alertDays', value: 3, description: 'Dias de antecedência para alertar prazos de licitação' },
   { key: 'crm.stalledDays', value: 15, description: 'Dias sem movimentação para considerar uma oportunidade parada (quando a etapa não define SLA)' },

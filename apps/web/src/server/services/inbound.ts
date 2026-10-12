@@ -6,10 +6,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { prismaPlatform } from '../db.js';
 import { runWithOrg } from '../tenant.js';
-import { prisma } from '../db.js';
 import { log, resolve } from './integrations.js';
 import { providerByKey } from './signature.js';
 import { applySignatureUpdate } from './service-orders.js';
+import { applyStatus, ingestInbound } from './whatsapp.js';
 
 /** Organizações com a integração WHATSAPP ativa (ou todas, para fallback por env). */
 async function orgsWith(key: string): Promise<string[]> {
@@ -44,31 +44,11 @@ export async function handleWhatsAppWebhook(raw: string, signature: string | nul
       let statuses = 0, messages = 0, tickets = 0;
       for (const e of body.entry ?? []) for (const ch of e.changes ?? []) {
         const v = ch.value ?? {};
-        for (const s of v.statuses ?? []) {
-          const map: Record<string, string> = { sent: 'SENT', delivered: 'DELIVERED', read: 'READ', failed: 'FAILED' };
-          const st = map[s.status]; if (!st) continue;
-          const upd = await prisma.outboundMessage.updateMany({ where: { providerMessageId: s.id, status: { not: 'FAILED' } }, data: st === 'FAILED' ? { status: 'FAILED', errorMessage: JSON.stringify(s.errors ?? {}).slice(0, 500) } : st === 'SENT' ? {} : { providerResponse: { deliveryStatus: s.status, at: s.timestamp ?? null } } });
-          statuses += upd.count;
-        }
+        for (const s of v.statuses ?? []) { if (await applyStatus(s.id, s.status, s.errors)) statuses += 1; }
         for (const m of v.messages ?? []) {
-          messages += 1;
-          const text = m.type === 'text' ? (m.text?.body ?? '') : `[${m.type}]`;
-          const name = v.contacts?.find((x) => x.wa_id === m.from)?.profile?.name ?? m.from;
-          const dedupe = `WA_IN:${m.id}`;
-          if (await prisma.notification.findUnique({ where: { dedupeKey: dedupe }, select: { id: true } })) continue; // idempotente por id da mensagem
-          const tail = m.from.replace(/\D/g, '').slice(-8);
-          const contact = tail.length >= 8 ? await prisma.contact.findFirst({ where: { deletedAt: null, OR: [{ whatsapp: { endsWith: tail } }, { phone: { endsWith: tail } }] }, include: { entity: { select: { id: true, name: true } } } }) : null;
-          let ticketId: string | null = null;
-          if (contact) {
-            const open = await prisma.ticket.findFirst({ where: { deletedAt: null, contactId: contact.id, status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING_CLIENT', 'WAITING_INTERNAL'] } }, orderBy: { lastActivityAt: 'desc' } });
-            if (open) { ticketId = open.id; await prisma.ticketInteraction.create({ data: { ticketId: open.id, contactId: contact.id, kind: 'WHATSAPP', direction: 'INBOUND', body: text } }); await prisma.ticket.update({ where: { id: open.id }, data: { lastActivityAt: new Date(), status: open.status === 'WAITING_CLIENT' ? 'IN_PROGRESS' : open.status } }); }
-            else {
-              const last = await prisma.ticket.findFirst({ where: {}, orderBy: { number: 'desc' }, select: { number: true } });
-              const t = await prisma.ticket.create({ data: { organizationId: org, number: (last?.number ?? 0) + 1, entityId: contact.entityId, contactId: contact.id, type: 'REQUEST', channel: 'WHATSAPP', priority: 'MEDIUM', subject: `WhatsApp de ${contact.name}: ${text.slice(0, 80)}`, description: text, requesterName: name, interactions: { create: [{ kind: 'SYSTEM', direction: 'INTERNAL', body: 'Chamado aberto automaticamente a partir de mensagem recebida no WhatsApp' }, { contactId: contact.id, kind: 'WHATSAPP', direction: 'INBOUND', body: text }] } } });
-              ticketId = t.id; tickets += 1;
-            }
-          }
-          await prisma.notification.create({ data: { organizationId: org, type: 'GENERIC', title: `WhatsApp recebido de ${name}`, body: text.slice(0, 300), entityId: contact?.entityId ?? null, referenceType: ticketId ? 'ticket' : 'contact', referenceId: ticketId ?? contact?.id ?? null, dedupeKey: dedupe } });
+          const name = v.contacts?.find((x) => x.wa_id === m.from)?.profile?.name ?? null;
+          const r = await ingestInbound(m as Parameters<typeof ingestInbound>[0], name);
+          if (!r.duplicate) messages += 1; if (r.newTicket) tickets += 1;
         }
       }
       await log({ key: 'WHATSAPP', provider: 'whatsapp-cloud', action: 'WEBHOOK_IN', status: 'OK', request: { statuses, messages }, response: { tickets } });

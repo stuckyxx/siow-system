@@ -257,6 +257,19 @@ status da solicitação; SIGNED baixa o documento e conclui a OS). Assinatura el
 `SignatureRequest` SENT; nunca marca assinada sem confirmação. Consulta de CNPJ (BrasilAPI) e municípios do IBGE preenchem o cadastro;
 Compras.gov.br (dados abertos, Lei 14.133) é fonte alternativa ao PNCP no importador de licitações (modalidades mapeadas: 4→3, 6→5, 8→6, 9→7).
 
+## 6i. Central de atendimento WhatsApp (Fase 6b)
+
+Tabelas `wa_conversations` (uma por número e organização: contato/entidade/chamado ligados, atendente, não lidas, última entrada/saída,
+janela de 24h derivada de `lastInboundAt`) e `wa_messages` (direção, tipo, corpo, mídia baixada como documento, status de entrega,
+id do provedor único — idempotência). `services/whatsapp.ts`: ingestão do webhook (mensagem → conversa, chamado do Atendimento — um por
+conversa aberta, reabertura cria outro —, interação, notificação, download de mídia pela Graph API), distribuição automática entre
+usuários com `tickets.write` (menos conversas abertas primeiro; `whatsapp.autoAssign` e `whatsapp.maxPerAgent`), envio de texto só com
+a janela aberta, modelos aprovados lidos da conta (`wabaId` na integração) e enviados com parâmetros fora da janela, status de entrega
+(sent/delivered/read/failed) aplicados às mensagens e às `outbound_messages`, encerrar (resolve o chamado), reabrir, vincular número
+desconhecido a um contato, iniciar conversa com contato cadastrado. Tudo passa pelo adapter com log e circuito; mensagem só fica SENT
+com confirmação da Meta. Interface `/atendimento/whatsapp`: caixa de entrada com filtros (todas, minhas, sem atendente, não lidas,
+encerradas), atualização automática a cada 5 s, conversa em balões com status, compositor de texto ou modelo, atribuição e encerramento.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

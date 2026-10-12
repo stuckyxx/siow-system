@@ -323,3 +323,17 @@ evento real `ticket.created` entregues com HMAC válido no destino; destino com 
 do webhook do WhatsApp (token certo/errado) e mensagem recebida que abre chamado (segunda entrega idempotente); webhook da Clicksign sem
 pedido correspondente respondido sem efeito; logs consolidados. Regressão do Financeiro inalterada.
 
+## Executado na Fase 6b — Central WhatsApp (12/10/2026)
+
+**Banco (Neon, produção)** — backup `pre-fase6b-backup-2026-10-13`. Migração aditiva e idempotente (seção "FASE 6b" do `schema.sql`):
+`wa_conversations`, `wa_messages`; ajustes `whatsapp.autoAssign` e `whatsapp.maxPerAgent`; campo `wabaId` na integração WhatsApp.
+
+**Código** — caixa de entrada de conversas em tempo quase real, fila com distribuição automática por atendente, chamados abertos e
+resolvidos a partir da conversa, mídias recebidas anexadas, janela de 24h respeitada, modelos aprovados da Meta com parâmetros, status de
+entrega e leitura, vínculo de número desconhecido a contato, início de conversa com contato cadastrado, link e contador na tela de Atendimento.
+
+**Validação** — local e produção com webhooks simulados da Meta: mensagem de contato cadastrado abre conversa, chamado e atribui
+atendente; duplicata ignorada; segunda mensagem na mesma conversa; número desconhecido abre conversa sem contato; documento recebido
+registrado (download exige token real); envio de texto com token falso fica FAILED (nada marcado como enviado); erro claro ao listar
+modelos sem conta válida; atribuir, encerrar (chamado resolvido), nova mensagem reabre e abre novo chamado; vínculo de número a contato.
+

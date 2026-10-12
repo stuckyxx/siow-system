@@ -74,6 +74,7 @@ model User {
   @@unique([organizationId, email])
   assignedTickets      Ticket[]             @relation("TicketAssignee")
   ticketInteractions   TicketInteraction[]
+  waConversations      WaConversation[]    @relation("WaAssignee")
   @@map("users")
   userPermissions UserPermission[]
 }
@@ -226,6 +227,7 @@ model Entity {
   @@index([organizationId])
   tickets         Ticket[]
   campaignRecipients CampaignRecipient[]
+  waConversations WaConversation[]
   @@map("entities")
 }
 
@@ -728,6 +730,7 @@ model Contact {
   tickets            Ticket[]
   ticketInteractions TicketInteraction[]
   campaignRecipients CampaignRecipient[]
+  waConversations    WaConversation[]
   @@map("contacts")
 }
 
@@ -1231,6 +1234,7 @@ model Organization {
   integrations     Integration[]
   integrationLogs  IntegrationLog[]
   webhooks         Webhook[]
+  waConversations  WaConversation[]
   @@map("organizations")
 }
 
@@ -1856,6 +1860,7 @@ model Ticket {
   @@index([entityId])
   @@index([assigneeUserId, status])
   @@index([resolutionDueAt])
+  waConversations WaConversation[]
   @@map("tickets")
 }
 
@@ -2024,4 +2029,61 @@ model WebhookDelivery {
   @@unique([webhookId, eventId])
   @@index([status, nextAttemptAt])
   @@map("webhook_deliveries")
+}
+
+/// Central de atendimento WhatsApp (Fase 6b): uma conversa por número; janela de 24h; fila por atendente.
+model WaConversation {
+  id                 String       @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  waId               String // número (dígitos) do cliente
+  displayName        String?
+  contactId          String?
+  contact            Contact?     @relation(fields: [contactId], references: [id])
+  entityId           String?
+  entity             Entity?      @relation(fields: [entityId], references: [id])
+  ticketId           String?
+  ticket             Ticket?      @relation(fields: [ticketId], references: [id])
+  status             String       @default("OPEN") // OPEN | CLOSED
+  assigneeUserId     String?
+  assignee           User?        @relation("WaAssignee", fields: [assigneeUserId], references: [id])
+  unreadCount        Int          @default(0)
+  lastInboundAt      DateTime?
+  lastOutboundAt     DateTime?
+  lastMessageAt      DateTime     @default(now())
+  lastMessagePreview String?
+  closedAt           DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  messages WaMessage[]
+
+  @@unique([organizationId, waId])
+  @@index([organizationId, status, lastMessageAt])
+  @@index([assigneeUserId, status])
+  @@map("wa_conversations")
+}
+
+model WaMessage {
+  id                String         @id @default(uuid())
+  conversationId    String
+  conversation      WaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction         String // IN | OUT
+  providerMessageId String?        @unique
+  type              String         @default("text") // text | image | audio | video | document | sticker | location | template | unsupported
+  body              String?
+  mediaId           String?
+  mediaMimeType     String?
+  mediaFileName     String?
+  documentId        String?
+  status            String         @default("RECEIVED") // RECEIVED | QUEUED | SENT | DELIVERED | READ | FAILED
+  error             String?
+  userId            String?
+  templateName      String?
+  outboundMessageId String?
+  timestamp         DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+
+  @@index([conversationId, timestamp])
+  @@map("wa_messages")
 }
