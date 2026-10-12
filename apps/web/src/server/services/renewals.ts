@@ -24,7 +24,7 @@ export async function detectRenewals(today = todayIso()): Promise<{ checked: num
   const days = await renewalDays();
   const contracts = await prisma.contract.findMany({
     where: { deletedAt: null, status: 'ACTIVE', endDate: { not: null, gte: isoToDate(today), lte: isoToDate(addDaysIso(today, days)) } },
-    include: { entity: { select: { id: true, name: true, shortName: true } }, renewals: { select: { endDate: true } } },
+    include: { entity: { select: { id: true, name: true, shortName: true } }, renewals: { select: { endDate: true } }, invoices: { where: { deletedAt: null, status: { not: 'CANCELLED' }, issueDate: { not: null } }, orderBy: { issueDate: 'desc' }, take: 1, select: { amount: true } } },
   });
   let created = 0;
   for (const c of contracts) {
@@ -36,12 +36,14 @@ export async function detectRenewals(today = todayIso()): Promise<{ checked: num
     const stage = pipeline.stages.find((s) => s.kind === 'OPEN');
     if (!stage) continue;
     const org = currentOrgId();
+    // Valor mensal: do contrato; contratos lidos do portal não têm valor, então usa a última nota emitida (mesma regra do Dashboard).
+    const monthly = c.monthlyValue ?? c.invoices[0]?.amount ?? null;
     await prisma.$transaction(async (tx) => {
       const opp = await tx.opportunity.create({
         data: {
           organizationId: org, entityId: c.entityId, pipelineId: pipeline.id, stageId: stage.id, title: `Renovação do contrato ${c.number}`,
           description: `Renovação gerada automaticamente: vigência termina em ${dateToIso(end)!.split('-').reverse().join('/')}.${c.object ? ` Objeto: ${c.object}` : ''}`,
-          monthlyAmount: c.monthlyValue, termMonths: 12, totalAmount: c.monthlyValue ? c.monthlyValue.mul(12) : null, expectedCloseDate: end, source: 'RENOVACAO',
+          monthlyAmount: monthly, termMonths: 12, totalAmount: monthly ? monthly.mul(12) : null, expectedCloseDate: end, source: 'RENOVACAO',
           ownerUserId: c.responsibleUserId, lastActivityAt: new Date(), events: { create: { action: 'CREATED', toValue: `${stage.name} (renovação automática)` } },
         },
       });

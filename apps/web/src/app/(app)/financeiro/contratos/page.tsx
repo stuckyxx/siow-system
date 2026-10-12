@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
-import { CONTRACT_STATUSES, CONTRACT_STATUS_LABELS, RENEWAL_STATUS_LABELS, formatBRL, formatBrDate, type ContractRenewalRow, type RenewalStatus } from '@siow/shared';
+import { CONTRACT_STATUSES, CONTRACT_STATUS_LABELS, RENEWAL_STATUS_LABELS, TASK_STATUS_LABELS, formatBRL, formatBrDate, type ContractRenewalRow, type RenewalStatus, type TaskStatus } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ContractStatusBadge } from '@/components/status';
@@ -92,7 +92,7 @@ function Renewals() {
                   <Td className="r num">{r.monthlyValue ? formatBRL(r.monthlyValue) : '—'}</Td>
                   <Td><Badge tone={tone(r.status)}>{RENEWAL_STATUS_LABELS[r.status as RenewalStatus]}</Badge>{r.decidedBy && <div className="small muted">{r.decidedBy}</div>}</Td>
                   <Td>{r.opportunityId ? <Link href={`/comercial/oportunidades/${r.opportunityId}`} className="link small">{r.opportunityStatus === 'WON' ? 'ganha' : r.opportunityStatus === 'LOST' ? 'perdida' : 'em andamento'}</Link> : '—'}</Td>
-                  <Td className="small">{r.taskStatus ?? '—'}</Td>
+                  <Td className="small">{r.taskStatus ? TASK_STATUS_LABELS[r.taskStatus as TaskStatus] ?? r.taskStatus : '—'}</Td>
                   <Td className="r" style={{ whiteSpace: 'nowrap' }}>{r.status === 'OPEN' && can('contracts.write') && <><Button size="sm" onClick={() => setDeciding({ r, status: 'RENEWED' })}>Renovado</Button> <Button size="sm" variant="danger" onClick={() => setDeciding({ r, status: 'NOT_RENEWED' })}>Não renovado</Button></>}</Td>
                 </tr>
               ))}
