@@ -1228,6 +1228,9 @@ model Organization {
 
   tickets          Ticket[]
   campaigns        Campaign[]
+  integrations     Integration[]
+  integrationLogs  IntegrationLog[]
+  webhooks         Webhook[]
   @@map("organizations")
 }
 
@@ -1925,4 +1928,100 @@ model CampaignRecipient {
   @@unique([campaignId, entityId, contactId])
   @@index([campaignId, status])
   @@map("campaign_recipients")
+}
+
+/// Fase 8 — Integrações externas: configuração por organização (segredos cifrados), estado, testes e circuit breaker.
+model Integration {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  key              String // WHATSAPP | EMAIL | SIGNATURE | CNPJ | IBGE | PNCP | COMPRASGOV
+  provider         String // whatsapp-cloud | smtp | clicksign | brasilapi | ibge | pncp | comprasgov | manual
+  isEnabled        Boolean      @default(true)
+  /// Parâmetros não sensíveis (ex.: apiUrl, from, phoneId, verifyToken)
+  config           Json         @default("{}")
+  /// Segredos cifrados (AES-256-GCM) — nunca devolvidos à interface
+  secrets          Json         @default("{}")
+  status           String       @default("NOT_CONFIGURED") // NOT_CONFIGURED | CONFIGURED | ERROR
+  lastTestAt       DateTime?
+  lastTestOk       Boolean?
+  lastError        String?
+  consecutiveFailures Int       @default(0)
+  circuitOpenUntil DateTime?
+  updatedByUserId  String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("integrations")
+}
+
+/// Log de cada chamada externa (sem segredos), com tentativa, duração e resultado.
+model IntegrationLog {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  integrationKey String
+  provider       String
+  action         String // SEND | TEST | FETCH | WEBHOOK_IN | WEBHOOK_OUT | STATUS
+  status         String // OK | FAILED | SKIPPED | MANUAL
+  attempt        Int          @default(1)
+  durationMs     Int?
+  request        Json?
+  response       Json?
+  error          String?
+  referenceType  String?
+  referenceId    String?
+  idempotencyKey String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, integrationKey, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("integration_logs")
+}
+
+/// Webhook de saída (assinatura HMAC-SHA256 no cabeçalho X-Siow-Signature) para eventos da plataforma.
+model Webhook {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  name            String
+  url             String
+  /// Segredo cifrado usado na assinatura HMAC
+  secret          String?
+  events          Json         @default("[]")
+  isActive        Boolean      @default(true)
+  consecutiveFailures Int      @default(0)
+  lastDeliveryAt  DateTime?
+  lastStatus      String?
+  createdByUserId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  deliveries WebhookDelivery[]
+
+  @@index([organizationId])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id             String   @id @default(uuid())
+  webhookId      String
+  webhook        Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  eventId        String
+  event          String
+  payload        Json
+  status         String   @default("PENDING") // PENDING | SENT | FAILED | CANCELLED
+  attempts       Int      @default(0)
+  nextAttemptAt  DateTime @default(now())
+  responseStatus Int?
+  error          String?
+  deliveredAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  @@unique([webhookId, eventId])
+  @@index([status, nextAttemptAt])
+  @@map("webhook_deliveries")
 }

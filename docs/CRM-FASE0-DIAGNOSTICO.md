@@ -304,3 +304,22 @@ exportadores existentes; menu Dashboard em Executivo | Comercial | Financeiro.
 **Validação** — local e produção: painel executivo com e sem filtros, catálogo com 29 relatórios em 7 grupos, cada relatório novo em JSON
 e exportação XLSX/PDF/CSV auditada; relatórios financeiros existentes inalterados (regressão). Interface conferida nos temas escuro e claro.
 
+## Executado na Fase 8 (12/10/2026)
+
+**Banco (Neon, produção)** — backup `pre-fase8-backup-2026-10-12`. Migração aditiva e idempotente (seção "FASE 8" do `schema.sql`):
+`integrations`, `integration_logs`, `webhooks`, `webhook_deliveries`. Sem alteração em tabelas existentes.
+
+**Código** — Administração → Integrações: catálogo (WhatsApp Business API, e-mail SMTP, assinatura eletrônica Clicksign, consulta de
+CNPJ, IBGE, PNCP, Compras.gov.br) com configuração por organização, segredos cifrados e mascarados, teste de conexão, estado, circuito
+após falhas e log de chamadas; webhooks de saída (eventos, assinatura HMAC, reentrega controlada, teste, entregas e reenvio manual);
+webhooks de entrada (WhatsApp: verificação, status e mensagens recebidas que viram chamados; Clicksign: status da assinatura); envio de
+OS para assinatura eletrônica com conclusão automática; consulta de CNPJ e código IBGE no cadastro da entidade; fonte Compras.gov.br no
+importador de licitações; cron `/api/cron/integracoes`.
+
+**Validação** — local e produção: catálogo e estados; salvar WhatsApp com token (cifrado, devolvido mascarado; salvar sem o campo
+mantém); testes de conexão reais (CNPJ, IBGE, PNCP e Compras.gov ok; WhatsApp com token falso recusado pela Meta e registrado); consulta
+de CNPJ e municípios do IBGE; busca no Compras.gov com 161 contratações no MA; webhook de saída com segredo revelado (auditado), ping e
+evento real `ticket.created` entregues com HMAC válido no destino; destino com erro 500 fica pendente com reentrega agendada; verificação
+do webhook do WhatsApp (token certo/errado) e mensagem recebida que abre chamado (segunda entrega idempotente); webhook da Clicksign sem
+pedido correspondente respondido sem efeito; logs consolidados. Regressão do Financeiro inalterada.
+

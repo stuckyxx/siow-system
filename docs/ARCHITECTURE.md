@@ -236,6 +236,27 @@ a natureza aparece na central de relatórios, no rodapé do PDF e no painel. Men
 Comercial (`/comercial`) e Financeiro (`/financeiro`). Gráfico de receita em SVG próprio (sem biblioteca), paleta validada para daltonismo
 e contraste nos dois temas, com legenda, tooltip e alternância para tabela.
 
+## 6h. Integrações externas (Fase 8)
+
+Tabelas `integrations` (uma por organização e chave: WHATSAPP, EMAIL, SIGNATURE, CNPJ, IBGE, PNCP, COMPRASGOV; `config` não sensível,
+`secrets` cifrados com AES-256-GCM pela chave `INTEGRATION_SECRET_KEY` ou derivada de `JWT_ACCESS_SECRET`, estado, último teste,
+falhas consecutivas e circuito), `integration_logs` (cada chamada externa com ação, tentativa, duração, requisição/resposta sem segredos,
+erro e referência), `webhooks` (assinaturas de saída com segredo cifrado e eventos) e `webhook_deliveries` (uma entrega por webhook e
+evento, idempotente). `services/integrations.ts#resolve` devolve a configuração efetiva: banco → variáveis de ambiente → padrão público;
+adaptadores (`messaging/adapters.ts`, `integrations/clicksign.ts`, provedores CNPJ/IBGE/PNCP/Compras.gov em `@siow/integrations`) só
+consomem essa configuração. `call()` cronometra, registra e contabiliza falhas: 5 seguidas abrem o circuito por 15 minutos e o fluxo cai
+para o modo manual (wa.me/mailto, upload da OS assinada). Teste de conexão por integração sem efeitos colaterais.
+
+Webhooks de saída (`services/webhooks.ts`): `emit(evento, payload)` nos serviços (chamado aberto/resolvido, oportunidade ganha/perdida,
+contrato ativado, nota paga, situação da licitação, campanha concluída) enfileira entregas e tenta na hora; o cron
+`/api/cron/integracoes` reenvia pendentes (1, 5, 15, 60, 180 min) e consulta assinaturas em aberto. Cabeçalhos `X-Siow-Event`,
+`X-Siow-Delivery`, `X-Siow-Timestamp` e `X-Siow-Signature` (HMAC-SHA256 de `timestamp.body`). Entrada: `/api/webhooks/whatsapp`
+(verificação por verify token, assinatura `X-Hub-Signature-256` quando há app secret, status de entrega → mensagens enviadas, mensagens
+recebidas → notificação e chamado no Atendimento, idempotente por id da mensagem) e `/api/webhooks/signature/clicksign` (HMAC opcional →
+status da solicitação; SIGNED baixa o documento e conclui a OS). Assinatura eletrônica: `sendForSignature` envia a OS ao provedor e cria
+`SignatureRequest` SENT; nunca marca assinada sem confirmação. Consulta de CNPJ (BrasilAPI) e municípios do IBGE preenchem o cadastro;
+Compras.gov.br (dados abertos, Lei 14.133) é fonte alternativa ao PNCP no importador de licitações (modalidades mapeadas: 4→3, 6→5, 8→6, 9→7).
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

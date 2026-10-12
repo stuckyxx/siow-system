@@ -7,3 +7,5 @@ export * from './providers/adois/parser.js';
 export * from './providers/adois/provider.js';
 export * from './providers/ibge.js';
 export * from './providers/pncp.js';
+export * from './providers/cnpj.js';
+export * from './providers/comprasgov.js';

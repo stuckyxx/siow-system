@@ -55,6 +55,7 @@ export interface EntitySummary {
   sourceCount: number;
   /** Cadastro Público */
   ibgeCode: string | null;
+  cnpj: string | null;
   segment: string | null;
   partnerId: string | null;
   /** Saúde do cliente 0–100 (null = sem dados suficientes) */

@@ -13,6 +13,7 @@ import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { adapterFor } from '../messaging/adapters.js';
 import { buildVars, send as sendMessage } from './messaging.js';
+import { emit } from './webhooks.js';
 
 type Audience = z.infer<typeof campaignAudienceSchema>;
 
@@ -56,7 +57,7 @@ export async function resolveAudience(a: Audience, channel: 'WHATSAPP' | 'EMAIL'
 
 export async function preview(a: Audience, channel: 'WHATSAPP' | 'EMAIL'): Promise<{ total: number; entities: number; sample: Array<{ entityName: string; contactName: string; recipient: string }>; providerConfigured: boolean }> {
   const rows = await resolveAudience(a, channel);
-  return { total: rows.length, entities: new Set(rows.map((r) => r.entityId)).size, sample: rows.slice(0, 10).map(({ entityName, contactName, recipient }) => ({ entityName, contactName, recipient })), providerConfigured: adapterFor(channel).isConfigured() };
+  return { total: rows.length, entities: new Set(rows.map((r) => r.entityId)).size, sample: rows.slice(0, 10).map(({ entityName, contactName, recipient }) => ({ entityName, contactName, recipient })), providerConfigured: (await adapterFor(channel)).isConfigured() };
 }
 
 export async function list(): Promise<CampaignRow[]> {
@@ -68,7 +69,7 @@ export async function list(): Promise<CampaignRow[]> {
 export async function get(id: string): Promise<CampaignDetail> {
   const c = await prisma.campaign.findFirst({ where: { id, deletedAt: null }, include: { ...include, recipients: { include: { entity: { select: { name: true, shortName: true } }, contact: { select: { name: true } }, outboundMessage: { select: { subject: true, body: true, recipient: true } } }, orderBy: { createdAt: 'asc' } } } });
   if (!c) throw notFound('Campanha não encontrada');
-  const adapter = adapterFor(c.channel as 'WHATSAPP' | 'EMAIL');
+  const adapter = await adapterFor(c.channel as 'WHATSAPP' | 'EMAIL');
   const cr = await creators([c.createdByUserId]);
   return { ...toRow(c, cr), recipients: c.recipients.map((r) => ({ id: r.id, entityName: r.entity.shortName ?? r.entity.name, contactName: r.contact?.name ?? null, recipient: r.recipient, status: r.status, error: r.error, sentAt: r.sentAt?.toISOString() ?? null, manualLink: r.status === 'MANUAL_PENDING' && r.outboundMessage ? adapter.manualLink({ recipient: r.outboundMessage.recipient, subject: r.outboundMessage.subject, body: r.outboundMessage.body }) : null })) };
 }
@@ -122,6 +123,7 @@ export async function run(ctx: Ctx, id: string, limit = 50): Promise<{ processed
   const status = remaining === 0 ? 'DONE' : 'RUNNING';
   await prisma.campaign.update({ where: { id }, data: { status, finishedAt: remaining === 0 ? new Date() : null } });
   await audit(ctx, { action: 'CAMPAIGN_RUN', resource: 'campaign', resourceId: id, after: { processed, remaining } });
+  if (status === 'DONE') await emit('campaign.finished', { campaignId: id, name: c.name, channel: c.channel }, `campaign-finished-${id}`);
   return { processed, remaining, status };
 }
 

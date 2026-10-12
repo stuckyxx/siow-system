@@ -15,12 +15,13 @@ export interface PncpRaw {
 
 export interface PncpSearch { uf: string; from: string; to: string; modalities: number[]; maxPages?: number }
 
-export async function fetchPncpPublications(s: PncpSearch, ctx: Pick<ProviderContext, 'timeoutMs' | 'userAgent' | 'fetchImpl'>): Promise<{ items: PncpRaw[]; warnings: string[] }> {
+export async function fetchPncpPublications(s: PncpSearch, ctx: Pick<ProviderContext, 'timeoutMs' | 'userAgent' | 'fetchImpl'> & { apiUrl?: string }): Promise<{ items: PncpRaw[]; warnings: string[] }> {
   const items: PncpRaw[] = []; const warnings: string[] = [];
+  const base = (ctx.apiUrl || 'https://pncp.gov.br/api/consulta/v1').replace(/\/+$/, '');
   const d = (iso: string) => iso.replace(/-/g, '');
   for (const mod of s.modalities) {
     for (let page = 1; page <= (s.maxPages ?? 4); page++) {
-      const url = `https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?dataInicial=${d(s.from)}&dataFinal=${d(s.to)}&codigoModalidadeContratacao=${mod}&uf=${encodeURIComponent(s.uf.toUpperCase())}&pagina=${page}&tamanhoPagina=50`;
+      const url = `${base}/contratacoes/publicacao?dataInicial=${d(s.from)}&dataFinal=${d(s.to)}&codigoModalidadeContratacao=${mod}&uf=${encodeURIComponent(s.uf.toUpperCase())}&pagina=${page}&tamanhoPagina=50`;
       let res;
       try { res = await httpRequest(url, { timeoutMs: ctx.timeoutMs, userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl }); }
       catch (e) { warnings.push(`PNCP modalidade ${mod} página ${page}: ${e instanceof Error ? e.message : String(e)}`); break; }

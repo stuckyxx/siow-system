@@ -20,6 +20,8 @@ export function ServiceOrdersPanel({ entityId, contracts }: { entityId?: string;
   const [creating, setCreating] = useState(false);
   const [notify, setNotify] = useState<SORow | null>(null);
   const [sign, setSign] = useState<SORow | null>(null);
+  const [esign, setEsign] = useState<SORow | null>(null);
+  const { data: caps } = useQuery({ queryKey: ['signature-capabilities'], queryFn: () => api<{ provider: string | null; electronicSignatureAvailable: boolean }>('/financeiro/service-orders/signature-capabilities'), staleTime: 300_000 });
   const { data } = useQuery({ queryKey: ['service-orders', entityId], queryFn: () => api<SORow[]>('/financeiro/service-orders', { query: { entityId } }) });
   const setStatus = useMutation({ mutationFn: (v: { id: string; status: ServiceOrderStatus }) => api(`/financeiro/service-orders/${v.id}`, { method: 'PATCH', body: { status: v.status } }), onSuccess: () => qc.invalidateQueries({ queryKey: ['service-orders'] }) });
   const download = async (docId: string): Promise<void> => { const r = await api<{ url: string }>(`/documents/${docId}/download-url`); window.open(r.url, '_blank', 'noopener'); };
@@ -44,6 +46,7 @@ export function ServiceOrdersPanel({ entityId, contracts }: { entityId?: string;
                   <Td className="tabular-nums">{formatBrDate(so.signedAt)}{so.signedDocument && <button className="ml-1 text-xs text-brand" onClick={() => download(so.signedDocument!.id)}>assinada</button>}{so.signatories.length > 0 && <div className="text-xs text-ink-3">{so.signatories.map((s) => s.name).join(', ')}</div>}</Td>
                   <Td className="whitespace-nowrap">
                     {can('collections.manage') && ['NOT_REQUESTED', 'REQUESTED', 'AWAITING_ISSUE'].includes(so.status) && <Button size="sm" variant="secondary" onClick={() => setNotify(so)}>Avisar cliente</Button>}
+                    {can('service_orders.manage') && caps?.electronicSignatureAvailable && so.document && !['SIGNED', 'CANCELLED', 'AWAITING_SIGNATURE'].includes(so.status) && <Button size="sm" variant="secondary" onClick={() => setEsign(so)}>Enviar p/ assinatura</Button>}
                     {can('service_orders.manage') && so.status !== 'SIGNED' && so.status !== 'CANCELLED' && <Button size="sm" variant="ghost" onClick={() => setSign(so)}>Registrar assinatura</Button>}
                   </Td>
                 </tr>
@@ -55,6 +58,7 @@ export function ServiceOrdersPanel({ entityId, contracts }: { entityId?: string;
       {entityId && <SOForm open={creating} entityId={entityId} contracts={contracts ?? []} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); qc.invalidateQueries({ queryKey: ['service-orders'] }); }} />}
       <NotifyDialog so={notify} onClose={() => setNotify(null)} onDone={() => { setNotify(null); qc.invalidateQueries({ queryKey: ['service-orders'] }); }} />
       <SignDialog so={sign} onClose={() => setSign(null)} onDone={() => { setSign(null); qc.invalidateQueries({ queryKey: ['service-orders'] }); }} />
+      {esign && <ESignDialog so={esign} provider={caps?.provider ?? null} onClose={() => setEsign(null)} onDone={() => { setEsign(null); qc.invalidateQueries({ queryKey: ['service-orders'] }); }} />}
     </div>
   );
 }
@@ -114,6 +118,21 @@ function NotifyDialog({ so, onClose, onDone }: { so: SORow | null; onClose: () =
       {link && <p className="mt-2 text-xs text-ink-2">Sem provedor configurado: a mensagem foi aberta para envio manual (<a className="text-brand underline" href={link} target="_blank" rel="noopener">abrir novamente</a>). Ela fica registrada como pendente de confirmação.</p>}
       {error && <p className="mt-2 text-sm text-critical">{error}</p>}
       <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={link ? onDone : onClose}>{link ? 'Concluir' : 'Cancelar'}</Button>{!link && <Button onClick={() => send.mutate()} disabled={!body || send.isPending}>Confirmar envio</Button>}</div>
+    </Dialog>
+  );
+}
+
+function ESignDialog({ so, provider, onClose, onDone }: { so: SORow; provider: string | null; onClose: () => void; onDone: () => void }) {
+  const [signers, setSigners] = useState([{ name: '', email: '', role: '' }]);
+  const [error, setError] = useState<string | null>(null);
+  const m = useMutation({ mutationFn: () => api(`/financeiro/service-orders/${so.id}/signature/send`, { method: 'POST', body: { signers: signers.filter((s) => s.name && s.email).map((s) => ({ name: s.name, email: s.email, role: s.role || null })) } }), onSuccess: onDone, onError: (e) => setError(e instanceof ApiError ? e.message : 'Falha ao enviar') });
+  return (
+    <Dialog open onClose={onClose} title={`Enviar OS para assinatura eletrônica (${provider ?? ''})`}>
+      <p className="small muted">O documento anexado será enviado ao provedor; a OS fica "aguardando assinatura" e é concluída automaticamente quando o provedor confirmar (webhook ou consulta do cron). Nada é marcado como assinado antes disso.</p>
+      {signers.map((s, i) => <div key={i} className="grid gap-2 md:grid-cols-3" style={{ marginTop: 8 }}><Input placeholder="Nome" value={s.name} onChange={(e) => setSigners(signers.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} /><Input placeholder="E-mail" value={s.email} onChange={(e) => setSigners(signers.map((x, k) => (k === i ? { ...x, email: e.target.value } : x)))} /><Input placeholder="Cargo" value={s.role} onChange={(e) => setSigners(signers.map((x, k) => (k === i ? { ...x, role: e.target.value } : x)))} /></div>)}
+      <Button size="sm" variant="ghost" onClick={() => setSigners([...signers, { name: '', email: '', role: '' }])} style={{ marginTop: 6 }}>+ signatário</Button>
+      {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
+      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => m.mutate()} disabled={m.isPending || !signers.some((s) => s.name && s.email)}>{m.isPending ? 'Enviando…' : 'Enviar'}</Button></div>
     </Dialog>
   );
 }

@@ -54,7 +54,7 @@ export async function list(f: EntityFilter, onlyId?: string): Promise<Paginated<
   const order = Prisma.sql`ORDER BY ${Prisma.raw(orderCol)} ${orderDir} NULLS LAST, e.name ASC`;
 
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
-    SELECT e.id, e.type, e.name, e."shortName", e.municipality, e.uf, e."isActive",
+    SELECT e.id, e.type, e.name, e."shortName", e.municipality, e.uf, e."isActive", e.cnpj,
       (SELECT c.number FROM contracts c WHERE c."entityId" = e.id AND c."deletedAt" IS NULL AND c.status = 'ACTIVE' ORDER BY c."endDate" DESC NULLS LAST LIMIT 1) AS active_contract_number,
       (SELECT c."endDate" FROM contracts c WHERE c."entityId" = e.id AND c."deletedAt" IS NULL AND c.status = 'ACTIVE' ORDER BY c."endDate" DESC NULLS LAST LIMIT 1) AS active_contract_end,
       COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i."entityId" = e.id AND i.status = 'PENDING' AND i."deletedAt" IS NULL), 0) AS debt_total,
@@ -107,6 +107,7 @@ export async function list(f: EntityFilter, onlyId?: string): Promise<Paginated<
     invoiceCount: Number(r['invoice_count'] ?? 0),
     sourceCount: Number(r['source_count'] ?? 0),
     ibgeCode: (r['ibgeCode'] as string | null) ?? null,
+    cnpj: (r['cnpj'] as string | null) ?? null,
     segment: (r['segment'] as string | null) ?? null,
     partnerId: (r['partnerId'] as string | null) ?? null,
     healthScore: r['healthScore'] === null || r['healthScore'] === undefined ? null : Number(r['healthScore']),

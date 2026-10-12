@@ -15,6 +15,7 @@ import { badRequest, notFound, type Ctx } from '../http.js';
 import { storeDocument, get as getDocument } from './documents.js';
 import { send as sendMessage } from './messaging.js';
 import { create as createTask } from './tasks.js';
+import { emit } from './webhooks.js';
 
 type SlaTable = Record<string, { response: number; resolution: number }>;
 const DEFAULT_SLA: SlaTable = { URGENT: { response: 2, resolution: 8 }, HIGH: { response: 4, resolution: 24 }, MEDIUM: { response: 8, resolution: 72 }, LOW: { response: 24, resolution: 120 } };
@@ -139,6 +140,7 @@ export async function create(ctx: Ctx, input: z.infer<typeof ticketSchema>): Pro
     } catch (e) { if (!(e instanceof Error && 'code' in e && (e as { code?: string }).code === 'P2002') || attempt === 2) throw e; }
   }
   await audit(ctx, { action: 'CREATE', resource: 'ticket', resourceId: t!.id, after: { number: t!.number, subject: t!.subject, entityId: t!.entityId, priority: t!.priority } });
+  await emit('ticket.created', { ticketId: t!.id, number: t!.number, subject: t!.subject, type: t!.type, priority: t!.priority, entityId: t!.entityId, entityName: t!.entity?.name ?? null });
   return toRow(t!, new Date());
 }
 
@@ -177,6 +179,7 @@ export async function setStatus(ctx: Ctx, id: string, input: z.infer<typeof tick
   const t = await prisma.ticket.update({ where: { id }, data, include });
   await prisma.ticketInteraction.create({ data: { ticketId: id, userId: ctx.user.id, kind: 'STATUS', direction: 'INTERNAL', body: `${TICKET_STATUS_LABELS[before.status as TicketStatus] ?? before.status} → ${TICKET_STATUS_LABELS[input.status]}${input.notes ? ` — ${input.notes}` : ''}${input.resolutionNotes ? ` · Solução: ${input.resolutionNotes}` : ''}` } });
   await audit(ctx, { action: 'UPDATE', resource: 'ticket', resourceId: id, before: { status: before.status }, after: { status: input.status }, justification: input.notes ?? input.resolutionNotes ?? undefined });
+  if (input.status === 'RESOLVED' || input.status === 'CLOSED') await emit('ticket.resolved', { ticketId: id, number: t.number, subject: t.subject, status: input.status, entityId: t.entityId, resolutionNotes: t.resolutionNotes });
   return toRow(t, new Date());
 }
 

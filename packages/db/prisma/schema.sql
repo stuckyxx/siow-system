@@ -2206,3 +2206,101 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS "documents_ticketId_idx" ON "documents"("ticketId");
+
+-- =====================================================================
+-- FASE 8 (INTEGRAÇÕES) — idempotente. Configuração de integrações por organização, logs, webhooks de saída e entregas.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "integrations" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "key" TEXT NOT NULL,
+  "provider" TEXT NOT NULL,
+  "isEnabled" BOOLEAN NOT NULL DEFAULT true,
+  "config" JSONB NOT NULL DEFAULT '{}',
+  "secrets" JSONB NOT NULL DEFAULT '{}',
+  "status" TEXT NOT NULL DEFAULT 'NOT_CONFIGURED',
+  "lastTestAt" TIMESTAMP(3) NULL,
+  "lastTestOk" BOOLEAN NULL,
+  "lastError" TEXT NULL,
+  "consecutiveFailures" INTEGER NOT NULL DEFAULT 0,
+  "circuitOpenUntil" TIMESTAMP(3) NULL,
+  "updatedByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "integrations_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "integrations_organizationId_key_key" ON "integrations"("organizationId", "key");
+
+CREATE TABLE IF NOT EXISTS "integration_logs" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "integrationKey" TEXT NOT NULL,
+  "provider" TEXT NOT NULL,
+  "action" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "attempt" INTEGER NOT NULL DEFAULT 1,
+  "durationMs" INTEGER NULL,
+  "request" JSONB NULL,
+  "response" JSONB NULL,
+  "error" TEXT NULL,
+  "referenceType" TEXT NULL,
+  "referenceId" TEXT NULL,
+  "idempotencyKey" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "integration_logs_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "integration_logs_organizationId_createdAt_idx" ON "integration_logs"("organizationId", "createdAt");
+CREATE INDEX IF NOT EXISTS "integration_logs_organizationId_integrationKey_createdAt_idx" ON "integration_logs"("organizationId", "integrationKey", "createdAt");
+CREATE INDEX IF NOT EXISTS "integration_logs_referenceType_referenceId_idx" ON "integration_logs"("referenceType", "referenceId");
+
+CREATE TABLE IF NOT EXISTS "webhooks" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "url" TEXT NOT NULL,
+  "secret" TEXT NULL,
+  "events" JSONB NOT NULL DEFAULT '[]',
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "consecutiveFailures" INTEGER NOT NULL DEFAULT 0,
+  "lastDeliveryAt" TIMESTAMP(3) NULL,
+  "lastStatus" TEXT NULL,
+  "createdByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "webhooks_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "webhooks_organizationId_idx" ON "webhooks"("organizationId");
+
+CREATE TABLE IF NOT EXISTS "webhook_deliveries" (
+  "id" TEXT NOT NULL,
+  "webhookId" TEXT NOT NULL,
+  "eventId" TEXT NOT NULL,
+  "event" TEXT NOT NULL,
+  "payload" JSONB NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'PENDING',
+  "attempts" INTEGER NOT NULL DEFAULT 0,
+  "nextAttemptAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "responseStatus" INTEGER NULL,
+  "error" TEXT NULL,
+  "deliveredAt" TIMESTAMP(3) NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "webhook_deliveries_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "webhook_deliveries_webhookId_eventId_key" ON "webhook_deliveries"("webhookId", "eventId");
+CREATE INDEX IF NOT EXISTS "webhook_deliveries_status_nextAttemptAt_idx" ON "webhook_deliveries"("status", "nextAttemptAt");
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'integrations_organizationId_fkey') THEN
+    ALTER TABLE "integrations" ADD CONSTRAINT "integrations_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'integration_logs_organizationId_fkey') THEN
+    ALTER TABLE "integration_logs" ADD CONSTRAINT "integration_logs_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'webhooks_organizationId_fkey') THEN
+    ALTER TABLE "webhooks" ADD CONSTRAINT "webhooks_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'webhook_deliveries_webhookId_fkey') THEN
+    ALTER TABLE "webhook_deliveries" ADD CONSTRAINT "webhook_deliveries_webhookId_fkey" FOREIGN KEY ("webhookId") REFERENCES "webhooks"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

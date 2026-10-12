@@ -62,7 +62,7 @@ export async function prepare(input: z.infer<typeof prepareMessageSchema>) {
   const recipient = input.channel === 'WHATSAPP' ? (contact.whatsapp ?? contact.phone) : contact.email;
   if (!recipient) throw badRequest(`Contato sem ${input.channel === 'WHATSAPP' ? 'WhatsApp/telefone' : 'e-mail'} cadastrado`);
   const vars = await buildVars({ entityId: input.entityId, contactId: input.contactId, invoiceId: input.invoiceId, serviceOrderId: input.serviceOrderId, extra: input.extraVars });
-  const adapter = adapterFor(input.channel);
+  const adapter = await adapterFor(input.channel);
   return {
     templateKey: template.key,
     channel: input.channel,
@@ -84,7 +84,7 @@ export async function send(ctx: Ctx, input: z.infer<typeof sendMessageSchema>) {
   const recipient = input.channel === 'WHATSAPP' ? (contact.whatsapp ?? contact.phone) : contact.email;
   if (!recipient) throw badRequest('Contato sem canal de destino');
   const template = input.templateKey ? await prisma.messageTemplate.findUnique({ where: { organizationId_key: { organizationId: currentOrgId(), key: input.templateKey } } }) : null;
-  const adapter = adapterFor(input.channel);
+  const adapter = await adapterFor(input.channel);
 
   const base: Prisma.OutboundMessageUncheckedCreateInput = {
     organizationId: currentOrgId(),
@@ -110,7 +110,7 @@ export async function send(ctx: Ctx, input: z.infer<typeof sendMessageSchema>) {
 
   const msg = await prisma.outboundMessage.create({ data: { ...base, status: 'QUEUED', providerName: adapter.providerName } });
   try {
-    const result = await adapter.send({ recipient, subject: input.subject, body: input.body });
+    const result = await adapter.send({ recipient, subject: input.subject, body: input.body, referenceType: 'outboundMessage', referenceId: msg.id });
     const updated = await prisma.outboundMessage.update({
       where: { id: msg.id },
       data: {

@@ -11,6 +11,7 @@ import { create as createAlarm } from './alarms.js';
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
+import { emit } from './webhooks.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { get as getDocument, storeDocument } from './documents.js';
 
@@ -335,6 +336,7 @@ export async function activate(ctx: Ctx, id: string, input: z.infer<typeof activ
   if (input.issuanceDay) await createAlarm(ctx, { entityId: c.entityId, contractNumber: c.number, label: 'Emissão da nota', dayOfMonth: input.issuanceDay, leadDays: 5, notes: `Criado na ativação do contrato ${c.number}` });
   if (before.opportunityId) await prisma.opportunityEvent.create({ data: { opportunityId: before.opportunityId, userId: ctx.user.id, action: 'CONTRACT_ACTIVATED', toValue: c.number } }).catch(() => undefined);
   await audit(ctx, { action: 'CONTRACT_ACTIVATED', resource: 'contract', resourceId: id, before: { status: before.status }, after: { status: c.status, startDate: c.startDate, endDate: c.endDate, monthlyValue: c.monthlyValue } });
+  await emit('contract.activated', { contractId: id, number: c.number, entityId: c.entityId, startDate: c.startDate?.toISOString().slice(0, 10) ?? null, endDate: c.endDate?.toISOString().slice(0, 10) ?? null, monthlyValue: c.monthlyValue?.toFixed(2) ?? null });
   return c;
 }
 

@@ -10,6 +10,7 @@ import type { createOpportunitySchema, formalizeOpportunitySchema, loseOpportuni
 import { prisma } from '../../db.js';
 import { currentOrgId } from '../../tenant.js';
 import { audit } from '../../audit.js';
+import { emit } from '../webhooks.js';
 import { badRequest, notFound, type Ctx } from '../../http.js';
 import { ensureDefault } from './pipelines.js';
 import { create as createContract } from '../contracts.js';
@@ -227,6 +228,7 @@ export async function win(ctx: Ctx, id: string, input: z.infer<typeof winOpportu
   if (!stage) throw badRequest('O funil não tem etapa "Ganho"');
   const o = await prisma.opportunity.update({ where: { id }, data: { status: 'WON', stageId: stage.id, stageEnteredAt: new Date(), wonAt: new Date(), lostAt: null, lostReason: null, lostNotes: null, lastActivityAt: new Date(), events: { create: { userId: ctx.user.id, action: 'WON', fromValue: before.stage.name, toValue: stage.name, notes: input.notes ?? null } } }, include });
   await audit(ctx, { action: 'UPDATE', resource: 'opportunity', resourceId: id, before: { status: before.status, stage: before.stage.name }, after: { status: 'WON' }, justification: input.notes ?? undefined });
+  await emit('opportunity.won', { opportunityId: id, title: before.title, entityId: before.entityId, totalAmount: before.totalAmount?.toFixed(2) ?? null, monthlyAmount: before.monthlyAmount?.toFixed(2) ?? null });
   return toRow(o, await stalledDaysDefault());
 }
 
@@ -238,6 +240,7 @@ export async function lose(ctx: Ctx, id: string, input: z.infer<typeof loseOppor
   if (!stage) throw badRequest('O funil não tem etapa "Perdido"');
   const o = await prisma.opportunity.update({ where: { id }, data: { status: 'LOST', stageId: stage.id, stageEnteredAt: new Date(), lostAt: new Date(), wonAt: null, lostReason: input.reason, lostNotes: input.notes ?? null, lastActivityAt: new Date(), events: { create: { userId: ctx.user.id, action: 'LOST', fromValue: before.stage.name, toValue: input.reason, notes: input.notes ?? null } } }, include });
   await audit(ctx, { action: 'UPDATE', resource: 'opportunity', resourceId: id, before: { status: before.status, stage: before.stage.name }, after: { status: 'LOST', reason: input.reason }, justification: input.notes ?? undefined });
+  await emit('opportunity.lost', { opportunityId: id, title: before.title, entityId: before.entityId, reason: input.reason });
   return toRow(o, await stalledDaysDefault());
 }
 

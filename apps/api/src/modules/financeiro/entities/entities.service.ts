@@ -104,7 +104,7 @@ export class EntitiesService {
       contractCount: 0,
       invoiceCount: Number(r['pending_count'] ?? 0) + Number(r['paid_count'] ?? 0),
       sourceCount: r['last_sync_at'] ? 1 : 0,
-      ibgeCode: null,
+      ibgeCode: null, cnpj: null,
       segment: null,
       partnerId: null,
       healthScore: null,

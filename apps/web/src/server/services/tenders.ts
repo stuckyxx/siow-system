@@ -6,10 +6,12 @@ import { Prisma } from '@siow/db';
 import { PNCP_MODALITIES, TENDER_MODALITY_LABELS, TENDER_STATUS_LABELS, addDaysIso, dateToIso, daysBetween, isoToDate, todayIso, type PncpPublication, type Paginated, type TenderChecklistRow, type TenderDetail, type TenderModality, type TenderRow, type TenderStatus, brDateTimeToDate, formatBrDateTime } from '@siow/shared';
 import type { z } from 'zod';
 import type { formalizeTenderSchema, pncpImportSchema, pncpSearchSchema, tenderChecklistItemSchema, tenderCompetitorSchema, tenderDeadlineSchema, tenderListFilterSchema, tenderSchema, tenderStatusSchema, updateTenderChecklistItemSchema, updateTenderSchema } from '@siow/shared';
-import { fetchPncpPublications, type PncpRaw } from '@siow/integrations';
+import { fetchComprasGov, fetchPncpPublications, type PncpRaw, type PncpSearch } from '@siow/integrations';
+import { call, resolve } from './integrations.js';
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
+import { emit } from './webhooks.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { create as createContract } from './contracts.js';
 import { create as createAlarm } from './alarms.js';
@@ -167,6 +169,7 @@ export async function setStatus(ctx: Ctx, id: string, input: z.infer<typeof tend
     if (opp && kind) { const stage = opp.pipeline.stages.find((s) => s.kind === kind); if (stage) await prisma.opportunity.update({ where: { id: opp.id }, data: kind === 'WON' ? { status: 'WON', stageId: stage.id, stageEnteredAt: new Date(), wonAt: new Date(), lastActivityAt: new Date(), events: { create: { userId: ctx.user.id, action: 'WON', toValue: `Licitação ${before.number} ${TENDER_STATUS_LABELS[input.status].toLowerCase()}` } } } : { status: 'LOST', stageId: stage.id, stageEnteredAt: new Date(), lostAt: new Date(), lostReason: 'Licitação perdida', lostNotes: input.lossReason ?? null, lastActivityAt: new Date(), events: { create: { userId: ctx.user.id, action: 'LOST', toValue: `Licitação ${before.number}: ${TENDER_STATUS_LABELS[input.status]}` } } } }); }
   }
   await audit(ctx, { action: 'UPDATE', resource: 'tender', resourceId: id, before: { status: before.status }, after: { status: input.status }, justification: input.notes ?? input.lossReason ?? undefined });
+  await emit('tender.status_changed', { tenderId: id, number: t.number, year: t.year, entityId: t.entityId, from: before.status, to: input.status });
   return toRow(t, new Date());
 }
 
@@ -293,8 +296,19 @@ async function matchEntity(p: Omit<PncpPublication, 'match'>): Promise<{ id: str
   return same.find((c) => (isCamara ? c.type === 'CM' : c.type !== 'CM')) ?? same[0] ?? null;
 }
 
+/** Consulta pública (PNCP ou Compras.gov) pela integração configurada, com log e contabilização de falhas. */
+async function fetchPublications(source: 'PNCP' | 'COMPRASGOV', s: PncpSearch): Promise<{ items: PncpRaw[]; warnings: string[] }> {
+  const key = source === 'COMPRASGOV' ? 'COMPRASGOV' : 'PNCP';
+  const cfg = await resolve(key);
+  if (!cfg.enabled) throw badRequest(`Integração ${key} desativada`);
+  return call(key, 'FETCH', { request: { uf: s.uf, from: s.from, to: s.to, modalities: s.modalities } }, async () => {
+    const r = source === 'COMPRASGOV' ? await fetchComprasGov(s, { ...providerCtx(), apiUrl: cfg.config['apiUrl'] }) : await fetchPncpPublications(s, { ...providerCtx(), apiUrl: cfg.config['apiUrl'] });
+    return { result: r, response: { items: r.items.length, warnings: r.warnings }, ok: true };
+  });
+}
+
 export async function searchPncp(input: z.infer<typeof pncpSearchSchema>): Promise<{ items: PncpPublication[]; warnings: string[]; total: number }> {
-  const { items, warnings } = await fetchPncpPublications({ uf: input.uf, from: input.from, to: input.to, modalities: input.modalities }, providerCtx());
+  const { items, warnings } = await fetchPublications(input.source, { uf: input.uf, from: input.from, to: input.to, modalities: input.modalities });
   const mapped = items.map(mapPncp).filter((p) => !input.q || norm(`${p.object} ${p.orgName}`).includes(norm(input.q)));
   const ids = mapped.map((m) => m.officialId);
   const existing = ids.length ? await prisma.tender.findMany({ where: { officialId: { in: ids } }, select: { id: true, officialId: true } }) : [];
@@ -310,7 +324,7 @@ export async function searchPncp(input: z.infer<typeof pncpSearchSchema>): Promi
 
 /** Importa publicações selecionadas (refaz a consulta para não confiar em dados do cliente). Sem entidade casada, cria a entidade como lead (PM/CM pelo nome do órgão). */
 export async function importPncp(ctx: Ctx, input: z.infer<typeof pncpImportSchema>): Promise<{ created: number; skipped: number; entitiesCreated: number; errors: string[] }> {
-  const { items } = await fetchPncpPublications({ uf: input.uf, from: input.from, to: input.to, modalities: input.modalities }, providerCtx());
+  const { items } = await fetchPublications(input.source, { uf: input.uf, from: input.from, to: input.to, modalities: input.modalities });
   const byId = new Map(items.map((r) => [r.numeroControlePNCP, mapPncp(r)]));
   const res = { created: 0, skipped: 0, entitiesCreated: 0, errors: [] as string[] };
   const org = currentOrgId();

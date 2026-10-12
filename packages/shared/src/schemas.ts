@@ -739,6 +739,7 @@ export const pncpSearchSchema = z.object({
   modalities: z.array(z.coerce.number().int().min(1).max(13)).min(1).max(13).default([6, 8, 4]),
   q: z.string().max(120).optional().nullable(),
   onlyLinkedEntities: z.boolean().default(false),
+  source: z.enum(['PNCP', 'COMPRASGOV']).default('PNCP'),
 });
 export const pncpImportSchema = z.object({
   items: z.array(z.object({ officialId: z.string().min(5).max(80), entityId: uuid.optional().nullable(), createEntity: z.boolean().default(true) })).min(1).max(200),
@@ -746,6 +747,7 @@ export const pncpImportSchema = z.object({
   from: isoDate,
   to: isoDate,
   modalities: z.array(z.coerce.number().int().min(1).max(13)).min(1).max(13),
+  source: z.enum(['PNCP', 'COMPRASGOV']).default('PNCP'),
 });
 /** Formalização a partir de licitação homologada: contrato em rascunho por padrão (mesma regra do CRM). */
 export const formalizeTenderSchema = formalizeOpportunitySchema;

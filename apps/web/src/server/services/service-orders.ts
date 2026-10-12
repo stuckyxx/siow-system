@@ -126,7 +126,70 @@ export async function registerManualSignature(ctx: Ctx, id: string, input: z.inf
 }
 
 /** Informa ao frontend se há provedor de assinatura eletrônica configurado. */
-export function signatureCapabilities() {
-  const p = getConfiguredSignatureProvider();
+export async function signatureCapabilities() {
+  const p = await getConfiguredSignatureProvider();
   return { provider: p?.key ?? null, electronicSignatureAvailable: Boolean(p), manualUploadAvailable: true };
+}
+
+/** Envia a OS (documento anexado) para assinatura eletrônica no provedor configurado. Idempotente: uma solicitação ativa por OS. */
+export async function sendForSignature(ctx: Ctx, id: string, input: { signers: Array<{ name: string; email: string; role?: string | null }>; deadlineDays?: number | null }) {
+  const so = await get(id);
+  if (so.status === 'CANCELLED' || so.status === 'SIGNED') throw badRequest('OS já assinada ou cancelada');
+  if (!so.document) throw badRequest('Anexe o documento da OS antes de enviar para assinatura');
+  const provider = await getConfiguredSignatureProvider();
+  if (!provider) throw badRequest('Nenhum provedor de assinatura eletrônica configurado (Administração → Integrações)');
+  const active = so.signatureRequests.find((r) => ['SENT', 'VIEWED'].includes(r.status));
+  if (active) return { request: active, reused: true };
+  const doc = await prisma.document.findFirst({ where: { id: so.document.id, deletedAt: null }, include: { blob: true } });
+  if (!doc) throw notFound('Documento da OS não encontrado');
+  const { fetchBlob } = await import('../storage.js');
+  const buffer = Buffer.from(await (await fetchBlob(doc.blob.storageKey)).arrayBuffer());
+  const r = await provider.createRequest({ documentBuffer: buffer, fileName: doc.name.toLowerCase().endsWith('.pdf') ? doc.name : `${doc.name}.pdf`, signers: input.signers.map((s) => ({ name: s.name, email: s.email, role: s.role ?? undefined })), deadlineDays: input.deadlineDays ?? undefined });
+  const req = await prisma.signatureRequest.create({ data: { organizationId: currentOrgId(), serviceOrderId: id, provider: provider.key, providerRequestId: r.providerRequestId, status: 'SENT', sentAt: new Date(), registeredByUserId: ctx.user.id, evidence: { signers: input.signers } } });
+  await prisma.serviceOrderSignatory.createMany({ data: input.signers.map((s) => ({ serviceOrderId: id, name: s.name, role: s.role ?? null, email: s.email })) });
+  await prisma.serviceOrder.update({ where: { id }, data: { status: 'AWAITING_SIGNATURE', events: { create: { action: 'SENT_FOR_SIGNATURE', userId: ctx.user.id, fromValue: so.status, toValue: 'AWAITING_SIGNATURE', note: `${provider.key} · ${r.providerRequestId}` } } } });
+  await audit(ctx, { action: 'SERVICE_ORDER_SENT_FOR_SIGNATURE', resource: 'serviceOrder', resourceId: id, after: { provider: provider.key, providerRequestId: r.providerRequestId, signers: input.signers.map((x) => x.name) } });
+  return { request: req, reused: false };
+}
+
+/** Aplica um status vindo do provedor (webhook ou consulta): SIGNED baixa o documento assinado e conclui a OS. Idempotente. */
+export async function applySignatureUpdate(providerRequestId: string, status: 'SENT' | 'VIEWED' | 'SIGNED' | 'DECLINED' | 'EXPIRED' | 'CANCELLED', evidence?: unknown): Promise<{ applied: boolean; serviceOrderId: string | null }> {
+  const req = await prisma.signatureRequest.findFirst({ where: { providerRequestId }, include: { serviceOrder: { select: { id: true, entityId: true, contractId: true, status: true, number: true } } } });
+  if (!req) return { applied: false, serviceOrderId: null };
+  if (req.status === 'SIGNED' || req.status === 'COMPLETED_MANUALLY') return { applied: false, serviceOrderId: req.serviceOrderId };
+  if (status === 'SIGNED') {
+    const provider = await (await import('./signature.js')).providerByKey(req.provider);
+    let signedDocumentId: string | null = null;
+    if (provider) {
+      try {
+        const file = await provider.downloadSigned(providerRequestId);
+        const { storeDocument } = await import('./documents.js');
+        const r = await storeDocument({ buffer: file.buffer, mimeType: file.mimeType, name: `OS ${req.serviceOrder.number ?? ''} assinada.pdf`.replace(/\s+/g, ' '), type: 'SERVICE_ORDER_SIGNED', entityId: req.serviceOrder.entityId, contractId: req.serviceOrder.contractId, serviceOrderId: req.serviceOrderId, origin: 'SYNC' });
+        signedDocumentId = r.documentId;
+      } catch (e) { console.error('download do documento assinado falhou', e); }
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.signatureRequest.update({ where: { id: req.id }, data: { status: 'SIGNED', completedAt: new Date(), signedDocumentId, evidence: (evidence ?? req.evidence ?? {}) as Prisma.InputJsonValue } });
+      await tx.serviceOrderSignatory.updateMany({ where: { serviceOrderId: req.serviceOrderId, signedAt: null }, data: { signedAt: new Date() } });
+      await tx.serviceOrder.update({ where: { id: req.serviceOrderId }, data: { status: 'SIGNED', signedAt: new Date(), signedDocumentId: signedDocumentId ?? undefined, events: { create: { action: 'SIGNED_ELECTRONICALLY', fromValue: req.serviceOrder.status, toValue: 'SIGNED', note: `${req.provider} · ${providerRequestId}` } } } });
+    });
+    await audit(null, { action: 'SERVICE_ORDER_SIGNED', resource: 'serviceOrder', resourceId: req.serviceOrderId, after: { provider: req.provider, providerRequestId, signedDocumentId } });
+    return { applied: true, serviceOrderId: req.serviceOrderId };
+  }
+  if (status !== req.status) {
+    await prisma.signatureRequest.update({ where: { id: req.id }, data: { status, evidence: (evidence ?? req.evidence ?? {}) as Prisma.InputJsonValue, completedAt: ['DECLINED', 'EXPIRED', 'CANCELLED'].includes(status) ? new Date() : null } });
+    if (['DECLINED', 'EXPIRED', 'CANCELLED'].includes(status)) await prisma.serviceOrder.update({ where: { id: req.serviceOrderId }, data: { status: 'ISSUED', events: { create: { action: `SIGNATURE_${status}`, fromValue: 'AWAITING_SIGNATURE', toValue: 'ISSUED', note: providerRequestId } } } });
+  }
+  return { applied: true, serviceOrderId: req.serviceOrderId };
+}
+
+/** Consulta ativa dos pedidos em aberto (complementa o webhook). */
+export async function pollSignatures(): Promise<{ checked: number; updated: number }> {
+  const open = await prisma.signatureRequest.findMany({ where: { status: { in: ['SENT', 'VIEWED'] }, providerRequestId: { not: null } }, take: 50 });
+  let updated = 0;
+  for (const r of open) {
+    const provider = await (await import('./signature.js')).providerByKey(r.provider); if (!provider) continue;
+    try { const s = await provider.getStatus(r.providerRequestId!); if (s.status !== r.status) { const a = await applySignatureUpdate(r.providerRequestId!, s.status, s.evidence); if (a.applied) updated += 1; } } catch (e) { console.error('poll assinatura falhou', r.id, e); }
+  }
+  return { checked: open.length, updated };
 }

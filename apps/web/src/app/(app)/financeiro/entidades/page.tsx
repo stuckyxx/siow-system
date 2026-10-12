@@ -189,7 +189,10 @@ function EntitiesList() {
 
 function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?: EntitySummary; onClose: () => void; onSaved: () => void }) {
   const editing = Boolean(entity);
-  const [form, setForm] = useState({ type: entity?.type ?? 'CM', name: entity?.name ?? '', shortName: entity?.shortName ?? '', municipality: entity?.municipality ?? '', uf: entity?.uf ?? 'MA', url: '', notes: '', isActive: entity?.isActive ?? true, ibgeCode: entity?.ibgeCode ?? '', segment: entity?.segment ?? '', partnerId: entity?.partnerId ?? '' });
+  const [form, setForm] = useState({ type: entity?.type ?? 'CM', name: entity?.name ?? '', shortName: entity?.shortName ?? '', municipality: entity?.municipality ?? '', uf: entity?.uf ?? 'MA', url: '', notes: '', isActive: entity?.isActive ?? true, ibgeCode: entity?.ibgeCode ?? '', segment: entity?.segment ?? '', partnerId: entity?.partnerId ?? '', cnpj: entity?.cnpj ?? '' });
+  const [lookup, setLookup] = useState<string | null>(null);
+  const cnpjLookup = useMutation({ mutationFn: () => api<{ name: string; tradeName: string | null; municipality: string | null; uf: string | null; ibgeCode: string | null; status: string | null }>(`/integracoes/cnpj/${form.cnpj.replace(/\D/g, '')}`), onSuccess: (r) => { setForm((f) => ({ ...f, name: f.name || r.name, municipality: f.municipality || (r.municipality ? r.municipality.replace(/\b\w+/g, (w) => w.charAt(0) + w.slice(1).toLowerCase()) : ''), uf: r.uf ?? f.uf, ibgeCode: f.ibgeCode || (r.ibgeCode ?? ''), type: f.type || (/c[aâ]mara/i.test(r.name) ? 'CM' : 'PM') })); setLookup(`${r.name} · ${r.municipality ?? ''}/${r.uf ?? ''} · ${r.status ?? ''}`); }, onError: (e) => setLookup(e instanceof ApiError ? e.message : 'Consulta falhou') });
+  const ibgeLookup = useMutation({ mutationFn: () => api<Array<{ ibgeCode: string; name: string }>>('/integracoes/ibge/municipios', { query: { uf: form.uf } }), onSuccess: (list) => { const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); const hit = list.find((m) => norm(m.name) === norm(form.municipality)); if (hit) { setForm((f) => ({ ...f, ibgeCode: hit.ibgeCode, municipality: hit.name })); setLookup(`IBGE: ${hit.name} → ${hit.ibgeCode}`); } else setLookup(`Município não encontrado no IBGE para ${form.uf}`); }, onError: (e) => setLookup(e instanceof ApiError ? e.message : 'Consulta falhou') });
   const { data: partners } = useQuery({ queryKey: ['partners-lite'], queryFn: () => api<Array<{ id: string; name: string }>>('/parceiros'), staleTime: 60_000, retry: false });
   const [error, setError] = useState<string | null>(null);
   // Observações e fonte atual só existem na ficha completa; carrega ao editar.
@@ -201,7 +204,7 @@ function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?
   useEffect(() => { if (detail) setForm((f) => ({ ...f, notes: detail.notes ?? '', url: f.url || (detail.dataSources[0]?.url ?? '') })); }, [detail]);
   const save = useMutation({
     mutationFn: async () => {
-      const body = { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null, isActive: form.isActive, ibgeCode: form.ibgeCode || null, segment: form.segment || null, partnerId: form.partnerId || null };
+      const body = { type: form.type, name: form.name, shortName: form.shortName || null, municipality: form.municipality, uf: form.uf, notes: form.notes || null, isActive: form.isActive, ibgeCode: form.ibgeCode || null, segment: form.segment || null, partnerId: form.partnerId || null, cnpj: form.cnpj.replace(/\D/g, '') || null };
       if (editing) {
         await api(`/financeiro/entities/${entity!.id}`, { method: 'PATCH', body });
         if (form.url && form.url !== (detail?.dataSources[0]?.url ?? '')) await api(`/financeiro/entities/${entity!.id}/data-sources`, { method: 'POST', body: { url: form.url } });
@@ -213,10 +216,11 @@ function EntityForm({ open, entity, onClose, onSaved }: { open: boolean; entity?
     onSuccess: onSaved,
     onError: (e) => setError(e instanceof ApiError ? `${e.message}${e.issues ? ': ' + e.issues.map((i) => `${i.path} ${i.message}`).join('; ') : ''}` : 'Erro'),
   });
-  const f = (k: 'type' | 'name' | 'shortName' | 'municipality' | 'uf' | 'url' | 'notes' | 'ibgeCode' | 'segment' | 'partnerId') => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value }) });
+  const f = (k: 'type' | 'name' | 'shortName' | 'municipality' | 'uf' | 'url' | 'notes' | 'ibgeCode' | 'segment' | 'partnerId' | 'cnpj') => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [k]: e.target.value }) });
   return (
     <Dialog open={open} onClose={onClose} title={editing ? `Editar entidade — ${entity!.shortName ?? entity!.name}` : 'Nova entidade'}>
       <div className="grid gap-3 md:grid-cols-2">
+        <Field label="CNPJ (consulta preenche nome, município, UF e IBGE)" className="md:col-span-2"><div className="row"><Input {...f('cnpj')} placeholder="00.000.000/0000-00" style={{ maxWidth: 220 }} /><Button size="sm" variant="secondary" onClick={() => cnpjLookup.mutate()} disabled={cnpjLookup.isPending || form.cnpj.replace(/\D/g, '').length !== 14}>{cnpjLookup.isPending ? 'Consultando…' : 'Consultar CNPJ'}</Button><Button size="sm" variant="ghost" onClick={() => ibgeLookup.mutate()} disabled={ibgeLookup.isPending || !form.municipality || form.uf.length !== 2}>{ibgeLookup.isPending ? 'IBGE…' : 'Buscar código IBGE'}</Button></div>{lookup && <div className="small muted" style={{ marginTop: 4 }}>{lookup}</div>}</Field>
         <Field label="Tipo"><Select {...f('type')}>{ENTITY_TYPES.map((t) => <option key={t} value={t}>{t} — {ENTITY_TYPE_LABELS[t]}</option>)}</Select></Field>
         <Field label="UF"><Input maxLength={2} {...f('uf')} /></Field>
         <Field label="Município"><Input {...f('municipality')} placeholder="Bom Lugar" /></Field>

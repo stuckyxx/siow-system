@@ -10,6 +10,7 @@ import type { createManualInvoiceSchema, reconcileInvoiceSchema, resolveConflict
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
+import { emit } from './webhooks.js';
 import { recomputeAfterInvoiceChange } from './commissions.js';
 import { badRequest, conflict as conflictError, notFound, type Ctx } from '../http.js';
 import { storeDocument } from './documents.js';
@@ -189,6 +190,7 @@ export async function override(ctx: Ctx, id: string, dto: InvoiceOverrideDto) {
     return updated;
   });
   await audit(ctx, { action: 'INVOICE_OVERRIDE', resource: 'invoice', resourceId: id, before, after, justification: dto.justification });
+  if (after.status === 'PAID' && before.status !== 'PAID') await emit('invoice.paid', { invoiceId: id, number: after.number, entityId: after.entityId, amount: after.amount.toFixed(2), paidAmount: after.paidAmount?.toFixed(2) ?? null, paidAt: after.paidAt?.toISOString().slice(0, 10) ?? null, competence: `${after.competenceYear}-${String(after.competenceMonth).padStart(2, '0')}` });
   await recomputeAfterInvoiceChange([id]);
   return get(id);
 }
@@ -279,6 +281,7 @@ export async function reconcile(ctx: Ctx, id: string, dto: z.infer<typeof reconc
     return updated;
   });
   await audit(ctx, { action: 'INVOICE_RECONCILED', resource: 'invoice', resourceId: id, before, after, justification: dto.note });
+  if (after.status === 'PAID' && before.status !== 'PAID') await emit('invoice.paid', { invoiceId: id, number: after.number, entityId: after.entityId, amount: after.amount.toFixed(2), paidAmount: after.paidAmount?.toFixed(2) ?? null, paidAt: after.paidAt?.toISOString().slice(0, 10) ?? null, competence: `${after.competenceYear}-${String(after.competenceMonth).padStart(2, '0')}` });
   await recomputeAfterInvoiceChange([id]);
   return get(id);
 }

@@ -6,7 +6,8 @@ import { zod } from '../../../common/zod/zod.pipe.js';
 import { toCsv, toPdf, toXlsx } from './exporters.js';
 import { ReportsService } from './reports.service.js';
 
-const REPORT_LABELS: Record<(typeof REPORT_KEYS)[number], string> = {
+// API legada: cobre só os relatórios financeiros; os de BI (Fase 7) vivem no app web.
+const REPORT_LABELS: Partial<Record<(typeof REPORT_KEYS)[number], string>> = {
   financial_overview: 'Financeiro geral',
   invoices: 'Notas fiscais (pendentes / pagas / todas)',
   receivables_by_entity: 'Recebíveis por entidade',
