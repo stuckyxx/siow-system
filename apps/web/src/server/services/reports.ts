@@ -26,12 +26,15 @@ import {
   isoToDate,
   todayIso,
   toDecimalString,
+  type DataNature,
+  type ReportCatalogItem,
   type ReportRequest,
 } from '@siow/shared';
 import { prisma } from '../db.js';
 import * as certificates from './certificates.js';
 import { forecast } from './dashboard.js';
 import { buildInvoiceWhere } from './invoices.js';
+import { runBi } from './reports-bi.js';
 
 export interface ReportColumn {
   key: string;
@@ -48,6 +51,8 @@ export interface ReportResult {
   columns: ReportColumn[];
   rows: Array<Record<string, string | number | null>>;
   totals?: Record<string, string | number>;
+  nature?: DataNature;
+  group?: string;
 }
 
 export const REPORT_LABELS: Record<ReportRequest['report'], string> = {
@@ -65,10 +70,57 @@ export const REPORT_LABELS: Record<ReportRequest['report'], string> = {
   collections: 'Cobranças realizadas',
   invoice_history: 'Histórico financeiro',
   forecast: 'Receita prevista (mensal / anual)',
+  portfolio: 'Carteira de clientes (ativos, inativos, leads)',
+  results_by_region: 'Resultados por município e UF',
+  portfolio_health: 'Saúde da carteira',
+  opportunities: 'Oportunidades',
+  conversion: 'Conversão e desempenho comercial',
+  pipeline_value: 'Valor do funil por etapa',
+  revenue_vs_actual: 'Receita prevista × faturada × recebida',
+  renewals: 'Renovações de contratos',
+  tenders: 'Licitações',
+  tender_win_rate: 'Taxa de vitória em licitações',
+  goals: 'Metas comerciais',
+  commissions: 'Comissões',
+  partner_results: 'Resultados por parceiro',
+  tickets: 'Chamados de atendimento',
+  ticket_sla: 'SLA e desempenho do atendimento',
+};
+/** Grupo (módulo) e natureza dos números de cada relatório — exibidos na central e na exportação. */
+export const REPORT_META: Record<ReportRequest['report'], { group: string; nature: DataNature; description: string }> = {
+  financial_overview: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Débito, recebido e notas por entidade' },
+  invoices: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Notas fiscais no recorte' },
+  receivables_by_entity: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Pendentes e pagas por entidade' },
+  defaulters: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Entidades com notas em aberto e maior atraso' },
+  payments: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Recebimentos no período' },
+  average_days_to_pay: { group: 'Financeiro', nature: 'CALCULATED', description: 'Dias entre emissão e pagamento' },
+  contracts: { group: 'Contratos', nature: 'CONFIRMED', description: 'Contratos e aditivos' },
+  contracts_expiring: { group: 'Contratos', nature: 'CONFIRMED', description: 'Vigências a vencer' },
+  certificates: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Validade das certidões' },
+  service_orders: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Ordens de serviço por competência' },
+  tasks: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Tarefas da agenda' },
+  collections: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Tentativas de cobrança' },
+  invoice_history: { group: 'Financeiro', nature: 'CONFIRMED', description: 'Histórico de notas' },
+  forecast: { group: 'Financeiro', nature: 'PROJECTION', description: 'Receita prevista por contrato ativo (última nota ou valor do contrato)' },
+  portfolio: { group: 'Carteira', nature: 'MIXED', description: 'Clientes, ex-clientes e leads com receita prevista, faturada e recebida' },
+  results_by_region: { group: 'Carteira', nature: 'MIXED', description: 'Clientes, contratos e receita por município/UF' },
+  portfolio_health: { group: 'Carteira', nature: 'CALCULATED', description: 'Nota de saúde (0–100) e fatores de risco' },
+  opportunities: { group: 'Comercial', nature: 'PROJECTION', description: 'Oportunidades com valor estimado e probabilidade' },
+  conversion: { group: 'Comercial', nature: 'CALCULATED', description: 'Ganhas, perdidas, conversão e ciclo por responsável' },
+  pipeline_value: { group: 'Comercial', nature: 'PROJECTION', description: 'Valor e ponderado por etapa' },
+  revenue_vs_actual: { group: 'Financeiro', nature: 'MIXED', description: 'Prevista (projeção) × faturada e recebida (confirmado) por competência' },
+  renewals: { group: 'Contratos', nature: 'MIXED', description: 'Renovações detectadas e decisões' },
+  tenders: { group: 'Licitações', nature: 'CONFIRMED', description: 'Processos com situação, valores e prazos' },
+  tender_win_rate: { group: 'Licitações', nature: 'CALCULATED', description: 'Participações e vitórias por UF e modalidade' },
+  goals: { group: 'Comercial', nature: 'CALCULATED', description: 'Metas × realizado' },
+  commissions: { group: 'Parceiros', nature: 'MIXED', description: 'Comissões previstas (projeção), a pagar e pagas (confirmado)' },
+  partner_results: { group: 'Parceiros', nature: 'MIXED', description: 'Carteira, recebido e comissões por parceiro' },
+  tickets: { group: 'Atendimento', nature: 'CONFIRMED', description: 'Chamados com tempos e SLA' },
+  ticket_sla: { group: 'Atendimento', nature: 'CALCULATED', description: 'SLA, tempos médios e satisfação por responsável/tipo/prioridade' },
 };
 
-export function catalog(): Array<{ key: string; label: string }> {
-  return (Object.keys(REPORT_LABELS) as Array<ReportRequest['report']>).map((key) => ({ key, label: REPORT_LABELS[key] }));
+export function catalog(): ReportCatalogItem[] {
+  return (Object.keys(REPORT_LABELS) as Array<ReportRequest['report']>).map((key) => ({ key, label: REPORT_LABELS[key], ...REPORT_META[key] }));
 }
 
 const money = (v: Prisma.Decimal | number | null | undefined): string => toDecimalString(Number(v ?? 0));
@@ -120,7 +172,7 @@ function cleanFilters(req: ReportRequest): Record<string, unknown> {
 
 export async function run(req: ReportRequest): Promise<ReportResult> {
   const period = describePeriod(req);
-  const base = { generatedAt: new Date().toISOString(), period, filters: cleanFilters(req) };
+  const base = { generatedAt: new Date().toISOString(), period, filters: cleanFilters(req), nature: REPORT_META[req.report].nature, group: REPORT_META[req.report].group };
   const where = buildInvoiceWhere({
     entityId: req.entityId,
     entityType: req.entityType,
@@ -140,6 +192,8 @@ export async function run(req: ReportRequest): Promise<ReportResult> {
   const hasEntityFilter = Boolean(req.entityId || req.entityType || req.uf || req.municipality || req.responsibleUserId);
   const range = periodRange(req);
   const today = todayIso();
+  const bi = await runBi(req, base, range);
+  if (bi) return bi;
 
   switch (req.report) {
     case 'invoices':

@@ -11,7 +11,7 @@ import { QuickSearch } from '@/components/quick-search';
 
 /** Menu (PROMPT MESTRE v2): Dashboard | Comercial | Entidades | Contratos | Financeiro | Relatórios | Administração — Licitações, Atendimento e Parceiros entram nas fases 4–6. Cada item filtrado por permissão. */
 const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean; onlyIfMissing?: string }> = [
-  { href: '/financeiro', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/financeiro' },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/dashboard' || p === '/financeiro' },
   { href: '/comercial', label: 'Comercial', icon: Briefcase, perms: ['crm.read'], match: (p) => p.startsWith('/comercial') },
   { href: '/licitacoes', label: 'Licitações', icon: Gavel, perms: ['tenders.read'], match: (p) => p.startsWith('/licitacoes') },
   { href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'], match: (p) => p.startsWith('/financeiro/entidades') },

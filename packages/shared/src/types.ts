@@ -414,3 +414,23 @@ export interface CampaignRow {
 export interface CampaignDetail extends CampaignRow {
   recipients: Array<{ id: string; entityName: string; contactName: string | null; recipient: string | null; status: string; error: string | null; sentAt: string | null; manualLink: string | null }>;
 }
+
+// ---------------- Fase 7: Relatórios e BI ----------------
+/** Natureza do número: CONFIRMED = fato registrado (nota, recebimento, contrato); PROJECTION = previsão; CALCULATED = indicador derivado. */
+export type DataNature = 'CONFIRMED' | 'PROJECTION' | 'CALCULATED' | 'MIXED';
+export const DATA_NATURE_LABELS: Record<DataNature, string> = { CONFIRMED: 'Dados confirmados', PROJECTION: 'Projeção', CALCULATED: 'Indicador calculado', MIXED: 'Confirmado + projeção' };
+export interface ReportCatalogItem { key: string; label: string; group: string; nature: DataNature; description: string }
+export interface ExecutiveDashboard {
+  generatedAt: string;
+  period: { from: string; to: string };
+  scope: string;
+  portfolio: { total: number; clients: number; exClients: number; leads: number; newClientsInPeriod: number; lostClientsInPeriod: number; byUf: Array<{ uf: string; clients: number; leads: number; exClients: number }>; byType: Array<{ type: string; clients: number; total: number }> };
+  revenue: { forecastMonthly: string; forecastPeriod: string; invoiced: string; received: string; pending: string; overdue: string; defaultersCount: number; defaultRate: number | null; series: Array<{ competence: string; forecast: string; invoiced: string; received: string; pending: string }> };
+  contracts: { active: number; activeMonthly: string; expiring90: number; expiring90Monthly: string; renewalsOpen: number; renewedInPeriod: number; notRenewedInPeriod: number; draft: number };
+  sales: { open: number; openAmount: string; weightedAmount: string; won: number; wonAmount: string; lost: number; conversionRate: number | null; avgCycleDays: number | null; stalled: number; byOwner: Array<{ name: string; open: number; won: number; wonAmount: string; lost: number }>; goals: Array<{ label: string; userName: string | null; target: string; achieved: string; percent: number }> };
+  tenders: { inProgress: number; inProgressValue: string; submittedInPeriod: number; wonInPeriod: number; lostInPeriod: number; winRate: number | null; wonValue: string; nextDeadlines: number; blockedChecklists: number };
+  support: { open: number; breached: number; atRisk: number; resolvedInPeriod: number; avgFirstResponseHours: number | null; avgResolutionHours: number | null; satisfactionAvg: number | null; satisfactionCount: number };
+  partners: { active: number; forecast: string; due: string; paid: string; top: Array<{ name: string; entities: number; received: string; commissions: string }> };
+  health: { healthy: number; attention: number; risk: number; noData: number; avgScore: number | null; worst: Array<{ entityId: string; name: string; score: number; municipality: string; uf: string }> };
+  byRegion: Array<{ uf: string; municipality: string; clients: number; activeContracts: number; monthly: string; invoiced: string; received: string; pending: string }>;
+}

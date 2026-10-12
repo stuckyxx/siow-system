@@ -291,3 +291,16 @@ cumprida; link manual de WhatsApp) → visita e ata → tarefa → aguardando cl
 pública 5/5 (2ª avaliação recusada) → chamado atrasado gera alerta de SLA no cron (deduplicado) → campanha com prévia, envio (manual
 sem provedor) e reenvio sem duplicar → linha do tempo da entidade. Regressão do Financeiro inalterada.
 
+## Executado na Fase 7 (12/10/2026)
+
+**Banco** — nenhuma migração (somente consultas).
+
+**Código** — painel executivo (`/dashboard`) consolidando carteira, receita (prevista/faturada/recebida), inadimplência, contratos a
+vencer, renovações, saúde da carteira, funil, conversão, metas, desempenho por responsável, licitações e taxa de vitória, atendimento/SLA/
+satisfação, comissões, parceiros e resultados por município/UF, com filtros por período, UF, município, entidade, responsável e parceiro;
+15 relatórios novos na central (agrupados por módulo, com natureza dos dados e filtro por parceiro) exportáveis em PDF/XLSX/CSV pelos
+exportadores existentes; menu Dashboard em Executivo | Comercial | Financeiro.
+
+**Validação** — local e produção: painel executivo com e sem filtros, catálogo com 29 relatórios em 7 grupos, cada relatório novo em JSON
+e exportação XLSX/PDF/CSV auditada; relatórios financeiros existentes inalterados (regressão). Interface conferida nos temas escuro e claro.
+

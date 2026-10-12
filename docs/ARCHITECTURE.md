@@ -223,6 +223,19 @@ principal ou financeiro, ou lista de entidades) em destinatários pendentes; o e
 modelos/variáveis e o provedor configurado; sem provedor, cada destinatário fica "envio manual" com link wa.me/mailto. Repetir o envio
 é idempotente (só pendentes). Ficha 360º: aba "Atendimento" e eventos ATENDIMENTO na linha do tempo.
 
+## 6g. Relatórios e BI (Fase 7)
+
+Sem tabelas novas: Relatórios só consultam. `services/bi.ts#executive` monta o painel executivo (carteira por ciclo de vida derivado,
+receita prevista × faturada × recebida por competência, contratos a vencer e renovações, funil/conversão/metas, licitações e taxa de
+vitória, atendimento/SLA/satisfação, comissões e parceiros, saúde da carteira, resultados por município/UF) com filtros de período, UF,
+município, entidade, responsável e parceiro. `services/reports-bi.ts` adiciona 15 relatórios ao catálogo existente (carteira, região,
+saúde, oportunidades, conversão, funil, receita prevista × real, renovações, licitações, taxa de vitória, metas, comissões, parceiros,
+chamados, SLA) reaproveitando os exportadores PDF/XLSX/CSV e a auditoria de exportação. Cada relatório declara `group` (módulo) e
+`nature`: CONFIRMED (fatos: notas, recebimentos, contratos), PROJECTION (receita prevista, funil), CALCULATED (taxas, médias) ou MIXED;
+a natureza aparece na central de relatórios, no rodapé do PDF e no painel. Menu "Dashboard" → `/dashboard` (Executivo) com atalhos para
+Comercial (`/comercial`) e Financeiro (`/financeiro`). Gráfico de receita em SVG próprio (sem biblioteca), paleta validada para daltonismo
+e contraste nos dois temas, com legenda, tooltip e alternância para tabela.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

@@ -2,17 +2,18 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { formatBRL, formatBrDate, formatBrDateTime } from '@siow/shared';
+import { DATA_NATURE_LABELS, formatBRL, formatBrDate, formatBrDateTime, type DataNature, type PartnerRow, type ReportCatalogItem } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { downloadBlob } from '@/lib/utils';
 import { GlobalFilters, useFilterOptions, useGlobalFilters } from '@/components/global-filters';
-import { useToast } from '@/components/ui';
+import { Badge, useToast } from '@/components/ui';
 
-interface ReportResult { key: string; title: string; generatedAt: string; period: string; columns: Array<{ key: string; label: string; type?: string }>; rows: Array<Record<string, string | number | null>>; totals?: Record<string, string | number> }
+interface ReportResult { key: string; title: string; generatedAt: string; period: string; columns: Array<{ key: string; label: string; type?: string }>; rows: Array<Record<string, string | number | null>>; totals?: Record<string, string | number>; nature?: DataNature; group?: string }
+const NATURE_TONE: Record<DataNature, 'good' | 'info' | 'neutral' | 'warn'> = { CONFIRMED: 'good', PROJECTION: 'info', CALCULATED: 'neutral', MIXED: 'warn' };
 
 const cell = (v: string | number | null, type?: string): string => (v === null || v === '' ? '' : type === 'money' ? formatBRL(v) : type === 'date' ? formatBrDate(String(v)) : String(v));
-const TOTAL_LABEL: Record<string, string> = { monthly: 'Receita prevista mensal', annual: 'Receita prevista anual', contracts: 'Contratos ativos', debt: 'Total em débito', pending: 'Total pendente', received: 'Total recebido', paid: 'Total pago', count: 'Registros', invoices: 'Notas', amount: 'Valor total' };
+const TOTAL_LABEL: Record<string, string> = { monthly: 'Receita prevista mensal', annual: 'Receita prevista anual', contracts: 'Contratos ativos', debt: 'Total em débito', pending: 'Total pendente', received: 'Total recebido', paid: 'Total pago', count: 'Registros', invoices: 'Notas', amount: 'Valor total', clients: 'Clientes', exClients: 'Ex-clientes', leads: 'Leads', invoiced: 'Faturado', weighted: 'Ponderado', total: 'Valor total', won: 'Ganhas', lost: 'Perdidas', wonAmount: 'Valor ganho', forecast: 'Prevista', due: 'A pagar', open: 'Em aberto', renewed: 'Renovados', inProgress: 'Em andamento', estimated: 'Valor estimado', breached: 'SLA estourado', risk: 'Em risco', attention: 'Atenção', healthy: 'Saudáveis', entities: 'Entidades' };
 const isMoney = (k: string, v: string | number): boolean => typeof v === 'string' && /^-?\d+\.\d{2}$/.test(v) && !/count|contracts|invoices|days/i.test(k);
 
 export default function ReportsPage() {
@@ -24,6 +25,8 @@ function Reports() {
   const search = useSearchParams();
   const [report, setReport] = useState(search.get('r') ?? 'financial_overview');
   const [filters, setFilters] = useGlobalFilters();
+  const [partnerId, setPartnerId] = useState('');
+  const { data: partners } = useQuery({ queryKey: ['partners'], queryFn: () => api<PartnerRow[]>('/parceiros'), enabled: can('partners.read') });
   const [toast, showToast] = useToast();
   const { data: options } = useFilterOptions();
 
@@ -34,8 +37,10 @@ function Reports() {
     if (entityId || year) setFilters({ ...filters, ...(entityId ? { entityId } : {}), ...(year ? { year: Number(year) } : {}) });
   }, [search]);
 
-  const { data: catalog } = useQuery({ queryKey: ['report-catalog'], queryFn: () => api<Array<{ key: string; label: string }>>('/financeiro/reports/catalog') });
-  const query = { ...filters, report } as Record<string, string | number | undefined>;
+  const { data: catalog } = useQuery({ queryKey: ['report-catalog'], queryFn: () => api<ReportCatalogItem[]>('/financeiro/reports/catalog') });
+  const groups = [...new Set((catalog ?? []).map((c) => c.group))];
+  const current = catalog?.find((c) => c.key === report);
+  const query = { ...filters, report, partnerId: partnerId || undefined } as Record<string, string | number | undefined>;
   const { data, isFetching, error } = useQuery({ queryKey: ['report', query], queryFn: () => api<ReportResult>('/financeiro/reports', { query: { ...query, format: 'json' } }) });
   const exportAs = useMutation({
     mutationFn: async (format: 'csv' | 'xlsx' | 'pdf') => {
@@ -65,9 +70,12 @@ function Reports() {
         )}
       </div>
       <div className="row" style={{ marginBottom: 10 }}>
-        <select value={report} onChange={(e) => setReport(e.target.value)} style={{ minWidth: 280 }} aria-label="Relatório">
-          {catalog?.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+        <select value={report} onChange={(e) => setReport(e.target.value)} style={{ minWidth: 300 }} aria-label="Relatório">
+          {groups.map((g) => <optgroup key={g} label={g}>{catalog?.filter((c) => c.group === g).map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</optgroup>)}
         </select>
+        {partners && partners.length > 0 && <select value={partnerId} onChange={(e) => setPartnerId(e.target.value)} aria-label="Parceiro"><option value="">Todos os parceiros</option>{partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}
+        {current && <Badge tone={NATURE_TONE[current.nature]}>{DATA_NATURE_LABELS[current.nature]}</Badge>}
+        {current && <span className="small muted">{current.description}</span>}
         {isFetching && <span className="small muted">Gerando…</span>}
       </div>
       <GlobalFilters value={filters} onChange={setFilters} />
@@ -105,7 +113,7 @@ function Reports() {
                 </div>
               )}
             </div>
-            <div className="pf"><span>Fonte: sincronização automática com o Portal do Cliente</span><span>{data.rows.length} registro(s)</span></div>
+            <div className="pf"><span>{data.nature ? DATA_NATURE_LABELS[data.nature] : 'Fonte: Financeiro'}{data.group ? ` · módulo ${data.group}` : ''}</span><span>{data.rows.length} registro(s)</span></div>
           </div>
         </div>
       )}

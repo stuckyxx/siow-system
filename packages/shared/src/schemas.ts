@@ -399,8 +399,25 @@ export const REPORT_KEYS = [
   'collections',
   'invoice_history',
   'forecast',
+  // Fase 7 — BI (consultas; nada é gravado)
+  'portfolio',
+  'results_by_region',
+  'portfolio_health',
+  'opportunities',
+  'conversion',
+  'pipeline_value',
+  'revenue_vs_actual',
+  'renewals',
+  'tenders',
+  'tender_win_rate',
+  'goals',
+  'commissions',
+  'partner_results',
+  'tickets',
+  'ticket_sla',
 ] as const;
 export const reportRequestSchema = dashboardFilterSchema.extend({
+  partnerId: uuid.optional(),
   report: z.enum(REPORT_KEYS),
   format: z.enum(['json', 'csv', 'xlsx', 'pdf']).default('json'),
 });
@@ -814,3 +831,14 @@ export const campaignSchema = z.object({
   scheduledAt: isoDateTime.optional().nullable(),
 });
 export const updateCampaignSchema = campaignSchema.partial();
+
+// ---------------- Fase 7: BI ----------------
+export const executiveFilterSchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  uf: z.string().length(2).optional(),
+  municipality: z.string().max(120).optional(),
+  entityId: uuid.optional(),
+  responsibleUserId: uuid.optional(),
+  partnerId: uuid.optional(),
+});
