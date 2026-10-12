@@ -378,7 +378,13 @@ export async function financialStatus(id: string): Promise<ContractFinancialStat
   if (!c) throw notFound('Contrato não encontrado');
   const today = todayIso();
   const end = dateToIso(c.endDate);
-  const monthly = Number(led.monthlyValue ?? 0) ? monthlyValueAt(c, today.slice(0, 7)) : 0;
+  // Previsto: valor mensal vigente do contrato; sem valor contratual (contratos lidos do portal), estima pela última nota emitida (mesma regra do Dashboard).
+  let monthly = Number(led.monthlyValue ?? 0) ? monthlyValueAt(c, today.slice(0, 7)) : 0;
+  let basis: 'CONTRATO' | 'ULTIMA_NOTA' | 'SEM_BASE' = monthly > 0 ? 'CONTRATO' : 'SEM_BASE';
+  if (!monthly) {
+    const last = c.invoices.filter((i) => i.status !== 'CANCELLED' && i.issueDate).sort((a, b) => b.issueDate!.getTime() - a.issueDate!.getTime())[0];
+    if (last) { monthly = Number(last.amount); basis = 'ULTIMA_NOTA'; }
+  }
   const remainingMonths = c.status === 'ACTIVE' && end && end > today ? competencesBetween(today, end).length : 0;
   const notCancelled = c.invoices.filter((i) => i.status !== 'CANCELLED');
   const paid = c.invoices.filter((i) => i.status === 'PAID');
@@ -394,7 +400,7 @@ export async function financialStatus(id: string): Promise<ContractFinancialStat
   const r = c.renewals[0];
   return {
     contractId: c.id, status: c.status, monthlyValue: led.monthlyValue, startDate: led.startDate, endDate: end, daysToEnd: end ? daysBetween(today, end) : null,
-    forecast: { monthly: monthly.toFixed(2), remainingMonths, remainingAmount: (monthly * remainingMonths).toFixed(2), expectedToDate: led.totals.expected, contractTotal: c.totalValue ? c.totalValue.toFixed(2) : null },
+    forecast: { basis, monthly: monthly.toFixed(2), remainingMonths, remainingAmount: (monthly * remainingMonths).toFixed(2), expectedToDate: led.totals.expected, contractTotal: c.totalValue ? c.totalValue.toFixed(2) : null },
     invoiced: { total: sum(notCancelled).toFixed(2), count: notCancelled.length, lastAt: lastInvoiced ? dateToIso(lastInvoiced.issueDate) : null },
     received: { total: sum(paid, true).toFixed(2), count: paid.length, lastAt: lastPaid ? dateToIso(lastPaid.paidAt) : null, lastAmount: lastPaid ? (lastPaid.paidAmount ?? lastPaid.amount).toFixed(2) : null },
     pending: { total: sum(pending).toFixed(2), count: pending.length, oldestDays: oldestPending ? daysBetween(dateToIso(oldestPending.issueDate)!, today) : null },

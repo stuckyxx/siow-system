@@ -54,7 +54,7 @@ export default function ContractPage() {
       </div>
       {fs && (
         <div className="g5" style={{ marginTop: 12 }}>
-          <Stat small label="Previsto (contrato)" value={`${formatBRL(fs.forecast.monthly)}/mês`} hint={fs.forecast.remainingMonths ? `${fs.forecast.remainingMonths} mês(es) restantes · ${formatBRL(fs.forecast.remainingAmount)}` : 'sem meses restantes'} tone="info" />
+          <Stat small label={fs.forecast.basis === 'ULTIMA_NOTA' ? 'Previsto (última nota)' : 'Previsto (contrato)'} value={fs.forecast.basis === 'SEM_BASE' ? '—' : `${formatBRL(fs.forecast.monthly)}/mês`} hint={fs.forecast.basis === 'SEM_BASE' ? 'sem valor contratual nem notas' : fs.forecast.remainingMonths ? `${fs.forecast.remainingMonths} mês(es) restantes · ${formatBRL(fs.forecast.remainingAmount)}` : 'sem meses restantes'} tone="info" />
           <Stat small label="Faturado (Financeiro)" value={formatBRL(fs.invoiced.total)} hint={`${fs.invoiced.count} nota(s)${fs.invoiced.lastAt ? ` · última ${formatBrDate(fs.invoiced.lastAt)}` : ''}`} />
           <Stat small label="Recebido (Financeiro)" value={formatBRL(fs.received.total)} hint={`${fs.received.count} paga(s)${fs.received.lastAt ? ` · último ${formatBrDate(fs.received.lastAt)}` : ''}`} tone="good" />
           <Stat small label="Pendente" value={formatBRL(fs.pending.total)} hint={fs.pending.count ? `${fs.pending.count} nota(s)${fs.pending.oldestDays !== null ? ` · mais antiga ${fs.pending.oldestDays} dias` : ''}` : 'nenhuma'} tone={fs.pending.count ? 'warn' : 'good'} />

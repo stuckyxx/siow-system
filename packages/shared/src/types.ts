@@ -314,7 +314,7 @@ export interface ContractFinancialStatus {
   endDate: string | null;
   daysToEnd: number | null;
   /** PREVISTO (calculado a partir do contrato): valor mensal vigente × meses restantes + total já esperado */
-  forecast: { monthly: string; remainingMonths: number; remainingAmount: string; expectedToDate: string; contractTotal: string | null };
+  forecast: { basis: 'CONTRATO' | 'ULTIMA_NOTA' | 'SEM_BASE'; monthly: string; remainingMonths: number; remainingAmount: string; expectedToDate: string; contractTotal: string | null };
   /** FATURADO (notas emitidas, exceto canceladas) — fonte: Financeiro */
   invoiced: { total: string; count: number; lastAt: string | null };
   /** RECEBIDO (notas pagas) — fonte: Financeiro */
