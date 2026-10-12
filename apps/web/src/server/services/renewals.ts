@@ -70,14 +70,14 @@ async function toRows(rows: Array<Prisma.ContractRenewalGetPayload<{ include: ty
   const taskIds = rows.map((r) => r.taskId).filter(Boolean) as string[];
   const userIds = rows.map((r) => r.decidedByUserId).filter(Boolean) as string[];
   const [opps, tasks, users] = await Promise.all([
-    oppIds.length ? prisma.opportunity.findMany({ where: { id: { in: oppIds } }, select: { id: true, status: true } }) : [],
+    oppIds.length ? prisma.opportunity.findMany({ where: { id: { in: oppIds } }, select: { id: true, status: true, monthlyAmount: true } }) : [],
     taskIds.length ? prisma.financialTask.findMany({ where: { id: { in: taskIds } }, select: { id: true, status: true } }) : [],
     userIds.length ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [],
   ]);
-  const o = new Map(opps.map((x) => [x.id, x.status])); const t = new Map(tasks.map((x) => [x.id, x.status])); const u = new Map(users.map((x) => [x.id, x.name]));
+  const o = new Map(opps.map((x) => [x.id, x.status])); const om = new Map(opps.map((x) => [x.id, x.monthlyAmount])); const t = new Map(tasks.map((x) => [x.id, x.status])); const u = new Map(users.map((x) => [x.id, x.name]));
   return rows.map((r) => ({
     id: r.id, contractId: r.contractId, contractNumber: r.contract.number, endDate: dateToIso(r.endDate)!, status: r.status, daysToEnd: daysBetween(today, dateToIso(r.endDate)!),
-    entity: r.contract.entity, monthlyValue: r.contract.monthlyValue ? r.contract.monthlyValue.toFixed(2) : null,
+    entity: r.contract.entity, monthlyValue: (r.contract.monthlyValue ?? (r.opportunityId ? om.get(r.opportunityId) : null))?.toFixed(2) ?? null,
     opportunityId: r.opportunityId, opportunityStatus: r.opportunityId ? o.get(r.opportunityId) ?? null : null, taskId: r.taskId, taskStatus: r.taskId ? t.get(r.taskId) ?? null : null,
     amendmentId: r.amendmentId, newContractId: r.newContractId, notes: r.notes, decidedAt: r.decidedAt?.toISOString() ?? null, decidedBy: r.decidedByUserId ? u.get(r.decidedByUserId) ?? null : null, createdAt: r.createdAt.toISOString(),
   }));
