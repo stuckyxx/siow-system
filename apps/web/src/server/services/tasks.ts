@@ -63,7 +63,7 @@ export async function create(ctx: Ctx, input: z.infer<typeof createTaskSchema>) 
       organizationId: currentOrgId(),
       ...input,
       dueDate: isoToDate(input.dueDate),
-      module: input.module ?? (input.opportunityId ? 'COMERCIAL' : 'FINANCEIRO'),
+      module: input.module ?? (input.ticketId ? 'ATENDIMENTO' : input.tenderId ? 'LICITACOES' : input.opportunityId ? 'COMERCIAL' : 'FINANCEIRO'),
       createdByUserId: ctx.user.id,
       events: { create: { action: 'CREATED', userId: ctx.user.id, toValue: input.assigneeUserId ?? null } },
     },

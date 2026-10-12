@@ -94,6 +94,7 @@ export async function send(ctx: Ctx, input: z.infer<typeof sendMessageSchema>) {
     contactId: contact.id,
     invoiceId: input.invoiceId ?? null,
     serviceOrderId: input.serviceOrderId ?? null,
+    ticketId: input.ticketId ?? null,
     recipient,
     subject: input.subject ?? null,
     body: input.body,

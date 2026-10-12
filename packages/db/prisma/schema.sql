@@ -2039,3 +2039,170 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS "documents_tenderId_idx" ON "documents"("tenderId");
+
+-- =====================================================================
+-- FASE 6 (ATENDIMENTO) — idempotente. Chamados, interações, campanhas; ticketId em documents/outbound_messages/financial_tasks.
+-- =====================================================================
+-- ALTER TYPE ... ADD VALUE não roda dentro de transação: executar isolado.
+ALTER TYPE "DocumentType" ADD VALUE IF NOT EXISTS 'TICKET';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'TICKET_SLA';
+
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "ticketId" TEXT NULL;
+ALTER TABLE "outbound_messages" ADD COLUMN IF NOT EXISTS "ticketId" TEXT NULL;
+
+CREATE TABLE IF NOT EXISTS "tickets" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "number" INTEGER NOT NULL,
+  "entityId" TEXT NULL,
+  "contactId" TEXT NULL,
+  "contractId" TEXT NULL,
+  "opportunityId" TEXT NULL,
+  "tenderId" TEXT NULL,
+  "type" TEXT NOT NULL DEFAULT 'REQUEST',
+  "channel" TEXT NOT NULL DEFAULT 'OTHER',
+  "priority" TEXT NOT NULL DEFAULT 'MEDIUM',
+  "status" TEXT NOT NULL DEFAULT 'OPEN',
+  "subject" TEXT NOT NULL,
+  "description" TEXT NULL,
+  "requesterName" TEXT NULL,
+  "assigneeUserId" TEXT NULL,
+  "createdByUserId" TEXT NULL,
+  "openedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "firstResponseDueAt" TIMESTAMP(3) NULL,
+  "resolutionDueAt" TIMESTAMP(3) NULL,
+  "firstResponseAt" TIMESTAMP(3) NULL,
+  "resolvedAt" TIMESTAMP(3) NULL,
+  "closedAt" TIMESTAMP(3) NULL,
+  "lastActivityAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "resolutionNotes" TEXT NULL,
+  "satisfactionToken" TEXT NULL,
+  "satisfactionScore" INTEGER NULL,
+  "satisfactionComment" TEXT NULL,
+  "satisfactionAt" TIMESTAMP(3) NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "tickets_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "tickets_organizationId_number_key" ON "tickets"("organizationId", "number");
+CREATE UNIQUE INDEX IF NOT EXISTS "tickets_satisfactionToken_key" ON "tickets"("satisfactionToken");
+CREATE INDEX IF NOT EXISTS "tickets_organizationId_status_idx" ON "tickets"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "tickets_entityId_idx" ON "tickets"("entityId");
+CREATE INDEX IF NOT EXISTS "tickets_assigneeUserId_status_idx" ON "tickets"("assigneeUserId", "status");
+CREATE INDEX IF NOT EXISTS "tickets_resolutionDueAt_idx" ON "tickets"("resolutionDueAt");
+
+CREATE TABLE IF NOT EXISTS "ticket_interactions" (
+  "id" TEXT NOT NULL,
+  "ticketId" TEXT NOT NULL,
+  "userId" TEXT NULL,
+  "contactId" TEXT NULL,
+  "kind" TEXT NOT NULL DEFAULT 'NOTE',
+  "direction" TEXT NOT NULL DEFAULT 'INTERNAL',
+  "body" TEXT NOT NULL,
+  "occurredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "durationMinutes" INTEGER NULL,
+  "location" TEXT NULL,
+  "attendees" TEXT NULL,
+  "documentId" TEXT NULL,
+  "outboundMessageId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ticket_interactions_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "ticket_interactions_ticketId_occurredAt_idx" ON "ticket_interactions"("ticketId", "occurredAt");
+
+CREATE TABLE IF NOT EXISTS "campaigns" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "channel" TEXT NOT NULL,
+  "templateKey" TEXT NULL,
+  "subject" TEXT NULL,
+  "body" TEXT NOT NULL,
+  "audience" JSONB NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'DRAFT',
+  "scheduledAt" TIMESTAMP(3) NULL,
+  "startedAt" TIMESTAMP(3) NULL,
+  "finishedAt" TIMESTAMP(3) NULL,
+  "createdByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "campaigns_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "campaigns_organizationId_status_idx" ON "campaigns"("organizationId", "status");
+
+CREATE TABLE IF NOT EXISTS "campaign_recipients" (
+  "id" TEXT NOT NULL,
+  "campaignId" TEXT NOT NULL,
+  "entityId" TEXT NOT NULL,
+  "contactId" TEXT NULL,
+  "recipient" TEXT NULL,
+  "status" TEXT NOT NULL DEFAULT 'PENDING',
+  "outboundMessageId" TEXT NULL,
+  "error" TEXT NULL,
+  "sentAt" TIMESTAMP(3) NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "campaign_recipients_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "campaign_recipients_campaignId_entityId_contactId_key" ON "campaign_recipients"("campaignId", "entityId", "contactId");
+CREATE UNIQUE INDEX IF NOT EXISTS "campaign_recipients_outboundMessageId_key" ON "campaign_recipients"("outboundMessageId");
+CREATE INDEX IF NOT EXISTS "campaign_recipients_campaignId_status_idx" ON "campaign_recipients"("campaignId", "status");
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_organizationId_fkey') THEN
+    ALTER TABLE "tickets" ADD CONSTRAINT "tickets_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_entityId_fkey') THEN
+    ALTER TABLE "tickets" ADD CONSTRAINT "tickets_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_contactId_fkey') THEN
+    ALTER TABLE "tickets" ADD CONSTRAINT "tickets_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "contacts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_contractId_fkey') THEN
+    ALTER TABLE "tickets" ADD CONSTRAINT "tickets_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "contracts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_opportunityId_fkey') THEN
+    ALTER TABLE "tickets" ADD CONSTRAINT "tickets_opportunityId_fkey" FOREIGN KEY ("opportunityId") REFERENCES "opportunities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_tenderId_fkey') THEN
+    ALTER TABLE "tickets" ADD CONSTRAINT "tickets_tenderId_fkey" FOREIGN KEY ("tenderId") REFERENCES "tenders"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tickets_assigneeUserId_fkey') THEN
+    ALTER TABLE "tickets" ADD CONSTRAINT "tickets_assigneeUserId_fkey" FOREIGN KEY ("assigneeUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ticket_interactions_ticketId_fkey') THEN
+    ALTER TABLE "ticket_interactions" ADD CONSTRAINT "ticket_interactions_ticketId_fkey" FOREIGN KEY ("ticketId") REFERENCES "tickets"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ticket_interactions_userId_fkey') THEN
+    ALTER TABLE "ticket_interactions" ADD CONSTRAINT "ticket_interactions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ticket_interactions_contactId_fkey') THEN
+    ALTER TABLE "ticket_interactions" ADD CONSTRAINT "ticket_interactions_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "contacts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'campaigns_organizationId_fkey') THEN
+    ALTER TABLE "campaigns" ADD CONSTRAINT "campaigns_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'campaign_recipients_campaignId_fkey') THEN
+    ALTER TABLE "campaign_recipients" ADD CONSTRAINT "campaign_recipients_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "campaigns"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'campaign_recipients_entityId_fkey') THEN
+    ALTER TABLE "campaign_recipients" ADD CONSTRAINT "campaign_recipients_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'campaign_recipients_contactId_fkey') THEN
+    ALTER TABLE "campaign_recipients" ADD CONSTRAINT "campaign_recipients_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "contacts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'campaign_recipients_outboundMessageId_fkey') THEN
+    ALTER TABLE "campaign_recipients" ADD CONSTRAINT "campaign_recipients_outboundMessageId_fkey" FOREIGN KEY ("outboundMessageId") REFERENCES "outbound_messages"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'documents_ticketId_fkey') THEN
+    ALTER TABLE "documents" ADD CONSTRAINT "documents_ticketId_fkey" FOREIGN KEY ("ticketId") REFERENCES "tickets"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'outbound_messages_ticketId_fkey') THEN
+    ALTER TABLE "outbound_messages" ADD CONSTRAINT "outbound_messages_ticketId_fkey" FOREIGN KEY ("ticketId") REFERENCES "tickets"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'financial_tasks_ticketId_fkey') THEN
+    ALTER TABLE "financial_tasks" ADD CONSTRAINT "financial_tasks_ticketId_fkey" FOREIGN KEY ("ticketId") REFERENCES "tickets"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "documents_ticketId_idx" ON "documents"("ticketId");

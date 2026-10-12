@@ -49,6 +49,7 @@ export interface StoreDocumentInput {
   invoiceId?: string | null;
   serviceOrderId?: string | null;
   tenderId?: string | null;
+  ticketId?: string | null;
   originalUrl?: string | null;
   sourceDate?: Date | null;
   uploadedByUserId?: string | null;
@@ -84,6 +85,7 @@ export async function storeDocument(input: StoreDocumentInput): Promise<{ docume
       invoiceId: input.invoiceId ?? null,
       serviceOrderId: input.serviceOrderId ?? null,
       tenderId: input.tenderId ?? null,
+      ticketId: input.ticketId ?? null,
       originalUrl: input.originalUrl ?? null,
       sourceDate: input.sourceDate ?? null,
       uploadedByUserId: input.uploadedByUserId ?? null,
@@ -126,7 +128,7 @@ export async function get(id: string) {
   return doc;
 }
 
-export async function list(filter: { entityId?: string; contractId?: string; invoiceId?: string; serviceOrderId?: string; tenderId?: string; type?: DocumentType }) {
+export async function list(filter: { entityId?: string; contractId?: string; invoiceId?: string; serviceOrderId?: string; tenderId?: string; ticketId?: string; type?: DocumentType }) {
   return prisma.document.findMany({
     where: { deletedAt: null, ...filter },
     include: { blob: { select: { size: true, mimeType: true } } },

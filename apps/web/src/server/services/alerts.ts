@@ -13,6 +13,7 @@ import { stalled as stalledOpportunities } from './crm/opportunities.js';
 import { detectRenewals } from './renewals.js';
 import { recompute as recomputeCommissions } from './commissions.js';
 import { notifyDeadlines as notifyTenderDeadlines } from './tenders.js';
+import { notifySla as notifyTicketSla } from './tickets.js';
 
 async function settingNumber(key: string, fallback: number): Promise<number> {
   const s = await prisma.setting.findUnique({ where: { key } });
@@ -31,6 +32,7 @@ export interface DailyChecksResult {
   renewals: { checked: number; created: number };
   commissions: { rules: number; created: number; updated: number; reversed: number; removed: number };
   tenders: { due: number; overdue: number };
+  tickets: { breached: number; atRisk: number };
   durationMs: number;
 }
 
@@ -129,6 +131,7 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
   const commissions = await recomputeCommissions();
   // ---- prazos de licitações (Fase 5) ----
   const tenders = await notifyTenderDeadlines(today);
+  const tickets = await notifyTicketSla(today);
   // ---- oportunidades paradas (CRM): uma notificação por oportunidade e por semana, para o responsável ----
   const stalledOpps = await stalledOpportunities();
   const week = `${today.slice(0, 4)}-W${String(Math.ceil((new Date(today).getUTCDate() + new Date(`${today.slice(0, 7)}-01`).getUTCDay()) / 7)).padStart(2, '0')}-${today.slice(5, 7)}`;
@@ -155,6 +158,7 @@ export async function runDailyChecks(): Promise<DailyChecksResult> {
     renewals,
     commissions,
     tenders,
+    tickets,
     durationMs: Date.now() - startedAt,
   };
   console.info('[cron] verificações diárias concluídas', result);

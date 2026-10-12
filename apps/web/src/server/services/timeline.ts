@@ -4,11 +4,12 @@
  */
 import { formatBRL, type TimelineEvent } from '@siow/shared';
 import { prisma } from '../db.js';
+import { interactionLabel } from './tickets.js';
 
 const INVOICE_EVENT_LABEL: Record<string, string> = { CREATED: 'Nota registrada', STATUS_CHANGED: 'Situação da nota alterada', MANUAL_OVERRIDE: 'Alteração manual', CONFLICT_DETECTED: 'Conflito com a fonte', CONFLICT_RESOLVED: 'Conflito resolvido', RECONCILED: 'Nota reconciliada', NOTE: 'Observação', FIELD_CHANGED: 'Campo alterado', MISSING_FROM_SOURCE: 'Nota sumiu da fonte', REAPPEARED: 'Nota voltou à fonte' };
 
 export async function timeline(entityId: string, limit = 300): Promise<TimelineEvent[]> {
-  const [invoiceEvents, contracts, runs, tasks, attempts, documents, alarms, agents, audits, notifications, opportunities, tenders] = await Promise.all([
+  const [invoiceEvents, contracts, runs, tasks, attempts, documents, alarms, agents, audits, notifications, opportunities, tenders, tickets] = await Promise.all([
     prisma.invoiceEvent.findMany({ where: { invoice: { entityId } }, include: { invoice: { select: { number: true, amount: true } }, user: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 150 }),
     prisma.contract.findMany({ where: { entityId, deletedAt: null }, include: { amendments: true }, orderBy: { createdAt: 'desc' } }),
     prisma.syncRun.findMany({ where: { entityId, status: { in: ['SUCCESS', 'PARTIAL', 'FAILED'] } }, orderBy: { startedAt: 'desc' }, take: 40, include: { requestedBy: { select: { name: true } } } }),
@@ -21,6 +22,7 @@ export async function timeline(entityId: string, limit = 300): Promise<TimelineE
     prisma.notification.findMany({ where: { entityId }, orderBy: { createdAt: 'desc' }, take: 60 }),
     prisma.opportunity.findMany({ where: { entityId, deletedAt: null }, include: { stage: true, events: { orderBy: { createdAt: 'desc' }, take: 30 }, owner: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 30 }),
     prisma.tender.findMany({ where: { entityId, deletedAt: null }, include: { events: { orderBy: { createdAt: 'desc' }, take: 30 } }, orderBy: { createdAt: 'desc' }, take: 30 }),
+    prisma.ticket.findMany({ where: { entityId, deletedAt: null }, include: { interactions: { orderBy: { occurredAt: 'desc' }, take: 20, include: { user: { select: { name: true } } } } }, orderBy: { createdAt: 'desc' }, take: 30 }),
   ]);
   const out: TimelineEvent[] = [];
   const push = (e: TimelineEvent) => out.push(e);
@@ -40,6 +42,10 @@ export async function timeline(entityId: string, limit = 300): Promise<TimelineE
   for (const o of opportunities) for (const ev of o.events) push({ id: `opp-${ev.id}`, module: 'COMERCIAL', kind: ev.action, title: `${OPP_LABEL[ev.action] ?? ev.action}: ${o.title}`, detail: [ev.fromValue && ev.toValue ? `${ev.fromValue} → ${ev.toValue}` : ev.toValue, ev.notes].filter(Boolean).join(' · ') || null, occurredAt: ev.createdAt.toISOString(), userName: o.owner?.name ?? null, referenceType: 'opportunity', referenceId: o.id });
   const TND_LABEL: Record<string, string> = { CREATED: 'Licitação cadastrada', STATUS_CHANGED: 'Situação da licitação', DEADLINE_ADDED: 'Prazo adicionado', DEADLINE_DONE: 'Prazo cumprido', DEADLINE_REOPENED: 'Prazo reaberto', COMPETITOR_ADDED: 'Concorrente registrado', CHECKLIST_DONE: 'Item do checklist concluído', CHECKLIST_REOPENED: 'Item do checklist reaberto', DOCUMENT_ADDED: 'Documento da licitação', FORMALIZED: 'Contrato formalizado' };
   for (const t of tenders) for (const ev of t.events) push({ id: `tnd-${ev.id}`, module: 'LICITACOES', kind: ev.action, title: `${TND_LABEL[ev.action] ?? ev.action}: ${t.number}`, detail: [ev.fromValue && ev.toValue ? `${ev.fromValue} → ${ev.toValue}` : ev.toValue, ev.notes].filter(Boolean).join(' · ') || null, occurredAt: ev.createdAt.toISOString(), userName: null, referenceType: 'tender', referenceId: t.id });
+  for (const t of tickets) {
+    push({ id: `tk-${t.id}`, module: 'ATENDIMENTO', kind: 'TICKET', title: `Chamado #${t.number} aberto: ${t.subject}`, detail: `${t.type} · ${t.priority}${t.status === 'RESOLVED' || t.status === 'CLOSED' ? ' · resolvido' : ''}`, occurredAt: t.openedAt.toISOString(), userName: null, referenceType: 'ticket', referenceId: t.id });
+    for (const i of t.interactions) if (i.kind !== 'SYSTEM') push({ id: `tki-${i.id}`, module: 'ATENDIMENTO', kind: i.kind, title: `${interactionLabel(i.kind)} — chamado #${t.number}`, detail: i.body.slice(0, 200), occurredAt: i.occurredAt.toISOString(), userName: i.user?.name ?? null, referenceType: 'ticket', referenceId: t.id });
+  }
   for (const n of notifications) push({ id: `ntf-${n.id}`, module: 'FINANCEIRO', kind: n.type, title: n.title, detail: n.body, occurredAt: n.createdAt.toISOString(), userName: null, referenceType: n.referenceType, referenceId: n.referenceId });
   return out.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, limit);
 }

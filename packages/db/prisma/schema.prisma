@@ -72,6 +72,8 @@ model User {
   @@index([email])
   @@index([organizationId])
   @@unique([organizationId, email])
+  assignedTickets      Ticket[]             @relation("TicketAssignee")
+  ticketInteractions   TicketInteraction[]
   @@map("users")
   userPermissions UserPermission[]
 }
@@ -222,6 +224,8 @@ model Entity {
   @@index([municipality])
   @@index([uf])
   @@index([organizationId])
+  tickets         Ticket[]
+  campaignRecipients CampaignRecipient[]
   @@map("entities")
 }
 
@@ -385,6 +389,7 @@ model Contract {
   @@index([entityId])
   @@index([endDate])
   @@index([organizationId])
+  tickets           Ticket[]
   @@map("contracts")
 }
 
@@ -579,6 +584,7 @@ enum DocumentType {
   SERVICE_ORDER // Ordem de Serviço
   SERVICE_ORDER_SIGNED // OS assinada
   TENDER // Edital/anexo/proposta de licitação (Fase 5)
+  TICKET // Anexo de chamado de atendimento (Fase 6)
   OTHER
 }
 
@@ -617,6 +623,8 @@ model Document {
   serviceOrder     ServiceOrder? @relation("ServiceOrderDocuments", fields: [serviceOrderId], references: [id])
   tenderId         String?
   tender           Tender?      @relation(fields: [tenderId], references: [id])
+  ticketId         String?
+  ticket           Ticket?      @relation(fields: [ticketId], references: [id])
   originalUrl      String?
   sourceDate       DateTime?    @db.Date
   capturedAt       DateTime     @default(now())
@@ -717,6 +725,9 @@ model Contact {
 
   @@index([entityId])
   @@index([organizationId])
+  tickets            Ticket[]
+  ticketInteractions TicketInteraction[]
+  campaignRecipients CampaignRecipient[]
   @@map("contacts")
 }
 
@@ -779,6 +790,7 @@ model FinancialTask {
   tenderId        String?
   tender          Tender?       @relation(fields: [tenderId], references: [id])
   ticketId        String?
+  ticket          Ticket?       @relation(fields: [ticketId], references: [id])
   assigneeUserId  String?
   assignee        User?         @relation("TaskAssignee", fields: [assigneeUserId], references: [id])
   createdByUserId String?
@@ -942,6 +954,8 @@ model OutboundMessage {
   invoice           Invoice?              @relation(fields: [invoiceId], references: [id])
   serviceOrderId    String?
   serviceOrder      ServiceOrder?         @relation(fields: [serviceOrderId], references: [id])
+  ticketId          String?
+  ticket            Ticket?               @relation(fields: [ticketId], references: [id])
   recipient         String // telefone/e-mail de destino
   subject           String?
   body              String
@@ -960,6 +974,7 @@ model OutboundMessage {
 
   @@index([entityId, createdAt])
   @@index([organizationId])
+  campaignRecipient CampaignRecipient?
   @@map("outbound_messages")
 }
 
@@ -1130,6 +1145,7 @@ enum NotificationType {
   ISSUANCE_DUE
   OPPORTUNITY_STALLED
   TENDER_DEADLINE
+  TICKET_SLA
   GENERIC
 }
 
@@ -1210,6 +1226,8 @@ model Organization {
   commissions      Commission[]
   tenders          Tender[]
 
+  tickets          Ticket[]
+  campaigns        Campaign[]
   @@map("organizations")
 }
 
@@ -1405,6 +1423,7 @@ model Opportunity {
   @@index([stageId])
   @@index([ownerUserId])
   @@index([expectedCloseDate])
+  tickets   Ticket[]
   @@map("opportunities")
 }
 
@@ -1710,6 +1729,7 @@ model Tender {
   @@index([organizationId, status])
   @@index([entityId])
   @@index([sessionAt])
+  tickets     Ticket[]
   @@map("tenders")
 }
 
@@ -1779,4 +1799,130 @@ model TenderEvent {
 
   @@index([tenderId, createdAt])
   @@map("tender_events")
+}
+
+/// Fase 6 — Atendimento: chamado/ticket (suporte, comercial, financeiro, visita, reunião…). Número sequencial por organização.
+model Ticket {
+  id                 String       @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  number             Int
+  entityId           String?
+  entity             Entity?      @relation(fields: [entityId], references: [id])
+  contactId          String?
+  contact            Contact?     @relation(fields: [contactId], references: [id])
+  contractId         String?
+  contract           Contract?    @relation(fields: [contractId], references: [id])
+  opportunityId      String?
+  opportunity        Opportunity? @relation(fields: [opportunityId], references: [id])
+  tenderId           String?
+  tender             Tender?      @relation(fields: [tenderId], references: [id])
+  type               String       @default("REQUEST") // SUPPORT | COMMERCIAL | FINANCIAL | REQUEST | COMPLAINT | VISIT | MEETING | OTHER
+  channel            String       @default("OTHER") // WHATSAPP | EMAIL | PHONE | IN_PERSON | PORTAL | OTHER
+  priority           String       @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  status             String       @default("OPEN") // OPEN | IN_PROGRESS | WAITING_CLIENT | WAITING_INTERNAL | RESOLVED | CLOSED | CANCELLED
+  subject            String
+  description        String?
+  requesterName      String?
+  assigneeUserId     String?
+  assignee           User?        @relation("TicketAssignee", fields: [assigneeUserId], references: [id])
+  createdByUserId    String?
+  openedAt           DateTime     @default(now())
+  firstResponseDueAt DateTime?
+  resolutionDueAt    DateTime?
+  firstResponseAt    DateTime?
+  resolvedAt         DateTime?
+  closedAt           DateTime?
+  lastActivityAt     DateTime     @default(now())
+  resolutionNotes    String?
+  satisfactionToken  String?      @unique
+  satisfactionScore  Int?
+  satisfactionComment String?
+  satisfactionAt     DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  deletedAt          DateTime?
+
+  interactions TicketInteraction[]
+  documents    Document[]
+  tasks        FinancialTask[]
+  messages     OutboundMessage[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([entityId])
+  @@index([assigneeUserId, status])
+  @@index([resolutionDueAt])
+  @@map("tickets")
+}
+
+/// Histórico de interações do chamado: notas internas, respostas, ligações, visitas, reuniões (ata), mudanças.
+model TicketInteraction {
+  id              String   @id @default(uuid())
+  ticketId        String
+  ticket          Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
+  contactId       String?
+  contact         Contact? @relation(fields: [contactId], references: [id])
+  kind            String   @default("NOTE") // NOTE | REPLY | CALL | EMAIL | WHATSAPP | VISIT | MEETING | STATUS | ASSIGNMENT | SYSTEM
+  direction       String   @default("INTERNAL") // INBOUND | OUTBOUND | INTERNAL
+  body            String
+  occurredAt      DateTime @default(now())
+  durationMinutes Int?
+  location        String?
+  attendees       String?
+  documentId      String?
+  outboundMessageId String?
+  createdAt       DateTime @default(now())
+
+  @@index([ticketId, occurredAt])
+  @@map("ticket_interactions")
+}
+
+/// Campanha de comunicação (WhatsApp/e-mail) para um público de entidades/contatos, reaproveitando modelos e provedores.
+model Campaign {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  name            String
+  channel         String // WHATSAPP | EMAIL
+  templateKey     String?
+  subject         String?
+  body            String
+  audience        Json
+  status          String       @default("DRAFT") // DRAFT | RUNNING | DONE | CANCELLED
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdByUserId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  recipients CampaignRecipient[]
+
+  @@index([organizationId, status])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id                String           @id @default(uuid())
+  campaignId        String
+  campaign          Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  entityId          String
+  entity            Entity           @relation(fields: [entityId], references: [id])
+  contactId         String?
+  contact           Contact?         @relation(fields: [contactId], references: [id])
+  recipient         String?
+  status            String           @default("PENDING") // PENDING | SENT | MANUAL_PENDING | FAILED | SKIPPED
+  outboundMessageId String?          @unique
+  outboundMessage   OutboundMessage? @relation(fields: [outboundMessageId], references: [id])
+  error             String?
+  sentAt            DateTime?
+  createdAt         DateTime         @default(now())
+
+  @@unique([campaignId, entityId, contactId])
+  @@index([campaignId, status])
+  @@map("campaign_recipients")
 }

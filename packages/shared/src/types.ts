@@ -378,3 +378,39 @@ export interface PncpPublication {
   municipality: string | null; uf: string | null; portalUrl: string | null; situation: string | null;
   match: { entityId: string | null; entityName: string | null; alreadyImportedId: string | null };
 }
+
+// ---------------- Fase 6: Atendimento ----------------
+export interface TicketInteractionRow {
+  id: string; kind: string; direction: string; body: string; occurredAt: string; durationMinutes: number | null; location: string | null; attendees: string | null;
+  userName: string | null; contactName: string | null; documentId: string | null; outboundMessageId: string | null; createdAt: string;
+}
+export interface TicketRow {
+  id: string; number: number; entity: { id: string; name: string; shortName: string | null; municipality: string; uf: string } | null;
+  contact: { id: string; name: string; phone: string | null; whatsapp: string | null; email: string | null } | null;
+  contractId: string | null; opportunityId: string | null; tenderId: string | null;
+  type: string; channel: string; priority: string; status: string; subject: string; description: string | null; requesterName: string | null;
+  assignee: { id: string; name: string } | null; openedAt: string; firstResponseDueAt: string | null; resolutionDueAt: string | null; firstResponseAt: string | null;
+  resolvedAt: string | null; closedAt: string | null; lastActivityAt: string; resolutionNotes: string | null;
+  satisfactionScore: number | null; satisfactionComment: string | null; satisfactionAt: string | null;
+  /** SLA: OK | AT_RISK (≤ 2h) | BREACHED | MET | NA */
+  responseSla: 'OK' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NA'; resolutionSla: 'OK' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NA';
+  interactionsCount: number; openTasks: number; createdAt: string; updatedAt: string;
+}
+export interface TicketDetail extends TicketRow {
+  interactions: TicketInteractionRow[];
+  tasks: Array<{ id: string; title: string; status: string; dueDate: string; assigneeName: string | null }>;
+  satisfactionUrl: string | null;
+}
+export interface TicketStats {
+  open: number; inProgress: number; waiting: number; unassigned: number; breached: number; atRisk: number; mine: number;
+  resolved30d: number; avgFirstResponseHours: number | null; avgResolutionHours: number | null; satisfactionAvg: number | null; satisfactionCount: number;
+  byType: Array<{ type: string; count: number }>; byAssignee: Array<{ userId: string | null; name: string; count: number }>;
+}
+export interface CampaignRow {
+  id: string; name: string; channel: string; templateKey: string | null; subject: string | null; body: string; audience: Record<string, unknown>; status: string;
+  scheduledAt: string | null; startedAt: string | null; finishedAt: string | null; createdByName: string | null; createdAt: string;
+  counts: { total: number; pending: number; sent: number; manual: number; failed: number; skipped: number };
+}
+export interface CampaignDetail extends CampaignRow {
+  recipients: Array<{ id: string; entityName: string; contactName: string | null; recipient: string | null; status: string; error: string | null; sentAt: string | null; manualLink: string | null }>;
+}

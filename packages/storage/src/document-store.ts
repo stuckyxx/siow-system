@@ -14,6 +14,7 @@ export interface StoreDocumentInput {
   invoiceId?: string | null;
   serviceOrderId?: string | null;
   tenderId?: string | null;
+  ticketId?: string | null;
   originalUrl?: string | null;
   sourceDate?: Date | null;
   uploadedByUserId?: string | null;

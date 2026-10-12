@@ -202,6 +202,27 @@ N dias antes (`tenders.alertDays`, padrão 3) e para vencidos, um por prazo por 
 A extensão de tenant passou a **mesclar** filtros já informados na relação com o pai (ex.: `tender: { deletedAt: null }`) em vez de
 substituí-los — correção que vale para todos os modelos filhos.
 
+## 6f. Atendimento (Fase 6)
+
+Tabelas `tickets` (número sequencial único por organização), `ticket_interactions`, `campaigns`, `campaign_recipients`; `documents.ticketId`
+(tipo `TICKET`), `outbound_messages.ticketId` e FK de `financial_tasks.ticketId` (tarefas de acompanhamento na agenda única, módulo
+ATENDIMENTO). Permissões `tickets.read`, `tickets.write`, `tickets.manage` (campanhas, exclusão); papel ATENDIMENTO; COMERCIAL recebe
+leitura/escrita de chamados. Situações: OPEN → IN_PROGRESS ⇄ WAITING_CLIENT/WAITING_INTERNAL → RESOLVED → CLOSED (ou CANCELLED).
+
+Regras (`services/tickets.ts`): SLA em horas corridas por prioridade (`tickets.sla`, padrão urgente 2h/8h, alta 4h/24h, média 8h/72h,
+baixa 24h/120h) calculado na abertura e recalculado ao mudar a prioridade; a primeira interação de saída (resposta, envio por
+WhatsApp/e-mail) marca a 1ª resposta; estados de SLA OK / em risco (últimas 2h ou metade do prazo) / estourado / cumprido. Interações
+registram notas internas, respostas, ligações, visitas (duração, local) e reuniões (ata, participantes); resposta com `sendVia` usa o
+serviço de mensagens existente (provedor ou link manual) e grava `outbound_messages.ticketId`. Atribuir tira de OPEN; interação de saída
+tira de "aguardando interno"; interação recebida tira de "aguardando cliente". Resolver gera um token público de avaliação
+(`/avaliacao/<token>`, nota 1–5 uma única vez). Cron diário: notificações `TICKET_SLA` por chamado/dia (estourado ou em risco), para o
+responsável ou a equipe. Exclusão é lógica.
+
+Campanhas (`services/campaigns.ts`): público resolvido no momento da criação (tipo/UF/ciclo de vida derivado/contrato ativo/contato
+principal ou financeiro, ou lista de entidades) em destinatários pendentes; o envio processa até 50 pendentes por chamada, reutilizando
+modelos/variáveis e o provedor configurado; sem provedor, cada destinatário fica "envio manual" com link wa.me/mailto. Repetir o envio
+é idempotente (só pendentes). Ficha 360º: aba "Atendimento" e eventos ATENDIMENTO na linha do tempo.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

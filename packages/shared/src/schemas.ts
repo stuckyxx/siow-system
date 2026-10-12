@@ -270,6 +270,8 @@ export const createTaskSchema = z.object({
   invoiceId: uuid.optional().nullable(),
   serviceOrderId: uuid.optional().nullable(),
   opportunityId: uuid.optional().nullable(),
+  tenderId: uuid.optional().nullable(),
+  ticketId: uuid.optional().nullable(),
   module: z.enum(['FINANCEIRO', 'COMERCIAL', 'LICITACOES', 'CONTRATOS', 'ATENDIMENTO']).optional(),
   assigneeUserId: uuid.optional().nullable(),
   priority: z.enum(TASK_PRIORITIES).default('MEDIUM'),
@@ -323,6 +325,7 @@ export const sendMessageSchema = z.object({
   templateKey: z.string().optional(),
   invoiceId: uuid.optional().nullable(),
   serviceOrderId: uuid.optional().nullable(),
+  ticketId: uuid.optional().nullable(),
   subject: z.string().max(200).optional().nullable(),
   body: z.string().min(1).max(8000),
 });
@@ -729,3 +732,85 @@ export const pncpImportSchema = z.object({
 });
 /** Formalização a partir de licitação homologada: contrato em rascunho por padrão (mesma regra do CRM). */
 export const formalizeTenderSchema = formalizeOpportunitySchema;
+
+// ---------------- Fase 6: Atendimento ----------------
+const ticketType = z.enum(['SUPPORT', 'COMMERCIAL', 'FINANCIAL', 'REQUEST', 'COMPLAINT', 'VISIT', 'MEETING', 'OTHER']);
+const ticketChannel = z.enum(['WHATSAPP', 'EMAIL', 'PHONE', 'IN_PERSON', 'PORTAL', 'OTHER']);
+const ticketStatus = z.enum(['OPEN', 'IN_PROGRESS', 'WAITING_CLIENT', 'WAITING_INTERNAL', 'RESOLVED', 'CLOSED', 'CANCELLED']);
+const ticketPriority = z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
+export const ticketSchema = z.object({
+  entityId: uuid.optional().nullable(),
+  contactId: uuid.optional().nullable(),
+  contractId: uuid.optional().nullable(),
+  opportunityId: uuid.optional().nullable(),
+  tenderId: uuid.optional().nullable(),
+  type: ticketType.default('REQUEST'),
+  channel: ticketChannel.default('OTHER'),
+  priority: ticketPriority.default('MEDIUM'),
+  subject: z.string().min(3).max(200),
+  description: z.string().max(8000).optional().nullable(),
+  requesterName: z.string().max(160).optional().nullable(),
+  assigneeUserId: uuid.optional().nullable(),
+  openedAt: isoDateTime.optional().nullable(),
+});
+export const updateTicketSchema = ticketSchema.partial();
+export const ticketStatusSchema = z.object({
+  status: ticketStatus,
+  notes: z.string().max(4000).optional().nullable(),
+  resolutionNotes: z.string().max(4000).optional().nullable(),
+});
+export const ticketAssignSchema = z.object({ assigneeUserId: uuid.nullable(), notes: z.string().max(1000).optional().nullable() });
+export const ticketListFilterSchema = paginationSchema.extend({
+  q: z.string().max(120).optional(),
+  entityId: uuid.optional(),
+  status: ticketStatus.optional(),
+  open: boolParam,
+  priority: ticketPriority.optional(),
+  type: ticketType.optional(),
+  assigneeUserId: z.union([uuid, z.literal('me'), z.literal('unassigned')]).optional(),
+  slaBreached: boolParam,
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+export const ticketInteractionSchema = z.object({
+  kind: z.enum(['NOTE', 'REPLY', 'CALL', 'EMAIL', 'WHATSAPP', 'VISIT', 'MEETING']).default('NOTE'),
+  direction: z.enum(['INBOUND', 'OUTBOUND', 'INTERNAL']).optional(),
+  body: z.string().min(1).max(8000),
+  occurredAt: isoDateTime.optional().nullable(),
+  durationMinutes: z.coerce.number().int().min(0).max(1440).optional().nullable(),
+  location: z.string().max(200).optional().nullable(),
+  attendees: z.string().max(1000).optional().nullable(),
+  contactId: uuid.optional().nullable(),
+  /** Envia a resposta ao contato pelo canal (WhatsApp/e-mail) usando o provedor configurado ou registro manual. */
+  sendVia: z.enum(['WHATSAPP', 'EMAIL']).optional().nullable(),
+  subject: z.string().max(200).optional().nullable(),
+});
+export const ticketTaskSchema = z.object({
+  title: z.string().min(2).max(200),
+  dueDate: isoDate,
+  dueTime: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(),
+  assigneeUserId: uuid.optional().nullable(),
+  priority: ticketPriority.default('MEDIUM'),
+  notes: z.string().max(4000).optional().nullable(),
+  type: z.enum(TASK_TYPES).default('CUSTOM'),
+});
+export const ticketRatingSchema = z.object({ score: z.coerce.number().int().min(1).max(5), comment: z.string().max(2000).optional().nullable() });
+export const campaignAudienceSchema = z.object({
+  entityTypes: z.array(z.string().max(30)).optional(),
+  ufs: z.array(z.string().length(2)).optional(),
+  lifecycles: z.array(z.string().max(30)).optional(),
+  entityIds: z.array(uuid).max(500).optional(),
+  withActiveContract: z.boolean().optional().nullable(),
+  onlyPrimaryContacts: z.boolean().default(false),
+  onlyFinancialContacts: z.boolean().default(false),
+});
+export const campaignSchema = z.object({
+  name: z.string().min(2).max(160),
+  channel: z.enum(['WHATSAPP', 'EMAIL']),
+  templateKey: z.string().max(80).optional().nullable(),
+  subject: z.string().max(200).optional().nullable(),
+  body: z.string().min(1).max(8000),
+  audience: campaignAudienceSchema,
+  scheduledAt: isoDateTime.optional().nullable(),
+});
+export const updateCampaignSchema = campaignSchema.partial();

@@ -16,7 +16,7 @@ export const TENANT_MODELS = new Set<string>([
   'User', 'Role', 'Entity', 'DataSource', 'SyncRun', 'Contract', 'Invoice', 'SyncConflict', 'DocumentBlob', 'Document',
   'Certificate', 'Contact', 'FinancialTask', 'CollectionCase', 'MessageTemplate', 'OutboundMessage', 'ServiceOrder',
   'SignatureRequest', 'IssuanceAlarm', 'Notification', 'AuditLog', 'PublicAgent', 'EntityHealthSnapshot',
-  'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal', 'ContractRenewal', 'Partner', 'CommissionRule', 'Commission', 'Tender',
+  'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal', 'ContractRenewal', 'Partner', 'CommissionRule', 'Commission', 'Tender', 'Ticket', 'Campaign',
 ]);
 
 /** Modelos filhos: caminho de relação até um modelo tenant. */
@@ -25,7 +25,7 @@ export const CHILD_TENANT_PATHS: Record<string, string> = {
   ContractAmendment: 'contract', InvoiceEvent: 'invoice', CertificateVersion: 'certificate', TaskEvent: 'task',
   CollectionAttempt: 'case', ServiceOrderSignatory: 'serviceOrder', ServiceOrderEvent: 'serviceOrder',
   OpportunityEvent: 'opportunity', ProposalItem: 'proposal',
-  TenderDeadline: 'tender', TenderCompetitor: 'tender', TenderChecklistItem: 'tender', TenderEvent: 'tender',
+  TenderDeadline: 'tender', TenderCompetitor: 'tender', TenderChecklistItem: 'tender', TenderEvent: 'tender', TicketInteraction: 'ticket', CampaignRecipient: 'campaign',
 };
 
 /** Modelos globais (sem tenant): catálogo de permissões, configurações da plataforma, organizações, superadmin. */

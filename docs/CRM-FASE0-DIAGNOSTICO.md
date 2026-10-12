@@ -274,3 +274,20 @@ alertas de prazo no cron diário; aba "Licitações" na entidade; eventos na lin
 calendário → SUBMITTED → WON → HOMOLOGATED → formalizar (contrato DRAFT com `tenderId`; 2ª vez recusada) → cron com alertas deduplicados →
 busca no PNCP → importação de planilha (linha inválida reportada; 2ª importação ignora duplicata). Regressão do Financeiro inalterada.
 
+## Executado na Fase 6 (12/10/2026)
+
+**Banco (Neon, produção)** — backup `pre-fase6-backup-2026-10-12`. Migração aditiva e idempotente (seção "FASE 6" do `schema.sql`):
+`tickets`, `ticket_interactions`, `campaigns`, `campaign_recipients`, `documents.ticketId`, `outbound_messages.ticketId`, FK
+`financial_tasks.ticketId`, enums `TICKET` (documento) e `TICKET_SLA` (notificação). Permissões `tickets.*`, papel ATENDIMENTO, ajuste `tickets.sla`.
+
+**Código** — módulo Atendimento (`/atendimento`): painel (em aberto, meus, SLA estourado/em risco, resolvidos 30 dias, tempos médios,
+satisfação), filas e filtros, abertura de chamado (entidade/contato opcionais para demandas internas), ficha do chamado com SLA de
+1ª resposta e solução, assumir/atribuir, histórico de interações (nota, resposta com envio por WhatsApp/e-mail, ligação, visita,
+reunião/ata), tarefas de acompanhamento na agenda, anexos, situação com solução, link público de avaliação; campanhas
+(`/atendimento/campanhas`) com prévia do público e envio idempotente; aba "Atendimento" na entidade; linha do tempo; cron de SLA; menu.
+
+**Validação** — fluxo local e em produção: contato → chamado urgente (SLA 2h/8h) → assumir → nota → resposta ao cliente (1ª resposta
+cumprida; link manual de WhatsApp) → visita e ata → tarefa → aguardando cliente → retorno do cliente reabre → resolver → avaliação
+pública 5/5 (2ª avaliação recusada) → chamado atrasado gera alerta de SLA no cron (deduplicado) → campanha com prévia, envio (manual
+sem provedor) e reenvio sem duplicar → linha do tempo da entidade. Regressão do Financeiro inalterada.
+

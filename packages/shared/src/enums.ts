@@ -152,6 +152,7 @@ export const DOCUMENT_TYPES = [
   'SERVICE_ORDER',
   'SERVICE_ORDER_SIGNED',
   'TENDER',
+  'TICKET',
   'OTHER',
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
@@ -167,6 +168,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   SERVICE_ORDER: 'Ordem de Serviço',
   SERVICE_ORDER_SIGNED: 'Ordem de Serviço assinada',
   TENDER: 'Licitação (edital, anexo, proposta)',
+  TICKET: 'Anexo de chamado de atendimento',
   OTHER: 'Outro',
 };
 
@@ -301,3 +303,24 @@ export type TenderDeadlineKind = (typeof TENDER_DEADLINE_KINDS)[number];
 export const TENDER_DEADLINE_KIND_LABELS: Record<TenderDeadlineKind, string> = { PUBLICATION: 'Publicação', QUESTIONS: 'Esclarecimentos', IMPUGNATION: 'Impugnação', PROPOSAL: 'Envio da proposta', SESSION: 'Sessão pública', APPEAL: 'Recurso', RESULT: 'Resultado', HOMOLOGATION: 'Homologação', SIGNATURE: 'Assinatura do contrato', OTHER: 'Outro' };
 /** Modalidades do PNCP (codigoModalidadeContratacao) → modalidade interna. */
 export const PNCP_MODALITIES: Record<number, TenderModality> = { 1: 'LEILAO', 2: 'DIALOGO_COMPETITIVO', 3: 'CONCURSO', 4: 'CONCORRENCIA', 5: 'CONCORRENCIA', 6: 'PREGAO_ELETRONICO', 7: 'PREGAO_PRESENCIAL', 8: 'DISPENSA', 9: 'INEXIGIBILIDADE', 10: 'OUTRA', 11: 'OUTRA', 12: 'CREDENCIAMENTO', 13: 'LEILAO' };
+
+// ---------------- Fase 6: Atendimento ----------------
+export const TICKET_TYPES = ['SUPPORT', 'COMMERCIAL', 'FINANCIAL', 'REQUEST', 'COMPLAINT', 'VISIT', 'MEETING', 'OTHER'] as const;
+export type TicketType = (typeof TICKET_TYPES)[number];
+export const TICKET_TYPE_LABELS: Record<TicketType, string> = { SUPPORT: 'Suporte técnico', COMMERCIAL: 'Solicitação comercial', FINANCIAL: 'Solicitação financeira', REQUEST: 'Solicitação', COMPLAINT: 'Reclamação', VISIT: 'Visita', MEETING: 'Reunião', OTHER: 'Outro' };
+export const TICKET_CHANNELS = ['WHATSAPP', 'EMAIL', 'PHONE', 'IN_PERSON', 'PORTAL', 'OTHER'] as const;
+export type TicketChannel = (typeof TICKET_CHANNELS)[number];
+export const TICKET_CHANNEL_LABELS: Record<TicketChannel, string> = { WHATSAPP: 'WhatsApp', EMAIL: 'E-mail', PHONE: 'Telefone', IN_PERSON: 'Presencial', PORTAL: 'Portal/sistema', OTHER: 'Outro' };
+export const TICKET_STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING_CLIENT', 'WAITING_INTERNAL', 'RESOLVED', 'CLOSED', 'CANCELLED'] as const;
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = { OPEN: 'Aberto', IN_PROGRESS: 'Em atendimento', WAITING_CLIENT: 'Aguardando cliente', WAITING_INTERNAL: 'Aguardando interno', RESOLVED: 'Resolvido', CLOSED: 'Encerrado', CANCELLED: 'Cancelado' };
+export const TICKET_OPEN_STATUSES: TicketStatus[] = ['OPEN', 'IN_PROGRESS', 'WAITING_CLIENT', 'WAITING_INTERNAL'];
+export const INTERACTION_KINDS = ['NOTE', 'REPLY', 'CALL', 'EMAIL', 'WHATSAPP', 'VISIT', 'MEETING', 'STATUS', 'ASSIGNMENT', 'SYSTEM'] as const;
+export type InteractionKind = (typeof INTERACTION_KINDS)[number];
+export const INTERACTION_KIND_LABELS: Record<InteractionKind, string> = { NOTE: 'Nota interna', REPLY: 'Resposta ao cliente', CALL: 'Ligação', EMAIL: 'E-mail', WHATSAPP: 'WhatsApp', VISIT: 'Visita', MEETING: 'Reunião (ata)', STATUS: 'Situação', ASSIGNMENT: 'Responsável', SYSTEM: 'Sistema' };
+export const INTERACTION_DIRECTIONS = ['INBOUND', 'OUTBOUND', 'INTERNAL'] as const;
+export type InteractionDirection = (typeof INTERACTION_DIRECTIONS)[number];
+export const INTERACTION_DIRECTION_LABELS: Record<InteractionDirection, string> = { INBOUND: 'Recebida do cliente', OUTBOUND: 'Enviada ao cliente', INTERNAL: 'Interna' };
+export const CAMPAIGN_STATUSES = ['DRAFT', 'RUNNING', 'DONE', 'CANCELLED'] as const;
+export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
+export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = { DRAFT: 'Rascunho', RUNNING: 'Em envio', DONE: 'Concluída', CANCELLED: 'Cancelada' };

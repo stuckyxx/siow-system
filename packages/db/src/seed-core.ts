@@ -53,6 +53,9 @@ export const PERMISSIONS: Record<string, string> = {
   'partners.portal': 'Portal do parceiro (somente os próprios dados)',
   'tenders.read': 'Visualizar licitações, prazos e checklist',
   'tenders.write': 'Cadastrar/editar licitações, prazos, concorrentes, checklist e importar do PNCP',
+  'tickets.read': 'Visualizar chamados de atendimento e campanhas',
+  'tickets.write': 'Abrir/atender chamados, registrar interações, visitas e reuniões',
+  'tickets.manage': 'Gerir campanhas, SLA e encerramento em lote',
 };
 
 const ALL = Object.keys(PERMISSIONS);
@@ -76,7 +79,12 @@ export const ROLES: Array<{ name: string; description: string; permissions: stri
   {
     name: 'COMERCIAL',
     description: 'Equipe comercial: funil, oportunidades, propostas, cadastro e agenda',
-    permissions: ['crm.read', 'crm.write', 'tenders.read', 'tenders.write', 'entities.read', 'entities.write', 'contacts.read', 'contacts.write', 'contracts.read', 'tasks.read', 'tasks.manage', 'dashboard.read', 'documents.read', 'documents.write', 'reports.read'],
+    permissions: ['crm.read', 'crm.write', 'tenders.read', 'tenders.write', 'tickets.read', 'tickets.write', 'entities.read', 'entities.write', 'contacts.read', 'contacts.write', 'contracts.read', 'tasks.read', 'tasks.manage', 'dashboard.read', 'documents.read', 'documents.write', 'reports.read'],
+  },
+  {
+    name: 'ATENDIMENTO',
+    description: 'Suporte e relacionamento: chamados, interações, visitas, campanhas',
+    permissions: ['tickets.read', 'tickets.write', 'tickets.manage', 'entities.read', 'contacts.read', 'contacts.write', 'contracts.read', 'invoices.read', 'tasks.read', 'tasks.manage', 'dashboard.read', 'documents.read', 'documents.write', 'templates.manage'],
   },
   { name: 'PARCEIRO', description: 'Parceiro externo: portal restrito aos próprios clientes, oportunidades e comissões', permissions: ['partners.portal'] },
 ];
@@ -144,6 +152,7 @@ export const SETTINGS: Array<{ key: string; value: unknown; description: string 
   { key: 'invoices.overdueAfterDays', value: 30, description: 'Dias após a emissão para considerar a nota em atraso' },
   { key: 'crm.lossReasons', value: ['Preço', 'Concorrente', 'Sem orçamento', 'Sem interesse', 'Troca de gestão', 'Licitação perdida', 'Outro'], description: 'Motivos de perda de oportunidade (Comercial)' },
   { key: 'contracts.renewalDays', value: 90, description: 'Dias antes do fim da vigência para abrir a renovação (oportunidade + tarefa)' },
+  { key: 'tickets.sla', value: { URGENT: { response: 2, resolution: 8 }, HIGH: { response: 4, resolution: 24 }, MEDIUM: { response: 8, resolution: 72 }, LOW: { response: 24, resolution: 120 } }, description: 'SLA de atendimento em horas corridas por prioridade (primeira resposta / resolução)' },
   { key: 'tenders.alertDays', value: 3, description: 'Dias de antecedência para alertar prazos de licitação' },
   { key: 'crm.stalledDays', value: 15, description: 'Dias sem movimentação para considerar uma oportunidade parada (quando a etapa não define SLA)' },
 ];

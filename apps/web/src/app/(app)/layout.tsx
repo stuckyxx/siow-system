@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Building2, FileBarChart, FileSignature, Gavel, Handshake, LayoutDashboard, Settings, Wallet } from 'lucide-react';
+import { Briefcase, Building2, FileBarChart, FileSignature, Gavel, Handshake, Headset, LayoutDashboard, Settings, Wallet } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { GlobalSearch } from '@/components/global-search';
@@ -20,6 +20,7 @@ const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; pe
     href: '/financeiro/central', label: 'Financeiro', icon: Wallet, perms: ['invoices.read', 'collections.read', 'certificates.read', 'sync.read', 'tasks.read'],
     match: (p) => ['/financeiro/central', '/financeiro/notas', '/financeiro/cobrancas', '/financeiro/alarmes', '/financeiro/agenda', '/financeiro/ordens-de-servico', '/financeiro/certidoes', '/financeiro/sincronizacao'].some((x) => p.startsWith(x)),
   },
+  { href: '/atendimento', label: 'Atendimento', icon: Headset, perms: ['tickets.read'], match: (p) => p.startsWith('/atendimento') },
   { href: '/parceiros', label: 'Parceiros', icon: Handshake, perms: ['partners.read'], match: (p) => p.startsWith('/parceiros') },
   { href: '/parceiro', label: 'Meu portal', icon: Handshake, perms: ['partners.portal'], match: (p) => p === '/parceiro', onlyIfMissing: 'partners.read' },
   { href: '/financeiro/relatorios', label: 'Relatórios', icon: FileBarChart, perms: ['reports.read'], match: (p) => p.startsWith('/financeiro/relatorios') },
