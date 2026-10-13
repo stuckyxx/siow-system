@@ -20,6 +20,9 @@ import { z } from 'zod/v4';
 import { env } from '../env.js';
 import { HttpError, type Ctx } from '../http.js';
 import { audit } from '../audit.js';
+import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
+import type { Prisma } from '@siow/db';
 
 export const ASSISTANT_DEFAULT_MODEL = 'claude-opus-5-5';
 const MAX_RESULT_CHARS = 14_000;
@@ -28,7 +31,7 @@ const MAX_ITERATIONS = 24;
 export interface AssistantMessage { role: 'user' | 'assistant'; content: string }
 export interface AssistantStep { tool: string; method?: string; path?: string; status?: number; ok: boolean; summary: string; pending?: PendingAction }
 export interface PendingAction { token: string; method: string; path: string; body?: unknown; reason: string }
-export interface AssistantResult { reply: string; steps: AssistantStep[]; pending: PendingAction[]; stopReason: string | null; usage?: { input: number; output: number } }
+export interface AssistantResult { reply: string; steps: AssistantStep[]; pending: PendingAction[]; stopReason: string | null; usage?: { input: number; output: number }; conversationId?: string }
 
 export function isConfigured(): boolean { return Boolean(process.env.ANTHROPIC_API_KEY); }
 export function modelName(): string { return process.env.ASSISTANT_MODEL || ASSISTANT_DEFAULT_MODEL; }
@@ -216,7 +219,39 @@ ${API_CATALOG}`;
 // ---------------------------------------------------------------------------
 // Execução do agente
 // ---------------------------------------------------------------------------
-export interface RunInput { messages: AssistantMessage[]; approvals?: PendingAction[] }
+export interface RunInput { messages: AssistantMessage[]; approvals?: PendingAction[]; conversationId?: string | null; inputMode?: 'text' | 'voice' }
+
+// ---------------------------------------------------------------------------
+// Histórico de conversas (Fase 13) — por usuário, dentro da organização.
+// ---------------------------------------------------------------------------
+export interface StoredMessage { role: 'user' | 'assistant'; content: string; steps?: AssistantStep[]; pending?: PendingAction[]; at: string; inputMode?: 'text' | 'voice' }
+export interface ConversationSummary { id: string; title: string; messageCount: number; createdAt: Date; updatedAt: Date }
+const MAX_STORED_MESSAGES = 200;
+
+export async function listConversations(userId: string): Promise<ConversationSummary[]> {
+  return prisma.assistantConversation.findMany({ where: { userId, deletedAt: null }, orderBy: { updatedAt: 'desc' }, take: 50, select: { id: true, title: true, messageCount: true, createdAt: true, updatedAt: true } });
+}
+export async function getConversation(userId: string, id: string): Promise<ConversationSummary & { messages: StoredMessage[] }> {
+  const c = await prisma.assistantConversation.findFirst({ where: { id, userId, deletedAt: null } });
+  if (!c) throw new HttpError(404, 'Conversa não encontrada');
+  return { id: c.id, title: c.title, messageCount: c.messageCount, createdAt: c.createdAt, updatedAt: c.updatedAt, messages: (Array.isArray(c.messages) ? c.messages : []) as unknown as StoredMessage[] };
+}
+export async function deleteConversation(ctx: Ctx, id: string): Promise<void> {
+  const r = await prisma.assistantConversation.updateMany({ where: { id, userId: ctx.user.id, deletedAt: null }, data: { deletedAt: new Date() } });
+  if (!r.count) throw new HttpError(404, 'Conversa não encontrada');
+  await audit(ctx, { action: 'assistant.conversation.delete', resource: 'assistantConversation', resourceId: id });
+}
+/** Acrescenta o turno (pergunta + resposta) à conversa; cria uma nova quando não há id. */
+export async function persistTurn(ctx: Ctx, conversationId: string | null | undefined, userMsg: StoredMessage, assistantMsg: StoredMessage): Promise<string> {
+  const existing = conversationId ? await prisma.assistantConversation.findFirst({ where: { id: conversationId, userId: ctx.user.id, deletedAt: null } }) : null;
+  const prev = (existing && Array.isArray(existing.messages) ? (existing.messages as unknown as StoredMessage[]) : []);
+  const messages = [...prev, userMsg, assistantMsg].slice(-MAX_STORED_MESSAGES) as unknown as Prisma.InputJsonValue;
+  if (existing) { await prisma.assistantConversation.update({ where: { id: existing.id }, data: { messages, messageCount: prev.length + 2 } }); return existing.id; }
+  const title = userMsg.content.replace(/\s+/g, ' ').trim().slice(0, 80) || 'Conversa';
+  const c = await prisma.assistantConversation.create({ data: { organizationId: currentOrgId(), userId: ctx.user.id, title, messages, messageCount: 2 } });
+  return c.id;
+}
+
 
 /**
  * Ações sensíveis confirmadas pelo usuário na interface: o token HMAC prova que foi exatamente esta ação que o
@@ -311,5 +346,11 @@ export async function run(ctx: Ctx, input: RunInput): Promise<AssistantResult> {
   else if (!reply && pending.size) reply = 'Preciso da sua confirmação para prosseguir com a ação indicada abaixo.';
   else if (!reply) reply = 'Concluído.';
   const usage = final.usage ? { input: final.usage.input_tokens ?? 0, output: final.usage.output_tokens ?? 0 } : undefined;
-  return { reply, steps, pending: Array.from(pending.values()), stopReason: final.stop_reason, usage };
+  const pend = Array.from(pending.values());
+  const now = new Date().toISOString();
+  const lastUser = input.messages[input.messages.length - 1]!;
+  let conversationId: string | undefined;
+  try { conversationId = await persistTurn(ctx, input.conversationId, { role: 'user', content: lastUser.content, at: now, inputMode: input.inputMode ?? 'text' }, { role: 'assistant', content: reply, steps, pending: pend, at: now }); }
+  catch (e) { console.error('falha ao salvar conversa do assistente', e); }
+  return { reply, steps, pending: pend, stopReason: final.stop_reason, usage, conversationId };
 }

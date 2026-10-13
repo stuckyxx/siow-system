@@ -12,7 +12,7 @@ import { env } from '../env.js';
 import { decryptSecret, encryptSecret, maskSecret } from '../crypto.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 
-export type IntegrationKey = 'WHATSAPP' | 'EMAIL' | 'SIGNATURE' | 'CNPJ' | 'IBGE' | 'PNCP' | 'COMPRASGOV';
+export type IntegrationKey = 'WHATSAPP' | 'EMAIL' | 'SIGNATURE' | 'CNPJ' | 'IBGE' | 'PNCP' | 'COMPRASGOV' | 'SPEECH';
 export interface FieldDef { key: string; label: string; secret?: boolean; placeholder?: string; help?: string; required?: boolean }
 export interface IntegrationDef { key: IntegrationKey; label: string; description: string; providers: Array<{ key: string; label: string; fields: FieldDef[] }>; manualFallback: string | null }
 
@@ -30,6 +30,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
     providers: [{ key: 'ibge', label: 'API pública do IBGE', fields: [] }] },
   { key: 'PNCP', label: 'PNCP — Portal Nacional de Contratações Públicas', description: 'Consulta pública de licitações para importação no módulo Licitações.', manualFallback: null,
     providers: [{ key: 'pncp', label: 'API de consulta do PNCP', fields: [{ key: 'apiUrl', label: 'URL da API', placeholder: 'https://pncp.gov.br/api/consulta/v1' }] }] },
+  { key: 'SPEECH', label: 'Transcrição de fala (áudio → texto)', description: 'Converte áudio em texto: ditado por voz no Assistente e transcrição automática dos áudios recebidos pelo WhatsApp. Sem provedor, o Assistente usa o reconhecimento de voz do próprio navegador (quando disponível) e os áudios do WhatsApp ficam só como anexo.', manualFallback: 'Sem provedor, o ditado usa o reconhecimento do navegador (Chrome/Edge) e os áudios do WhatsApp não são transcritos.',
+    providers: [{ key: 'whisper', label: 'API compatível com Whisper (OpenAI, Groq e similares)', fields: [{ key: 'apiUrl', label: 'URL base da API', placeholder: 'https://api.openai.com/v1', help: 'Groq: https://api.groq.com/openai/v1' }, { key: 'apiKey', label: 'Chave da API', secret: true, required: true }, { key: 'model', label: 'Modelo', placeholder: 'whisper-1', help: 'Groq: whisper-large-v3' }] }] },
   { key: 'COMPRASGOV', label: 'Compras.gov.br — Dados abertos', description: 'Consulta de contratações publicadas (módulo de contratações da Lei 14.133) para importação no módulo Licitações.', manualFallback: null,
     providers: [{ key: 'comprasgov', label: 'API de dados abertos do Compras.gov.br', fields: [{ key: 'apiUrl', label: 'URL da API', placeholder: 'https://dadosabertos.compras.gov.br' }] }] },
 ];

@@ -2501,3 +2501,25 @@ CREATE TABLE IF NOT EXISTS "rate_limits" (
   "windowStart" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "rate_limits_pkey" PRIMARY KEY ("key")
 );
+
+-- =====================================================================
+-- FASE 13 (ASSISTENTE POR VOZ E HISTÓRICO) — idempotente. Conversas do Assistente virtual.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "assistant_conversations" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "messages" JSONB NOT NULL DEFAULT '[]',
+  "messageCount" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  "deletedAt" TIMESTAMP(3),
+  CONSTRAINT "assistant_conversations_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "assistant_conversations_organizationId_userId_updatedAt_idx" ON "assistant_conversations"("organizationId", "userId", "updatedAt");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'assistant_conversations_organizationId_fkey') THEN
+    ALTER TABLE "assistant_conversations" ADD CONSTRAINT "assistant_conversations_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;

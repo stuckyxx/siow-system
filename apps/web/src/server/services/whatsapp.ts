@@ -126,21 +126,29 @@ export async function ingestInbound(m: InMsg, profileName: string | null): Promi
   }
   // mídia: baixa pela Graph API e guarda como documento (ligado à entidade/chamado)
   let documentId: string | null = null;
+  let transcript: string | null = null;
   if (media?.id) {
     try {
       const file = await downloadMedia(media.id);
       const fileName: string = ('filename' in media && typeof (media as { filename?: string }).filename === 'string' && (media as { filename?: string }).filename) || `${m.type}-${m.id.slice(-8)}.${(file.mimeType.split('/')[1] ?? 'bin').split(';')[0]}`;
       const r = await storeDocument({ buffer: file.buffer, mimeType: file.mimeType, name: fileName, type: 'OTHER', entityId: conv.entityId ?? contact?.entityId ?? null, ticketId, origin: 'SYNC', metadata: { source: 'whatsapp', waMessageId: m.id } });
       documentId = r.documentId;
+      // Fase 13: áudio recebido vira texto quando a integração de transcrição está configurada.
+      if (m.type === 'audio' && !body) {
+        try { const sp = await import('./speech.js'); if ((await sp.capabilities()).server) { const t = await sp.transcribe({ buffer: file.buffer, mimeType: file.mimeType, fileName, referenceType: 'wa_message', referenceId: m.id }); if (t.text) transcript = t.text; } }
+        catch (e) { console.error('transcrição de áudio do WhatsApp falhou', e); }
+      }
     } catch (e) { console.error('download de mídia do WhatsApp falhou', e); }
   }
+  const text = transcript ? `🎙️ ${transcript}` : body;
+  const previewText = transcript ? `🎙️ ${transcript}` : preview;
   const assignee = conv.assigneeUserId ?? (await pickAgent());
   await prisma.$transaction(async (tx) => {
-    await tx.waMessage.create({ data: { conversationId: conv!.id, direction: 'IN', providerMessageId: m.id, type: m.type, body: body || null, mediaId: media?.id ?? null, mediaMimeType: media?.mime_type ?? null, mediaFileName: 'filename' in (media ?? {}) ? (media as { filename?: string }).filename ?? null : null, documentId, status: 'RECEIVED', timestamp: ts } });
-    await tx.waConversation.update({ where: { id: conv!.id }, data: { status: 'OPEN', closedAt: null, ticketId, displayName: conv!.displayName ?? profileName, contactId: conv!.contactId ?? contact?.id ?? null, entityId: conv!.entityId ?? contact?.entityId ?? null, assigneeUserId: assignee, lastInboundAt: ts, lastMessageAt: ts, lastMessagePreview: preview.slice(0, 120), unreadCount: { increment: 1 } } });
-    await tx.ticketInteraction.create({ data: { ticketId: ticketId!, contactId: conv!.contactId ?? contact?.id ?? null, kind: 'WHATSAPP', direction: 'INBOUND', body: preview, documentId, occurredAt: ts } });
+    await tx.waMessage.create({ data: { conversationId: conv!.id, direction: 'IN', providerMessageId: m.id, type: m.type, body: text || null, mediaId: media?.id ?? null, mediaMimeType: media?.mime_type ?? null, mediaFileName: 'filename' in (media ?? {}) ? (media as { filename?: string }).filename ?? null : null, documentId, status: 'RECEIVED', timestamp: ts } });
+    await tx.waConversation.update({ where: { id: conv!.id }, data: { status: 'OPEN', closedAt: null, ticketId, displayName: conv!.displayName ?? profileName, contactId: conv!.contactId ?? contact?.id ?? null, entityId: conv!.entityId ?? contact?.entityId ?? null, assigneeUserId: assignee, lastInboundAt: ts, lastMessageAt: ts, lastMessagePreview: previewText.slice(0, 120), unreadCount: { increment: 1 } } });
+    await tx.ticketInteraction.create({ data: { ticketId: ticketId!, contactId: conv!.contactId ?? contact?.id ?? null, kind: 'WHATSAPP', direction: 'INBOUND', body: previewText, documentId, occurredAt: ts } });
     await tx.ticket.update({ where: { id: ticketId! }, data: { lastActivityAt: ts, status: newTicket ? undefined : 'IN_PROGRESS', assigneeUserId: assignee ?? undefined } });
-    await tx.notification.create({ data: { organizationId: org, userId: assignee, type: 'GENERIC', title: `WhatsApp de ${conv!.displayName ?? profileName ?? waId}`, body: preview.slice(0, 300), entityId: conv!.entityId ?? contact?.entityId ?? null, referenceType: 'waConversation', referenceId: conv!.id, dedupeKey: `WA_IN:${m.id}` } });
+    await tx.notification.create({ data: { organizationId: org, userId: assignee, type: 'GENERIC', title: `WhatsApp de ${conv!.displayName ?? profileName ?? waId}`, body: previewText.slice(0, 300), entityId: conv!.entityId ?? contact?.entityId ?? null, referenceType: 'waConversation', referenceId: conv!.id, dedupeKey: `WA_IN:${m.id}` } });
   });
   void reopened;
   return { conversationId: conv.id, newTicket, duplicate: false };

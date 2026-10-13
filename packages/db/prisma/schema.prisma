@@ -1249,6 +1249,7 @@ model Organization {
   subscription     Subscription?
   subscriptionInvoices SubscriptionInvoice[]
   apiKeys          ApiKey[]
+  assistantConversations AssistantConversation[]
   @@map("organizations")
 }
 
@@ -1323,6 +1324,24 @@ model SubscriptionInvoice {
   @@unique([organizationId, period])
   @@index([status, dueDate])
   @@map("subscription_invoices")
+}
+
+/// Fase 13 — conversas do Assistente virtual (histórico por usuário).
+model AssistantConversation {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String
+  title          String
+  /// [{ role: 'user'|'assistant', content, steps?, at }]
+  messages       Json         @default("[]")
+  messageCount   Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  @@index([organizationId, userId, updatedAt])
+  @@map("assistant_conversations")
 }
 
 model ApiKey {

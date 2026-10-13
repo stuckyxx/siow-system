@@ -56,3 +56,18 @@ describe('assistente — catálogo e configuração', () => {
     if (prev) process.env.ANTHROPIC_API_KEY = prev;
   });
 });
+
+describe('assistente — integração de transcrição (Fase 13)', () => {
+  it('catálogo de integrações inclui SPEECH com provedor Whisper e chave secreta', async () => {
+    const { INTEGRATIONS } = await import('./services/integrations.js');
+    const sp = INTEGRATIONS.find((i) => i.key === 'SPEECH');
+    expect(sp).toBeTruthy();
+    expect(sp!.providers[0]!.key).toBe('whisper');
+    expect(sp!.providers[0]!.fields.find((f) => f.key === 'apiKey')?.secret).toBe(true);
+  });
+  it('limites de áudio', async () => {
+    const { AUDIO_MIME, MAX_AUDIO_BYTES } = await import('./services/speech.js');
+    expect(MAX_AUDIO_BYTES).toBe(15 * 1024 * 1024);
+    expect(AUDIO_MIME.test('audio/webm;codecs=opus')).toBe(true); expect(AUDIO_MIME.test('video/mp4')).toBe(true); expect(AUDIO_MIME.test('application/pdf')).toBe(false);
+  });
+});

@@ -13,7 +13,7 @@
 import { Prisma } from '@prisma/client';
 
 export const TENANT_MODELS = new Set<string>([
-  'User', 'Role', 'Entity', 'DataSource', 'SyncRun', 'Contract', 'Invoice', 'SyncConflict', 'DocumentBlob', 'Document',
+  'AssistantConversation', 'User', 'Role', 'Entity', 'DataSource', 'SyncRun', 'Contract', 'Invoice', 'SyncConflict', 'DocumentBlob', 'Document',
   'Certificate', 'Contact', 'FinancialTask', 'CollectionCase', 'MessageTemplate', 'OutboundMessage', 'ServiceOrder',
   'SignatureRequest', 'IssuanceAlarm', 'Notification', 'AuditLog', 'PublicAgent', 'EntityHealthSnapshot',
   'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal', 'ContractRenewal', 'Partner', 'CommissionRule', 'Commission', 'Tender', 'Ticket', 'Campaign', 'Integration', 'IntegrationLog', 'Webhook', 'WaConversation', 'Setting', 'Subscription', 'SubscriptionInvoice', 'ApiKey',

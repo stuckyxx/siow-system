@@ -30,6 +30,12 @@ export async function runTest(key: IntegrationKey, cfg: ResolvedConfig): Promise
     case 'CNPJ': { const r = await fetchCnpj('06989347000195', { ...ctx, apiUrl: c['apiUrl'] }); return { ok: true, message: `Consulta ok: ${r.name}`, details: r }; }
     case 'IBGE': { const r = await fetchIbgeMunicipalities('MA', ctx); return { ok: r.length > 0, message: `${r.length} municípios do MA recebidos` }; }
     case 'PNCP': { const r = await fetchPncpPublications({ uf: 'MA', from: addDaysIso(todayIso(), -3), to: todayIso(), modalities: [6], maxPages: 1 }, { ...ctx, apiUrl: c['apiUrl'] }); return { ok: true, message: `${r.items.length} publicações nos últimos 3 dias (MA)${r.warnings.length ? ` · avisos: ${r.warnings.join('; ')}` : ''}` }; }
+    case 'SPEECH': {
+      const apiUrl = (c['apiUrl'] || 'https://api.openai.com/v1').replace(/\/+$/, '');
+      const res = await fetch(`${apiUrl}/models`, { headers: { Authorization: `Bearer ${c['apiKey']}` }, cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) return { ok: false, message: `Provedor respondeu HTTP ${res.status} (verifique a URL e a chave)` };
+      return { ok: true, message: `Conexão ok · modelo ${c['model'] || 'whisper-1'}` };
+    }
     case 'COMPRASGOV': { const r = await fetchComprasGov({ uf: 'MA', from: addDaysIso(todayIso(), -3), to: todayIso(), modalities: [6], maxPages: 1 }, { ...ctx, apiUrl: c['apiUrl'] }); return { ok: true, message: `${r.items.length} contratações nos últimos 3 dias (MA)${r.warnings.length ? ` · avisos: ${r.warnings.join('; ')}` : ''}` }; }
     default: return { ok: false, message: 'Teste não disponível' };
   }

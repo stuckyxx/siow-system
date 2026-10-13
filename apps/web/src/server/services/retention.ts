@@ -7,7 +7,7 @@
  */
 import { prisma } from '../db.js';
 
-export interface RetentionResult { syncRuns: number; sessions: number; notifications: number; retentionDays: number }
+export interface RetentionResult { syncRuns: number; sessions: number; notifications: number; assistantConversations: number; retentionDays: number }
 
 export async function retention(now = new Date()): Promise<RetentionResult> {
   const s = await prisma.setting.findFirst({ where: { key: 'sync.retentionDays' } });
@@ -20,5 +20,7 @@ export async function retention(now = new Date()): Promise<RetentionResult> {
   const users = await prisma.user.findMany({ select: { id: true } });
   const sessions = (await prisma.session.deleteMany({ where: { userId: { in: users.map((u) => u.id) }, OR: [{ revokedAt: { lt: new Date(now.getTime() - 30 * 86_400_000) } }, { expiresAt: { lt: new Date(now.getTime() - 30 * 86_400_000) } }] } })).count;
   const notifications = (await prisma.notification.deleteMany({ where: { readAt: { lt: new Date(now.getTime() - 90 * 86_400_000) } } })).count;
-  return { syncRuns, sessions, notifications, retentionDays };
+  // Fase 13: conversas do Assistente excluídas pelo usuário há mais de 30 dias ou sem atividade há `retentionDays`.
+  const assistantConversations = (await prisma.assistantConversation.deleteMany({ where: { OR: [{ deletedAt: { lt: new Date(now.getTime() - 30 * 86_400_000) } }, { updatedAt: { lt: cutoff } }] } })).count;
+  return { syncRuns, sessions, notifications, assistantConversations, retentionDays };
 }

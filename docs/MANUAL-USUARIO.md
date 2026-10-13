@@ -46,6 +46,10 @@ No menu **Assistente**, escreva o que precisa em linguagem natural e o assistent
 - **Ações sensíveis** (excluir, dar baixa em notas, enviar mensagens, fechar oportunidades, sincronizar tudo, administrar usuários) só acontecem depois que você clica em **Confirmar e executar** no cartão amarelo mostrado no chat.
 - "Ações executadas" em cada resposta mostra o que foi feito; tudo fica registrado na auditoria.
 - Anexar arquivos (PDF de contrato, documentos) continua sendo feito pelas telas; o assistente orienta o caminho.
+- **Falar em vez de digitar**: toque no microfone, fale o pedido e toque em parar. O texto aparece na caixa para você conferir e enviar. Com a transcrição configurada em Integrações funciona em qualquer navegador (inclusive no celular); sem ela, usa o reconhecimento de voz do Chrome/Edge.
+- **Ler respostas**: ligue para ouvir as respostas em voz alta.
+- **Histórico**: suas conversas ficam salvas (só você as vê). Abra uma conversa anterior para continuar de onde parou ou exclua-a.
+- **Áudios do WhatsApp**: com a transcrição configurada, os áudios recebidos na Central de atendimento aparecem já transcritos (🎙️), além do anexo.
 - Se aparecer "não configurado", peça ao administrador para ativar a chave do assistente.
 
 ## Notificações e busca

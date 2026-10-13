@@ -308,6 +308,14 @@ encerradas), atualização automática a cada 5 s, conversa em balões com statu
 - **Contexto do modelo** — prompt de sistema em pt-BR com data, usuário, organização, módulos e permissões, regras (consultar antes de agir, não duplicar, não inventar dados, Financeiro é a fonte oficial) e o catálogo resumido da API (`API_CATALOG`), com cache de prompt. Resultados grandes são cortados por itens mantendo JSON válido. Histórico: o front envia só os textos das mensagens (até 40 turnos); resultados de ferramentas não são reenviados.
 - **Configuração** — `ANTHROPIC_API_KEY` (obrigatória para ativar; sem ela a tela avisa "não configurado" e a rota responde 503) e `ASSISTANT_MODEL` (opcional). Testes: `src/server/assistant.test.ts` (classificação de ações sensíveis, token, catálogo).
 
+## 6n. Assistente por voz e histórico de conversas (Fase 13)
+
+- **Ditado por voz** — `components/assistant/voice-input.tsx`. Dois modos, escolhidos automaticamente: (1) **provedor no servidor** quando a integração `SPEECH` está configurada: grava com `MediaRecorder` (webm/opus, mp4 no Safari), envia a `POST /api/assistente/transcrever` (multipart `audio`, ≤15 MB, 120/h por usuário) e o texto volta para a caixa de mensagem para conferência antes do envio; (2) **reconhecimento do navegador** (Web Speech API, pt-BR, Chrome/Edge) sem custo quando não há provedor. Sem nenhum dos dois, o botão não aparece e a tela orienta.
+- **Integração `SPEECH`** (`services/integrations.ts`, provedor `whisper`): qualquer API compatível com Whisper (OpenAI `https://api.openai.com/v1`, Groq `https://api.groq.com/openai/v1`…), campos `apiUrl`, `apiKey` (cifrado), `model`. `services/speech.ts` faz a chamada (`/audio/transcriptions`, `language=pt`, `verbose_json`) com log, circuit breaker e teste de conexão (`GET /models`). Falha do provedor → 502 com a mensagem dele.
+- **Áudios do WhatsApp** — em `whatsapp.ts#ingestInbound`, mensagens `audio` são transcritas quando a integração está ativa; o texto (prefixo 🎙️) vai para a mensagem, a interação do chamado, a prévia da conversa e a notificação. O anexo original continua guardado como documento.
+- **Leitura em voz alta** — opcional ("Ler respostas"), com a síntese de voz do navegador (pt-BR), sem provedor; preferência salva no navegador.
+- **Histórico** — tabela `assistant_conversations` (tenant; `userId`, `title`, `messages` JSONB com turnos, passos e pendências, `messageCount`). `POST /api/assistente` recebe `conversationId` (opcional) e `inputMode` (`text|voice`) e salva o turno; `GET /api/assistente/conversas` lista as do usuário, `GET/DELETE /api/assistente/conversas/[id]` abre/exclui (exclusão lógica, auditada). Só o próprio usuário vê as suas conversas. Retenção no cron diário: excluídas há mais de 30 dias ou sem atividade há `sync.retentionDays`.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`
