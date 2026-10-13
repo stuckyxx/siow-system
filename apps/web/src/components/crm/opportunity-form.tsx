@@ -5,6 +5,7 @@ import { OPPORTUNITY_SOURCES, OPPORTUNITY_SOURCE_LABELS, RECURRENCES, RECURRENCE
 import { api, ApiError } from '@/lib/api';
 import { useAssignees } from '@/components/panels/tasks-panel';
 import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
+import { EntityPicker, type EntityChoice } from '@/components/entity-picker';
 
 export interface ItemDraft { catalogItemId: string | null; description: string; quantity: string; unitPrice: string; recurrence: string }
 export const errMsg = (e: unknown): string => (e instanceof ApiError ? `${e.message}${e.issues?.length ? ': ' + e.issues.map((i) => `${i.path} ${i.message}`).join('; ') : ''}` : 'Erro inesperado');
@@ -59,25 +60,42 @@ export function OpportunityForm({ open, opportunity, entityId, onClose, onSaved 
   const [items, setItems] = useState<ItemDraft[]>(opportunity?.items?.map((i) => ({ catalogItemId: i.catalogItemId, description: i.description, quantity: i.quantity.replace('.', ','), unitPrice: i.unitPrice.replace('.', ','), recurrence: i.recurrence })) ?? []);
   const [key, setKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [choice, setChoice] = useState<EntityChoice>(null);
+  const [mode, setMode] = useState<'picker' | 'list'>('picker');
   if (open && key !== (opportunity?.id ?? 'new')) { setKey(opportunity?.id ?? 'new'); setF(init); setItems(opportunity?.items?.map((i) => ({ catalogItemId: i.catalogItemId, description: i.description, quantity: i.quantity.replace('.', ','), unitPrice: i.unitPrice.replace('.', ','), recurrence: i.recurrence })) ?? []); setError(null); }
   const b = (k: keyof typeof f) => ({ value: f[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value }) });
   const stages = pipelines?.[0]?.stages.filter((s) => s.kind === 'OPEN') ?? [];
   const m = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      // Sem entidade escolhida na lista: resolve pelo seletor UF → município → tipo (cadastra a entidade se ainda não existir).
+      let resolvedEntityId = f.entityId;
+      if (!editing && !entityId && mode === 'picker') {
+        if (!choice) throw new Error('Informe UF, município e tipo da entidade');
+        if (choice.kind === 'existing') resolvedEntityId = choice.id;
+        else {
+          const created = await api<{ id: string }>('/financeiro/entities', { method: 'POST', body: { type: choice.type, name: choice.name, shortName: choice.shortName, municipality: choice.municipality, uf: choice.uf, ibgeCode: choice.ibgeCode } });
+          resolvedEntityId = created.id;
+        }
+      }
       const body = {
-        entityId: f.entityId, title: f.title, description: f.description || null, monthlyAmount: items.length ? undefined : f.monthlyAmount || null, oneTimeAmount: items.length ? undefined : f.oneTimeAmount || null,
+        entityId: resolvedEntityId, title: f.title, description: f.description || null, monthlyAmount: items.length ? undefined : f.monthlyAmount || null, oneTimeAmount: items.length ? undefined : f.oneTimeAmount || null,
         termMonths: f.termMonths ? Number(f.termMonths) : null, probability: f.probability === '' ? null : Number(f.probability), expectedCloseDate: f.expectedCloseDate || null, source: f.source || null, ownerUserId: f.ownerUserId || null,
         stageId: !editing && f.stageId ? f.stageId : undefined, items: items.length ? items.map((it) => ({ catalogItemId: it.catalogItemId, description: it.description, quantity: it.quantity, unitPrice: it.unitPrice, recurrence: it.recurrence })) : editing ? [] : undefined,
       };
       return editing ? api<OpportunityRow>(`/comercial/opportunities/${opportunity!.id}`, { method: 'PATCH', body: { ...body, entityId: undefined, stageId: undefined } }) : api<OpportunityRow>('/comercial/opportunities', { method: 'POST', body });
     },
     onSuccess: onSaved,
-    onError: (e) => setError(errMsg(e)),
+    onError: (e) => setError(e instanceof Error && !(e instanceof ApiError) ? e.message : errMsg(e)),
   });
   return (
     <Dialog open={open} onClose={onClose} title={editing ? 'Editar oportunidade' : 'Nova oportunidade'} wide>
       <div className="grid gap-3 md:grid-cols-2">
-        {!entityId && !editing && <Field label="Entidade" className="md:col-span-2"><Select {...b('entityId')}><option value="">Selecione…</option>{entities?.entities.map((e) => <option key={e.id} value={e.id}>{e.shortName ?? e.name}</option>)}</Select></Field>}
+        {!entityId && !editing && (
+          <div className="md:col-span-2 grid gap-3 md:grid-cols-2">
+            <div className="md:col-span-2 flex items-center justify-between"><b>Entidade</b><button type="button" className="link small" onClick={() => setMode(mode === 'picker' ? 'list' : 'picker')}>{mode === 'picker' ? 'Escolher entre as já cadastradas' : 'Escolher por UF e município'}</button></div>
+            {mode === 'picker' ? <EntityPicker value={choice} onChange={setChoice} /> : <Field label="Entidade cadastrada" className="md:col-span-2"><Select {...b('entityId')}><option value="">Selecione…</option>{entities?.entities.map((e) => <option key={e.id} value={e.id}>{e.shortName ?? e.name}</option>)}</Select></Field>}
+          </div>
+        )}
         <Field label="Título" className="md:col-span-2"><Input {...b('title')} placeholder="Ex.: Portal da transparência + sistema de compras" /></Field>
         {!editing && stages.length > 0 && <Field label="Etapa inicial"><Select {...b('stageId')}><option value="">{stages[0]?.name} (padrão)</option>{stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>}
         <Field label="Origem"><Select {...b('source')}>{OPPORTUNITY_SOURCES.map((s) => <option key={s} value={s}>{OPPORTUNITY_SOURCE_LABELS[s]}</option>)}</Select></Field>
@@ -91,7 +109,7 @@ export function OpportunityForm({ open, opportunity, entityId, onClose, onSaved 
         <Field label="Descrição / necessidade do cliente" className="md:col-span-2"><Textarea rows={3} {...b('description')} /></Field>
       </div>
       {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
-      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => m.mutate()} disabled={m.isPending || !f.title || !f.entityId}>{m.isPending ? 'Salvando…' : 'Salvar'}</Button></div>
+      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => m.mutate()} disabled={m.isPending || !f.title || (!editing && !entityId && mode === 'picker' ? !choice : !f.entityId)}>{m.isPending ? 'Salvando…' : 'Salvar'}</Button></div>
     </Dialog>
   );
 }
