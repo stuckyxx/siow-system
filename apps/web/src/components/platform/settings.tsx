@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from '@/components/ui';
 import { errMsg, type Plan } from './shared';
+import { MfaPanel } from '@/components/mfa-panel';
 
 export function PlatformSettingsPanel() {
   const qc = useQueryClient();
@@ -31,6 +32,7 @@ export function PlatformSettingsPanel() {
           <div className="flex items-center gap-3"><Button onClick={() => changePw.mutate()} disabled={!pw.currentPassword || !pw.newPassword}>Alterar senha</Button>{pwMsg && <span className="text-xs text-ink-2">{pwMsg}</span>}</div>
         </CardContent>
       </Card>
+      <MfaPanel base="/platform/auth/mfa" />
     </div>
   );
 }

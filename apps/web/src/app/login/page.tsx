@@ -15,6 +15,8 @@ export default function LoginPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
 
   // "Salvar meus dados": guarda o e-mail neste navegador (a senha fica com o gerenciador de senhas do navegador).
   useEffect(() => {
@@ -29,7 +31,11 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api<{ ok: boolean; user: { mustChangePassword: boolean } }>('/auth/login', { method: 'POST', body: { email, password } });
+      type LoginRes = { ok: boolean; mfaRequired?: boolean; mfaToken?: string; user: { mustChangePassword: boolean } };
+      const res = mfaToken
+        ? await api<LoginRes>('/auth/mfa', { method: 'POST', body: { mfaToken, code } })
+        : await api<LoginRes>('/auth/login', { method: 'POST', body: { email, password } });
+      if (res.mfaRequired && res.mfaToken) { setMfaToken(res.mfaToken); setLoading(false); return; }
       try {
         if (remember) window.localStorage.setItem('siow.login.email', email.trim());
         else window.localStorage.removeItem('siow.login.email');
@@ -52,6 +58,16 @@ export default function LoginPage() {
         <img className="lg-logo" src={brand.logoUrl} alt={brand.productName} />
         <div className="lg-sub">{brand.tagline}</div>
         <form onSubmit={submit}>
+          {mfaToken ? (
+            <>
+              <p className="small" style={{ color: 'var(--ink2)' }}>Digite o código de 6 dígitos do seu aplicativo autenticador.</p>
+              <label className="f">Código de verificação<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} required /></label>
+              {error && <div className="err" role="alert">{error}</div>}
+              <button className="btn p" type="submit" disabled={loading || code.length !== 6}>{loading ? 'Verificando…' : 'Confirmar'}</button>
+              <button type="button" className="link small" style={{ marginTop: 10 }} onClick={() => { setMfaToken(null); setCode(''); setError(null); }}>Voltar</button>
+            </>
+          ) : (
+            <>
           <label className="f">E-mail<input type="email" autoComplete="username" placeholder="voce@siowsystem.com.br" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
           <label className="f">Senha<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           <label className="row small" style={{ gap: 8, textTransform: 'none', color: 'var(--ink2)' }}>
@@ -59,6 +75,8 @@ export default function LoginPage() {
           </label>
           {error && <div className="err" role="alert">{error}</div>}
           <button className="btn p" type="submit" disabled={loading}>{loading ? 'Entrando…' : 'Entrar'}</button>
+            </>
+          )}
         </form>
         <button className="link small" style={{ marginTop: 12 }} onClick={() => setInfo('Peça ao administrador do sistema para redefinir sua senha (Administração → Usuários → Redefinir senha).')}>Esqueci minha senha</button>
         {info && <p className="small muted" style={{ marginTop: 8 }}>{info}</p>}

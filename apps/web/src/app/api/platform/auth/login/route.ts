@@ -9,8 +9,9 @@ export const dynamic = 'force-dynamic';
 export const POST = platformRoute(async (ctx) => {
   const b = await platformJson(ctx.req, platformLoginSchema);
   const keys = [`plogin:${ctx.ip ?? 'sem-ip'}`, `plogin:${b.email.toLowerCase()}`];
-  for (const k of keys) rateLimit(k, RATE_RULES.platformLogin);
-  const admin = await platformLogin(b.email, b.password, ctx);
-  for (const k of keys) rateLimitReset(k);
-  return { ok: true, admin };
+  for (const k of keys) await rateLimit(k, RATE_RULES.platformLogin);
+  const out = await platformLogin(b.email, b.password, ctx);
+  for (const k of keys) await rateLimitReset(k);
+  if ('mfaRequired' in out) return { ok: false, mfaRequired: true, mfaToken: out.mfaToken };
+  return { ok: true, admin: out };
 }, { auth: false });

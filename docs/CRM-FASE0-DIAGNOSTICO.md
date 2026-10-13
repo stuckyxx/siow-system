@@ -353,3 +353,9 @@ modelos sem conta válida; atribuir, encerrar (chamado resolvido), nova mensagem
 **Validação** — local: 66 ok, 0 falhas; 429 confirmado na 21ª tentativa de login e na 11ª na plataforma. Produção: roteiro executado após o deploy (resultado registrado no relatório da fase); dados de teste das fases anteriores conferidos e neutralizados (exclusão lógica/renomeação; nada visível nas telas); regressão do Financeiro inalterada.
 
 **Pendências recomendadas** — snapshots diários no Neon, limpeza periódica de `sync_runs`, limite de requisições compartilhado entre instâncias, 2FA para administradores.
+
+## Executado na Fase 11 — Pós-homologação (13/10/2026)
+
+**Entregue** — 2FA por aplicativo autenticador (TOTP) para usuários e superadmins, com segundo passo no login, ativação/desativação auditadas e redefinição pelo administrador; limite de requisições contado no banco (vale entre instâncias serverless); retenção de histórico técnico no cron diário (sync_runs, sessões encerradas, notificações lidas) configurável por `sync.retentionDays`; e-mails transacionais da plataforma (boas-vindas, fatura emitida/vencida, bloqueio, reativação); snapshots diários do banco no Neon.
+
+**Validação** — local: setup/ativação com código errado (400) e certo, login exige código (sem sessão até confirmar), código errado 401, token inválido 401, desativar com senha errada 401 e ok, mesmo fluxo na plataforma, 21ª tentativa de login → 429 contada no banco, retenção executada sem remover nada (base recente); vetores da RFC 6238 nos testes unitários. Produção: migração idempotente com backup prévio, roteiro de homologação (66 verificações) e 429 entre instâncias confirmados.

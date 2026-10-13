@@ -2487,3 +2487,17 @@ END $$;
 -- Assinatura isenta para a organização padrão (Edição Própria)
 INSERT INTO "subscriptions" ("id", "organizationId", "planKey", "status", "amount", "updatedAt")
 SELECT gen_random_uuid()::text, o.id, 'PROPRIA', 'EXEMPT', 0, now() FROM "organizations" o WHERE o.slug = 'siow-system-tecnologia' AND NOT EXISTS (SELECT 1 FROM "subscriptions" s WHERE s."organizationId" = o.id);
+
+-- =====================================================================
+-- FASE 11 (PÓS-HOMOLOGAÇÃO) — idempotente. 2FA (TOTP) e limite de requisições compartilhado.
+-- =====================================================================
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "totpSecret" TEXT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "totpEnabledAt" TIMESTAMP(3) NULL;
+ALTER TABLE "platform_admins" ADD COLUMN IF NOT EXISTS "totpSecret" TEXT NULL;
+ALTER TABLE "platform_admins" ADD COLUMN IF NOT EXISTS "totpEnabledAt" TIMESTAMP(3) NULL;
+CREATE TABLE IF NOT EXISTS "rate_limits" (
+  "key" TEXT NOT NULL,
+  "count" INTEGER NOT NULL DEFAULT 0,
+  "windowStart" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "rate_limits_pkey" PRIMARY KEY ("key")
+);

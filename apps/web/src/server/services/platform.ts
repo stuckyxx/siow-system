@@ -12,6 +12,7 @@ import { badRequest, conflict, notFound } from '../http.js';
 import { runWithOrg } from '../tenant.js';
 import { invalidateAccess, resolveAccess } from '../access.js';
 import type { PlatformCtx } from '../platform-auth.js';
+import { sendPlatformMail } from './platform-mail.js';
 
 export const DEFAULT_ORG_ID = '7a1b5c3e-5e1f-4a4e-8c0d-000000000001';
 const D = (v: string | number | Prisma.Decimal) => new Prisma.Decimal(v);
@@ -94,6 +95,7 @@ export async function createOrganization(ctx: PlatformCtx | null, input: z.infer
   // Nome da empresa usado em mensagens/relatórios da nova organização.
   await prismaPlatform.setting.update({ where: { organizationId_key: { organizationId: org.id, key: 'company.name' } }, data: { value: input.name } }).catch(() => undefined);
   await paudit(ctx, { action: opts.selfSignup ? 'ORGANIZATION_SIGNUP' : 'ORGANIZATION_CREATED', resource: 'organization', resourceId: org.id, organizationId: org.id, after: { name: org.name, slug: org.slug, plan: plan.key, trialEndsAt, adminEmail: seed.adminEmail } });
+  await sendPlatformMail('WELCOME', org.id, { adminEmail: seed.adminEmail ?? input.adminEmail, trialEndsAt });
   return { organization: { id: org.id, slug: org.slug, name: org.name, trialEndsAt }, admin: { email: seed.adminEmail, created: seed.adminCreated } };
 }
 
@@ -175,6 +177,7 @@ export async function generateInvoice(organizationId: string, period: string, ct
   const invoice = await prismaPlatform.subscriptionInvoice.create({ data: { organizationId, period, amount: sub.amount, dueDate, status: 'OPEN' } });
   await prismaPlatform.subscription.update({ where: { organizationId }, data: { currentPeriodStart: new Date(Date.UTC(y, m - 1, 1)), currentPeriodEnd: new Date(Date.UTC(y, m, 0)) } });
   await paudit(ctx, { action: 'PLATFORM_INVOICE_CREATED', resource: 'subscription_invoice', resourceId: invoice.id, organizationId, after: invoice });
+  await sendPlatformMail('INVOICE_CREATED', organizationId, { period, amount: invoice.amount, dueDate });
   return { invoice, created: true };
 }
 
@@ -190,8 +193,9 @@ export async function payInvoice(ctx: PlatformCtx, id: string, input: z.infer<ty
     const sub = await prismaPlatform.subscription.findUnique({ where: { organizationId: inv.organizationId } });
     if (sub && ['PAST_DUE', 'BLOCKED'].includes(sub.status)) {
       await prismaPlatform.subscription.update({ where: { organizationId: inv.organizationId }, data: { status: 'ACTIVE' } });
-      await prismaPlatform.organization.updateMany({ where: { id: inv.organizationId, status: 'READONLY' }, data: { status: 'ACTIVE', blockedAt: null, blockReason: null } });
+      const re = await prismaPlatform.organization.updateMany({ where: { id: inv.organizationId, status: 'READONLY' }, data: { status: 'ACTIVE', blockedAt: null, blockReason: null } });
       invalidateAccess(inv.organizationId);
+      if (re.count) await sendPlatformMail('ORG_REACTIVATED', inv.organizationId);
     }
   }
   await paudit(ctx, { action: 'PLATFORM_INVOICE_PAID', resource: 'subscription_invoice', resourceId: id, organizationId: inv.organizationId, before: inv, after: paid });
@@ -228,8 +232,10 @@ export async function runBilling(now = new Date()) {
     if (!['ACTIVE', 'PAST_DUE', 'BLOCKED'].includes(sub.status) || sub.amount.isZero()) continue;
     const r = await generateInvoice(orgId, period).catch(() => null);
     if (r?.created) out.generated++;
+    const toMark = await prismaPlatform.subscriptionInvoice.findMany({ where: { organizationId: orgId, status: 'OPEN', dueDate: { lt: today } } });
     const marked = await prismaPlatform.subscriptionInvoice.updateMany({ where: { organizationId: orgId, status: 'OPEN', dueDate: { lt: today } }, data: { status: 'OVERDUE' } });
     out.overdue += marked.count;
+    for (const inv of toMark) await sendPlatformMail('INVOICE_OVERDUE', orgId, { period: inv.period, amount: inv.amount, dueDate: inv.dueDate });
     const overdue = await prismaPlatform.subscriptionInvoice.findMany({ where: { organizationId: orgId, status: 'OVERDUE' }, orderBy: { dueDate: 'asc' } });
     if (overdue.length) {
       const oldest = overdue[0]!;
@@ -240,13 +246,15 @@ export async function runBilling(now = new Date()) {
       if (shouldBlock && sub.organization.status === 'ACTIVE') {
         await prismaPlatform.organization.update({ where: { id: orgId }, data: { status: 'READONLY', blockedAt: now, blockReason: `Fatura ${oldest.period} vencida em ${ymd(oldest.dueDate)} sem pagamento após ${sub.graceDays} dias de carência` } });
         await paudit(null, { action: 'ORGANIZATION_SOFT_BLOCKED', resource: 'organization', resourceId: orgId, organizationId: orgId, after: { period: oldest.period } });
+        await sendPlatformMail('ORG_BLOCKED', orgId, { reason: `fatura ${oldest.period} vencida sem pagamento` });
         out.blocked++;
       }
       invalidateAccess(orgId);
     } else if (['PAST_DUE', 'BLOCKED'].includes(sub.status)) {
       await prismaPlatform.subscription.update({ where: { organizationId: orgId }, data: { status: 'ACTIVE' } });
-      await prismaPlatform.organization.updateMany({ where: { id: orgId, status: 'READONLY' }, data: { status: 'ACTIVE', blockedAt: null, blockReason: null } });
+      const re = await prismaPlatform.organization.updateMany({ where: { id: orgId, status: 'READONLY' }, data: { status: 'ACTIVE', blockedAt: null, blockReason: null } });
       invalidateAccess(orgId);
+      if (re.count) await sendPlatformMail('ORG_REACTIVATED', orgId);
       out.reactivated++;
     }
   }

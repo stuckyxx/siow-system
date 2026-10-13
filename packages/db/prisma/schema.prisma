@@ -39,6 +39,9 @@ model User {
   /// Bloqueio por tentativas de login falhas (5 falhas → 15 min).
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
+  /// 2FA (TOTP): segredo cifrado e data de ativação
+  totpSecret       String?
+  totpEnabledAt    DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
@@ -1257,6 +1260,8 @@ model PlatformAdmin {
   passwordHash String
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
+  totpSecret   String?
+  totpEnabledAt DateTime?
   createdAt    DateTime  @default(now())
 
   @@map("platform_admins")
@@ -2178,4 +2183,13 @@ model WaMessage {
 
   @@index([conversationId, timestamp])
   @@map("wa_messages")
+}
+
+/// Fase 11 — limite de requisições compartilhado entre instâncias (janela fixa por chave).
+model RateLimit {
+  key         String   @id
+  count       Int      @default(0)
+  windowStart DateTime @default(now())
+
+  @@map("rate_limits")
 }

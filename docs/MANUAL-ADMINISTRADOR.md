@@ -3,7 +3,7 @@
 ## Administração (menu → Administração)
 
 ### Usuários
-Criar usuário (nome, e-mail, senha provisória, papel). Troca de senha obrigatória no primeiro acesso. "Redefinir senha" gera senha provisória e encerra as sessões. Desativar mantém o histórico. O limite de usuários ativos é o do plano.
+Criar usuário (nome, e-mail, senha provisória, papel). Troca de senha obrigatória no primeiro acesso. "Redefinir senha" gera senha provisória e encerra as sessões. Desativar mantém o histórico. "Redefinir 2FA" desliga a autenticação em dois fatores de quem perdeu o autenticador (auditado). O limite de usuários ativos é o do plano.
 
 ### Papéis e permissões
 Papéis padrão (ADMINISTRADOR, FINANCEIRO, COMERCIAL, ATENDIMENTO, LEITURA, PARCEIRO) e permissões por código (`entities.read`, `invoices.write`, ...). É possível conceder/revogar permissões individuais a um usuário (aparecem como +N/−N).
@@ -32,7 +32,8 @@ Acesso exclusivo com credencial de superadmin (independente das organizações).
 - **Organizações**: onboarding em 3 passos (empresa → plano → administrador); por organização: dados, domínio próprio, limites, módulos, situação (ativa / somente leitura / suspensa), assinatura (plano, situação, mensalidade, dia de vencimento, carência, fim do teste), faturas (gerar, marcar paga, cancelar), uso e exportação LGPD, remoção lógica (só sem dados de negócio).
 - **Planos**: chave, nome, mensalidade, limites, módulos, dias de teste, público (aparece no autocadastro).
 - **Faturas**: todas as faturas de assinatura; "Executar cobrança" roda a rotina do cron agora.
-- **Configurações**: autocadastro (`/cadastro`) ligado/desligado e plano padrão; troca da senha do superadmin.
+- **Configurações**: autocadastro (`/cadastro`) ligado/desligado e plano padrão; troca da senha e 2FA do superadmin (recomendado).
+- **E-mails automáticos**: boas-vindas, fatura emitida/vencida, bloqueio e reativação são enviados aos administradores da organização pelo provedor de e-mail configurado em Administração → Integrações da organização Siow.
 
 ### Ciclo de cobrança
 Teste → Ativa → Em atraso (fatura vencida) → Bloqueada após a carência (organização em somente leitura: consulta liberada, alterações bloqueadas, faixa explicativa) → Ativa ao registrar o pagamento. Isenta não gera faturas. A organização padrão (Siow) nunca é bloqueada.

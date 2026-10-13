@@ -292,6 +292,13 @@ encerradas), atualização automática a cada 5 s, conversa em balões com statu
 
 `server/rate-limit.ts` aplica limite por chave (IP e/ou e-mail) nas rotas públicas: login, refresh, login da plataforma, autocadastro e avaliação pública (429 com `Retry-After`; janela deslizante em memória por instância). Logins da plataforma são auditados (`PLATFORM_LOGIN`/`PLATFORM_LOGIN_FAILED`). Testes unitários em `apps/web/src/server/*.test.ts` (vitest) cobrem o limite e o licenciamento por rota. O roteiro `scripts/homologacao.sh` e o checklist de go-live estão em `docs/HOMOLOGACAO.md`; manuais em `docs/MANUAL-USUARIO.md` e `docs/MANUAL-ADMINISTRADOR.md`.
 
+## 6l. Pós-homologação (Fase 11): 2FA, limite compartilhado, retenção e e-mails da plataforma
+
+- **2FA (TOTP)** — `server/totp.ts` (RFC 6238, sem dependências) e `services/mfa.ts`: segredo cifrado em `User.totpSecret`/`PlatformAdmin.totpSecret`, ativado com um código válido (`totpEnabledAt`). Login com 2FA ativo devolve `{ mfaRequired, mfaToken }` (JWT tipo `mfa`, 5 min, sem sessão) e `POST /api/auth/mfa` (ou `/api/platform/auth/mfa`) conclui com o código. Gerência em "Senha" (usuário) e Configurações da plataforma; administrador pode redefinir o 2FA de um usuário (`POST /api/users/[id]/mfa-reset`, auditado).
+- **Limite de requisições compartilhado** — tabela `rate_limits` (janela fixa por chave, upsert atômico) usada por todas as instâncias; cai para memória se o banco falhar. Limpeza diária no cron.
+- **Retenção** — `services/retention.ts` no cron diário: remove `sync_runs` concluídos com mais de `sync.retentionDays` (180, mantendo a última execução de cada fonte e todas as falhas), sessões encerradas há 30 dias e notificações lidas há 90 dias.
+- **E-mails da plataforma** — `services/platform-mail.ts`: boas-vindas, fatura emitida, fatura vencida, bloqueio e reativação, enviados pelo provedor de e-mail da organização Siow aos administradores da organização; melhor esforço, nunca simulado.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

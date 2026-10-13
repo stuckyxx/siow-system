@@ -157,6 +157,7 @@ export const SETTINGS: Array<{ key: string; value: unknown; description: string 
   { key: 'tickets.sla', value: { URGENT: { response: 2, resolution: 8 }, HIGH: { response: 4, resolution: 24 }, MEDIUM: { response: 8, resolution: 72 }, LOW: { response: 24, resolution: 120 } }, description: 'SLA de atendimento em horas corridas por prioridade (primeira resposta / resolução)' },
   { key: 'tenders.alertDays', value: 3, description: 'Dias de antecedência para alertar prazos de licitação' },
   { key: 'crm.stalledDays', value: 15, description: 'Dias sem movimentação para considerar uma oportunidade parada (quando a etapa não define SLA)' },
+  { key: 'sync.retentionDays', value: 180, description: 'Dias de retenção do histórico de sincronizações concluídas (execuções com falha e a última de cada fonte são mantidas)' },
 ];
 
 export const TASK_TYPE_LABELS: Record<TaskType, string> = {

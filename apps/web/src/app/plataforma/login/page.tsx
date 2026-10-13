@@ -11,9 +11,16 @@ export default function PlatformLoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setLoading(true); setError(null);
-    try { await api('/platform/auth/login', { method: 'POST', body: { email, password } }); router.replace('/plataforma'); }
+    try {
+      type Res = { ok: boolean; mfaRequired?: boolean; mfaToken?: string };
+      const res = mfaToken ? await api<Res>('/platform/auth/mfa', { method: 'POST', body: { mfaToken, code } }) : await api<Res>('/platform/auth/login', { method: 'POST', body: { email, password } });
+      if (res.mfaRequired && res.mfaToken) { setMfaToken(res.mfaToken); return; }
+      router.replace('/plataforma');
+    }
     catch (err) { setError(err instanceof ApiError ? err.message : 'Falha ao entrar'); }
     finally { setLoading(false); }
   }
@@ -24,10 +31,16 @@ export default function PlatformLoginPage() {
         <img className="lg-logo" src="/logo.png" alt="Siow System" />
         <div className="lg-sub">Administração da plataforma</div>
         <form onSubmit={submit}>
+          {mfaToken ? (<>
+            <label className="f">Código do autenticador<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} required /></label>
+            {error && <div className="err" role="alert">{error}</div>}
+            <button className="btn p" type="submit" disabled={loading || code.length !== 6}>{loading ? 'Verificando…' : 'Confirmar'}</button>
+          </>) : (<>
           <label className="f">E-mail<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
           <label className="f">Senha<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           {error && <div className="err" role="alert">{error}</div>}
           <button className="btn p" type="submit" disabled={loading}>{loading ? 'Entrando…' : 'Entrar na plataforma'}</button>
+          </>)}
         </form>
         <p className="small muted" style={{ marginTop: 12 }}>Acesso exclusivo da Siow System. Usuários das organizações entram em <a href="/login" style={{ color: 'var(--accent)' }}>/login</a>.</p>
       </div>

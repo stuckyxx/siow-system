@@ -10,8 +10,9 @@ export const dynamic = 'force-dynamic';
 export const POST = route(null, async (ctx) => {
   const body = await json(ctx.req, loginSchema);
   const key = `login:${ctx.ip ?? 'sem-ip'}`;
-  rateLimit(key, RATE_RULES.login);
-  const user = await login(body.email, body.password, ctx);
-  rateLimitReset(key);
-  return { ok: true, user };
+  await rateLimit(key, RATE_RULES.login);
+  const out = await login(body.email, body.password, ctx);
+  await rateLimitReset(key);
+  if (out.mfaRequired) return { ok: false, mfaRequired: true, mfaToken: out.mfaToken };
+  return { ok: true, user: out };
 });

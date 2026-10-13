@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 /** POST /api/auth/refresh — público. Rotaciona o refresh token; 401 se inválido/expirado. */
 export const POST = route(null, async (ctx) => {
-  rateLimit(`refresh:${ctx.ip ?? 'sem-ip'}`, RATE_RULES.refresh);
+  await rateLimit(`refresh:${ctx.ip ?? 'sem-ip'}`, RATE_RULES.refresh);
   const ok = await rotateSession(ctx.req);
   if (ok) return { ok: true };
   await clearCookies();

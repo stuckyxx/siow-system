@@ -29,7 +29,7 @@ export const CHILD_TENANT_PATHS: Record<string, string> = {
 };
 
 /** Modelos globais (sem tenant): catálogo de permissões, configurações da plataforma, organizações, superadmin. */
-export const GLOBAL_MODELS = new Set<string>(['Permission', 'Organization', 'PlatformAdmin', 'Plan']);
+export const GLOBAL_MODELS = new Set<string>(['Permission', 'Organization', 'PlatformAdmin', 'Plan', 'RateLimit']);
 
 const READ_OPS = new Set(['findFirst', 'findFirstOrThrow', 'findMany', 'findUnique', 'findUniqueOrThrow', 'count', 'aggregate', 'groupBy', 'update', 'updateMany', 'delete', 'deleteMany', 'upsert']);
 const CREATE_OPS = new Set(['create', 'createMany', 'createManyAndReturn', 'upsert']);

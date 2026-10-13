@@ -43,5 +43,5 @@ Catálogo agrupado por área, com indicação de natureza (oficial/gerencial). E
 ## Notificações e busca
 Sino no topo lista alertas (certidões, contratos, tarefas, SLA). A busca global encontra entidade, município, nota ou contrato; a "Busca rápida" (canto inferior) aceita atalhos.
 
-## Senha
-"Senha" no topo abre a troca de senha; as demais sessões são encerradas.
+## Senha e 2FA
+"Senha" no topo abre a troca de senha (as demais sessões são encerradas) e a **autenticação em dois fatores**: "Configurar 2FA" mostra uma chave para cadastrar no aplicativo autenticador (Google/Microsoft Authenticator, Authy…); confirme com o código de 6 dígitos. A partir daí o login pede o código após a senha. Perdeu o celular? O administrador pode redefinir o 2FA em Administração → Usuários.

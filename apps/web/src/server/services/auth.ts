@@ -7,15 +7,17 @@ import { audit } from '../audit.js';
 import { REFRESH_COOKIE, issueSession, sha256 } from '../auth.js';
 import { hashPassword, isStrongPassword, verifyPassword } from '../password.js';
 import { badRequest, unauthorized, type Ctx } from '../http.js';
+import { issueMfaToken, mfaEnabled } from './mfa.js';
 
 export const MAX_FAILED_LOGINS = 5;
 export const LOCKOUT_MINUTES = 15;
 
 export interface LoginUser { id: string; name: string; email: string; mustChangePassword: boolean }
+export type LoginOutcome = { mfaRequired: true; mfaToken: string } | ({ mfaRequired?: false } & LoginUser);
 
 type Meta = Pick<Ctx, 'ip' | 'userAgent'>;
 
-export async function login(email: string, password: string, meta: Meta): Promise<LoginUser> {
+export async function login(email: string, password: string, meta: Meta): Promise<LoginOutcome> {
   const normalized = email.toLowerCase();
   const user = await prisma.user.findFirst({ where: { email: normalized, deletedAt: null } });
 
@@ -42,6 +44,16 @@ export async function login(email: string, password: string, meta: Meta): Promis
     throw unauthorized('Credenciais inválidas');
   }
 
+  if (mfaEnabled(user)) {
+    // Senha correta, mas a conta exige o segundo fator: nenhuma sessão é criada ainda.
+    await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
+    return { mfaRequired: true, mfaToken: await issueMfaToken('user', user.id) };
+  }
+  return finishLogin(user, meta);
+}
+
+/** Conclui o login (sessão + auditoria). Usado após a senha ou após o 2FA. */
+export async function finishLogin(user: { id: string; name: string; email: string; organizationId: string; mustChangePassword: boolean }, meta: Meta): Promise<LoginUser> {
   await issueSession(user.id, meta.ip, meta.userAgent);
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), failedLoginCount: 0, lockedUntil: null } });
   await audit(

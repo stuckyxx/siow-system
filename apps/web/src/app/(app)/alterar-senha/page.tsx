@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input } from '@/components/ui';
+import { MfaPanel } from '@/components/mfa-panel';
 
 /**
  * Troca de senha do usuário logado. Usada no primeiro acesso (mustChangePassword)
@@ -72,6 +73,7 @@ export default function ChangePasswordPage() {
           </form>
         </CardContent>
       </Card>
+      {!required && <MfaPanel base="/auth/mfa" />}
     </div>
   );
 }

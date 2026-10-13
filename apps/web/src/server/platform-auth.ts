@@ -11,6 +11,7 @@ import { env } from './env.js';
 import { csrfOk, errorResponse, forbidden, toResponse, unauthorized } from './http.js';
 import { runAsPlatform } from './tenant.js';
 import { verifyPassword } from './password.js';
+import { issueMfaToken, mfaEnabled } from './services/mfa.js';
 
 export const PLATFORM_COOKIE = 'siow_platform';
 const TTL = 8 * 3600;
@@ -19,11 +20,18 @@ const enc = (s: string) => new TextEncoder().encode(s);
 export interface PlatformAdminUser { id: string; email: string; name: string }
 export interface PlatformCtx { req: NextRequest; admin: PlatformAdminUser; params: Record<string, string>; query: Record<string, string>; ip: string | null; userAgent: string | null }
 
-export async function platformLogin(email: string, password: string, meta: { ip: string | null; userAgent: string | null }): Promise<PlatformAdminUser> {
+export async function platformLogin(email: string, password: string, meta: { ip: string | null; userAgent: string | null }): Promise<PlatformAdminUser | { mfaRequired: true; mfaToken: string }> {
   const admin = await prismaPlatform.platformAdmin.findUnique({ where: { email: email.toLowerCase() } });
   const ok = await verifyPassword(admin?.passwordHash, password);
   const log = (action: string, after: Record<string, string>) => prismaPlatform.auditLog.create({ data: { action, resource: 'platform_auth', resourceId: admin?.id ?? null, after, justification: `plataforma:${email.toLowerCase()}`, ip: meta.ip, userAgent: meta.userAgent } }).catch(() => undefined);
   if (!admin || !ok || !admin.isActive) { await log('PLATFORM_LOGIN_FAILED', { email: email.toLowerCase(), reason: !admin ? 'UNKNOWN' : !ok ? 'BAD_PASSWORD' : 'INACTIVE' }); throw unauthorized('Credenciais inválidas'); }
+  if (mfaEnabled(admin)) return { mfaRequired: true, mfaToken: await issueMfaToken('platform', admin.id) };
+  return platformFinishLogin(admin.id, meta);
+}
+
+export async function platformFinishLogin(id: string, meta: { ip: string | null; userAgent: string | null }): Promise<PlatformAdminUser> {
+  const admin = await prismaPlatform.platformAdmin.findUniqueOrThrow({ where: { id } });
+  const log = (action: string, after: Record<string, string>) => prismaPlatform.auditLog.create({ data: { action, resource: 'platform_auth', resourceId: admin.id, after, justification: `plataforma:${admin.email}`, ip: meta.ip, userAgent: meta.userAgent } }).catch(() => undefined);
   await prismaPlatform.platformAdmin.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
   await log('PLATFORM_LOGIN', { email: admin.email });
   const token = await new SignJWT({ type: 'platform' }).setProtectedHeader({ alg: 'HS256' }).setSubject(admin.id).setIssuedAt().setExpirationTime(`${TTL}s`).sign(enc(env().JWT_ACCESS_SECRET));
