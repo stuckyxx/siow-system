@@ -5,6 +5,8 @@ const schema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
   CRON_SECRET: z.string().min(16).optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ASSISTANT_MODEL: z.string().optional(),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   APP_URL: z.string().url().optional(),
   COOKIE_SECURE: z.enum(['true', 'false']).default('true'),

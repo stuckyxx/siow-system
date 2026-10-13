@@ -40,6 +40,14 @@ Cadastro de parceiros, regras de comissão, apuração e pagamento. Usuários co
 ## Relatórios
 Catálogo agrupado por área, com indicação de natureza (oficial/gerencial). Exportação em PDF, XLSX e CSV (requer permissão e é registrada).
 
+## Assistente virtual
+No menu **Assistente**, escreva o que precisa em linguagem natural e o assistente faz por você: cadastrar entidade ("cadastre a Prefeitura Municipal de Tuntum (MA)"), contrato ("crie o contrato 012/2026 de R$ 4.500 mensais para a Câmara de Bom Lugar até 31/12/2026"), oportunidade ("abra um lead para a Prefeitura de Bacabal de R$ 3.000/mês"), tarefa, chamado, licitação, além de consultas ("quais notas estão pendentes este mês?"). Ele consulta antes de agir, reaproveita cadastros existentes em vez de duplicar e preenche o código IBGE automaticamente. Pedidos encadeados funcionam ("cadastre X e crie um contrato…").
+- Ele usa **as suas permissões**: o que você não pode fazer pela tela, ele também não faz.
+- **Ações sensíveis** (excluir, dar baixa em notas, enviar mensagens, fechar oportunidades, sincronizar tudo, administrar usuários) só acontecem depois que você clica em **Confirmar e executar** no cartão amarelo mostrado no chat.
+- "Ações executadas" em cada resposta mostra o que foi feito; tudo fica registrado na auditoria.
+- Anexar arquivos (PDF de contrato, documentos) continua sendo feito pelas telas; o assistente orienta o caminho.
+- Se aparecer "não configurado", peça ao administrador para ativar a chave do assistente.
+
 ## Notificações e busca
 Sino no topo lista alertas (certidões, contratos, tarefas, SLA). A busca global encontra entidade, município, nota ou contrato; a "Busca rápida" (canto inferior) aceita atalhos.
 

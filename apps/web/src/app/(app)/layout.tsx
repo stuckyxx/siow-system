@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, Building2, FileBarChart, FileSignature, Gavel, Handshake, Headset, LayoutDashboard, Settings, Wallet } from 'lucide-react';
+import { Bot, Briefcase, Building2, FileBarChart, FileSignature, Gavel, Handshake, Headset, LayoutDashboard, Settings, Wallet } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { applyBranding, orgBranding } from '@/lib/branding';
 import { useEffect } from 'react';
@@ -26,6 +26,7 @@ const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; pe
   { href: '/parceiros', label: 'Parceiros', icon: Handshake, perms: ['partners.read'], match: (p) => p.startsWith('/parceiros'), module: 'PARCEIROS' },
   { href: '/parceiro', label: 'Meu portal', icon: Handshake, perms: ['partners.portal'], match: (p) => p === '/parceiro', onlyIfMissing: 'partners.read', module: 'PARCEIROS' },
   { href: '/financeiro/relatorios', label: 'Relatórios', icon: FileBarChart, perms: ['reports.read'], match: (p) => p.startsWith('/financeiro/relatorios'), module: 'RELATORIOS' },
+  { href: '/assistente', label: 'Assistente', icon: Bot, perms: [], match: (p) => p.startsWith('/assistente') },
   { href: '/admin', label: 'Administração', icon: Settings, perms: ['users.manage', 'settings.manage', 'templates.manage', 'audit.read'], match: (p) => p.startsWith('/admin') },
 ];
 
@@ -48,7 +49,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const { user, can, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const allowed = (perms: string[]): boolean => perms.some(can);
+  const allowed = (perms: string[]): boolean => perms.length === 0 || perms.some(can);
   const access = user?.access;
   const hasModule = (m?: string): boolean => !m || !access || access.modules.length === 0 || access.modules.includes(m);
   const brand = orgBranding(user?.organization?.branding);

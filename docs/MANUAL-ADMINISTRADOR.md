@@ -40,7 +40,7 @@ Teste → Ativa → Em atraso (fatura vencida) → Bloqueada após a carência (
 
 ## Operação
 - **Crons**: GitHub Actions `sync-cron.yml` (sincronização a cada 20 min + integrações; diário 09:00 UTC + cobrança da plataforma) usando `APP_URL` e `CRON_SECRET`; Vercel Cron diário como reserva (`apps/web/vercel.json`).
-- **Variáveis na Vercel**: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CRON_SECRET`, `BLOB_READ_WRITE_TOKEN`, `INTEGRATION_SECRET_KEY` (opcional), `APP_URL`, SMTP/WhatsApp (opcionais; o painel de Integrações substitui).
+- **Variáveis na Vercel**: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CRON_SECRET`, `BLOB_READ_WRITE_TOKEN`, `INTEGRATION_SECRET_KEY` (opcional), `APP_URL`, SMTP/WhatsApp (opcionais; o painel de Integrações substitui), `ANTHROPIC_API_KEY` (ativa o Assistente virtual; opcional `ASSISTANT_MODEL`, padrão `claude-opus-5-5`).
 - **Migrações**: `packages/db/prisma/schema.sql` é idempotente; crie um ramo de backup no Neon antes de aplicar. Depois: `POST /api/admin/bootstrap` com bearer `CRON_SECRET` reaplica permissões/papéis.
 - **Homologação**: `scripts/homologacao.sh <url>` (ver `docs/HOMOLOGACAO.md`).
 - **Backups**: ramos Neon por fase + snapshots diários recomendados; documentos no Vercel Blob.
