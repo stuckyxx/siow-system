@@ -345,3 +345,11 @@ modelos sem conta válida; atribuir, encerrar (chamado resolvido), nova mensagem
 **Validação** — local: criação de organização com seed completo (14 configurações próprias, papéis, administrador com troca de senha), módulo Comercial/Licitações negados no plano Básico, limite de usuários aplicado, fatura vencida → cron → bloqueio suave (mutação 423, leitura 200, faixa no sistema) → pagamento de todas as faturas → organização ativa; cron idempotente; marca por host; chave de API lista entidades, 403 sem permissão, 401 após revogação e com chave inválida; exportação LGPD das duas organizações; autocadastro bloqueado/habilitado; organização padrão não bloqueável; organização Siow com configurações e Financeiro intactos. Produção: migração idempotente com backup prévio, superadmin criado, validação dos mesmos fluxos com organização de teste removida ao final (exclusão lógica) e regressão do Financeiro sem alteração.
 
 **Fora do escopo (próximas fases)** — pagamento automático das faturas da plataforma (boleto/PIX), domínio próprio automático na Vercel (hoje: CNAME + cadastro do domínio pela Siow), e-mails transacionais de cobrança.
+
+## Executado na Fase 10 — Homologação geral (13/10/2026)
+
+**Entregue** — limite de tentativas nas rotas públicas (login, refresh, login da plataforma, autocadastro, avaliação) com `Retry-After`; auditoria dos logins da plataforma; crons de integrações e cobrança da plataforma na Vercel e no GitHub Actions; testes unitários no app web (limite de requisições, licenciamento por rota); roteiro automatizado `scripts/homologacao.sh` (66 verificações por módulo + segurança); `docs/HOMOLOGACAO.md` (roteiro manual ponta a ponta, revisão de segurança, permissões, performance, backups, checklist de go-live); `docs/MANUAL-USUARIO.md` e `docs/MANUAL-ADMINISTRADOR.md`.
+
+**Validação** — local: 66 ok, 0 falhas; 429 confirmado na 21ª tentativa de login e na 11ª na plataforma. Produção: roteiro executado após o deploy (resultado registrado no relatório da fase); dados de teste das fases anteriores conferidos e neutralizados (exclusão lógica/renomeação; nada visível nas telas); regressão do Financeiro inalterada.
+
+**Pendências recomendadas** — snapshots diários no Neon, limpeza periódica de `sync_runs`, limite de requisições compartilhado entre instâncias, 2FA para administradores.

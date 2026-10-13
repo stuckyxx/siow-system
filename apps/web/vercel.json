@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/platform",
       "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/cron/integracoes",
+      "schedule": "15 9 * * *"
     }
   ]
 }

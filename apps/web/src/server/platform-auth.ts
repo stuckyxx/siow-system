@@ -19,11 +19,13 @@ const enc = (s: string) => new TextEncoder().encode(s);
 export interface PlatformAdminUser { id: string; email: string; name: string }
 export interface PlatformCtx { req: NextRequest; admin: PlatformAdminUser; params: Record<string, string>; query: Record<string, string>; ip: string | null; userAgent: string | null }
 
-export async function platformLogin(email: string, password: string): Promise<PlatformAdminUser> {
+export async function platformLogin(email: string, password: string, meta: { ip: string | null; userAgent: string | null }): Promise<PlatformAdminUser> {
   const admin = await prismaPlatform.platformAdmin.findUnique({ where: { email: email.toLowerCase() } });
   const ok = await verifyPassword(admin?.passwordHash, password);
-  if (!admin || !ok || !admin.isActive) throw unauthorized('Credenciais inválidas');
+  const log = (action: string, after: Record<string, string>) => prismaPlatform.auditLog.create({ data: { action, resource: 'platform_auth', resourceId: admin?.id ?? null, after, justification: `plataforma:${email.toLowerCase()}`, ip: meta.ip, userAgent: meta.userAgent } }).catch(() => undefined);
+  if (!admin || !ok || !admin.isActive) { await log('PLATFORM_LOGIN_FAILED', { email: email.toLowerCase(), reason: !admin ? 'UNKNOWN' : !ok ? 'BAD_PASSWORD' : 'INACTIVE' }); throw unauthorized('Credenciais inválidas'); }
   await prismaPlatform.platformAdmin.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
+  await log('PLATFORM_LOGIN', { email: admin.email });
   const token = await new SignJWT({ type: 'platform' }).setProtectedHeader({ alg: 'HS256' }).setSubject(admin.id).setIssuedAt().setExpirationTime(`${TTL}s`).sign(enc(env().JWT_ACCESS_SECRET));
   const jar = await cookies();
   jar.set(PLATFORM_COOKIE, token, { httpOnly: true, secure: env().COOKIE_SECURE === 'true', sameSite: 'lax', path: '/', maxAge: TTL });

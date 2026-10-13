@@ -1,6 +1,6 @@
 # Sincronização agendada (o Vercel Cron do plano Hobby roda no máximo 1x/dia; vercel.json fica como reserva):
 # chama o endpoint de sincronização a cada 20 minutos (cada chamada processa as fontes mais antigas
-# dentro de SYNC_BUDGET_MS) e as verificações diárias às 09:00 UTC.
+# dentro de SYNC_BUDGET_MS) + integrações; verificações diárias e cobrança da plataforma às 09:00 UTC.
 # Segredos necessários no repositório: APP_URL (ex.: https://app.exemplo.com.br) e CRON_SECRET
 # (mesmo valor da variável CRON_SECRET do projeto na Vercel).
 name: Sync cron
@@ -21,6 +21,11 @@ jobs:
           curl --fail --silent --show-error --max-time 120 \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.APP_URL }}/api/cron/sync"
+      - name: Integrações (webhooks pendentes e assinaturas)
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/integracoes"
 
   daily:
     if: github.event.schedule == '0 9 * * *' || github.event_name == 'workflow_dispatch'
@@ -31,3 +36,8 @@ jobs:
           curl --fail --silent --show-error --max-time 120 \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.APP_URL }}/api/cron/daily"
+      - name: Plataforma (faturas de assinatura e bloqueio suave)
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/platform"

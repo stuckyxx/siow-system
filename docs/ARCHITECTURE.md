@@ -288,6 +288,10 @@ encerradas), atualização automática a cada 5 s, conversa em balões com statu
 
 **LGPD / portabilidade** — `GET /api/settings/export` (organização, exige `settings.manage` + `audit.read`, auditado como EXPORT) e `GET /api/platform/organizations/[id]/export` devolvem JSON completo (`siow-export/v1`) da organização: usuários (sem hashes), entidades, contratos, notas, cobranças, OS, certidões, oportunidades, licitações, chamados, campanhas, parceiros, tarefas, configurações, documentos (metadados) e WhatsApp.
 
+## 6k. Homologação e proteção de rotas públicas (Fase 10)
+
+`server/rate-limit.ts` aplica limite por chave (IP e/ou e-mail) nas rotas públicas: login, refresh, login da plataforma, autocadastro e avaliação pública (429 com `Retry-After`; janela deslizante em memória por instância). Logins da plataforma são auditados (`PLATFORM_LOGIN`/`PLATFORM_LOGIN_FAILED`). Testes unitários em `apps/web/src/server/*.test.ts` (vitest) cobrem o limite e o licenciamento por rota. O roteiro `scripts/homologacao.sh` e o checklist de go-live estão em `docs/HOMOLOGACAO.md`; manuais em `docs/MANUAL-USUARIO.md` e `docs/MANUAL-ADMINISTRADOR.md`.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

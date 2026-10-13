@@ -50,7 +50,7 @@ export function toResponse(result: unknown): Response {
 }
 
 export function errorResponse(e: unknown): Response {
-  if (e instanceof HttpError) return NextResponse.json({ statusCode: e.status, message: e.message, issues: e.issues }, { status: e.status });
+  if (e instanceof HttpError) { const retry = (e as HttpError & { retryAfter?: number }).retryAfter; return NextResponse.json({ statusCode: e.status, message: e.message, issues: e.issues }, { status: e.status, headers: retry ? { 'Retry-After': String(retry) } : undefined }); }
   if (e instanceof ZodError) return NextResponse.json({ statusCode: 400, message: 'Dados inválidos', issues: e.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) }, { status: 400 });
   if (e instanceof Prisma.PrismaClientKnownRequestError) {
     if (e.code === 'P2002') return NextResponse.json({ statusCode: 409, message: 'Registro duplicado' }, { status: 409 });
