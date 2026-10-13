@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import { INTERACTION_KIND_LABELS, TASK_PRIORITY_LABELS, TICKET_CHANNEL_LABELS, TICKET_STATUSES, TICKET_STATUS_LABELS, TICKET_TYPE_LABELS, formatBrDate, formatBrDateTime, toBrDateTimeInput, todayIso, type InteractionKind, type TicketChannel, type TicketDetail, type TicketType } from '@siow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { AskAssistantButton } from '@/components/assistant/assistant-chat';
 import { useAssignees } from '@/components/panels/tasks-panel';
 import { Badge, Button, Dialog, Empty, Field, Input, Select, Stat, Textarea, useToast } from '@/components/ui';
 import { TicketForm, errMsg } from '@/components/atendimento/ticket-form';
@@ -39,6 +40,7 @@ export default function TicketPage() {
           {t.description && <p className="small" style={{ margin: '6px 0 0', color: 'var(--ink2)', maxWidth: 860, whiteSpace: 'pre-wrap' }}>{t.description}</p>}
         </div>
         <div className="row" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <AskAssistantButton size="md" context={{ kind: 'ticket', id: t.id, label: `Chamado #${t.number} · ${t.subject}`, path: `/atendimento/chamados/${t.id}` }} suggestions={['Resuma este chamado e o que falta para resolver', 'Registre uma interação: ligação feita ao cliente com o resumo que eu informar', 'Crie uma tarefa para amanhã relacionada a este chamado', 'Marque como resolvido com a nota de resolução que eu informar']} onChanged={() => { void qc.invalidateQueries({ queryKey: ['ticket', id] }); void qc.invalidateQueries({ queryKey: ['tickets'] }); }} />
           {write && open && !t.assignee && <Button variant="secondary" onClick={() => takeIt.mutate()} disabled={takeIt.isPending}>Assumir</Button>}
           {write && <Button variant="secondary" onClick={() => setDialog('assign')}>Atribuir</Button>}
           {write && <Button variant="secondary" onClick={() => setDialog('edit')}>Editar</Button>}

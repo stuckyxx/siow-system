@@ -50,6 +50,7 @@ No menu **Assistente**, escreva o que precisa em linguagem natural e o assistent
 - **Ler respostas**: ligue para ouvir as respostas em voz alta.
 - **Histórico**: suas conversas ficam salvas (só você as vê). Abra uma conversa anterior para continuar de onde parou ou exclua-a.
 - **Áudios do WhatsApp**: com a transcrição configurada, os áudios recebidos na Central de atendimento aparecem já transcritos (🎙️), além do anexo.
+- **Dentro das telas**: em Entidade, Contrato, Oportunidade, Chamado e na conversa do WhatsApp há o botão **Pedir ao assistente**. Ele abre o chat já sabendo qual registro está aberto: "resuma a situação", "crie uma tarefa de follow-up", "registre a ligação que fiz", "responda ao cliente que retornaremos amanhã". Ao concluir, a tela se atualiza sozinha.
 - Se aparecer "não configurado", peça ao administrador para ativar a chave do assistente.
 
 ## Notificações e busca

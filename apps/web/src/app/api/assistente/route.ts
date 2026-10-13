@@ -16,6 +16,7 @@ const bodySchema = z.object({
   messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(20_000) })).min(1).max(60),
   conversationId: z.string().uuid().optional().nullable(),
   inputMode: z.enum(['text', 'voice']).optional(),
+  context: z.object({ kind: z.enum(['entity', 'contract', 'opportunity', 'ticket', 'whatsapp', 'tender']), id: z.string().uuid(), label: z.string().min(1).max(160), path: z.string().max(200).optional() }).optional().nullable(),
   approvals: z.array(z.object({ token: z.string().max(64), method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']), path: z.string().max(400), body: z.unknown().optional(), reason: z.string().max(200) })).max(10).optional(),
 });
 

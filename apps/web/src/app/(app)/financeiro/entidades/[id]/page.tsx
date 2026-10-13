@@ -5,6 +5,7 @@ import { Suspense, useState } from 'react';
 import { ENTITY_LIFECYCLE_LABELS as LIFECYCLE, formatBRL, formatBrDate, formatBrDateTime, type EntitySummary, type InvoiceRow, type Paginated } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { AskAssistantButton } from '@/components/assistant/assistant-chat';
 import { InvoicesTable } from '@/components/invoices-table';
 import { InvoiceDialog } from '@/components/invoice-dialog';
 import { ContractsPanel } from '@/components/panels/contracts-panel';
@@ -103,6 +104,7 @@ function EntityView() {
           </div>
         </div>
         <div className="row">
+          <AskAssistantButton size="md" context={{ kind: 'entity', id: e.id, label: e.shortName ?? e.name, path: `/financeiro/entidades/${e.id}` }} suggestions={['Resuma a situação desta entidade: contratos, notas pendentes, chamados abertos e últimas interações', 'Crie uma tarefa para amanhã: ligar para o responsável sobre as notas pendentes', 'Abra uma oportunidade de renovação para esta entidade', 'Cadastre um contato: nome, cargo e telefone que eu informar']} onChanged={() => { void qc.invalidateQueries({ queryKey: ['entity', id] }); void qc.invalidateQueries({ queryKey: ['contracts-list'] }); void qc.invalidateQueries({ queryKey: ['tasks'] }); }} />
           <button className="btn" onClick={() => setTab('invoices')}>Ver pendentes</button>
           {can('tasks.manage') && <button className="btn" onClick={() => { setTabState('agenda'); setNewTask(true); }}>Nova tarefa</button>}
           {can('collections.manage') && <button className="btn" onClick={() => void charge()}>Cobrar</button>}

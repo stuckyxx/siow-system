@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Ctx } from './http.js';
 process.env.DATABASE_URL ??= 'postgresql://x:y@localhost/z';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789abcdef0123456789';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-0123456789abcdef012345678';
@@ -69,5 +70,17 @@ describe('assistente — integração de transcrição (Fase 13)', () => {
     const { AUDIO_MIME, MAX_AUDIO_BYTES } = await import('./services/speech.js');
     expect(MAX_AUDIO_BYTES).toBe(15 * 1024 * 1024);
     expect(AUDIO_MIME.test('audio/webm;codecs=opus')).toBe(true); expect(AUDIO_MIME.test('video/mp4')).toBe(true); expect(AUDIO_MIME.test('application/pdf')).toBe(false);
+  });
+});
+
+describe('assistente — contexto de tela (Fase 14)', () => {
+  it('o prompt de sistema inclui o registro aberto e as rotas relevantes', async () => {
+    const { systemPromptForTest } = await import('./services/assistant.js');
+    const ctx = { user: { id: 'u', name: 'A', email: 'a@b.c', roles: [], permissions: ['entities.read'], organizationId: 'o', organization: { name: 'Org' } } } as unknown as Ctx;
+    const p = systemPromptForTest(ctx, { kind: 'entity', id: '11111111-1111-4111-8111-111111111111', label: 'PM Tuntum' });
+    expect(p).toContain('Contexto da tela'); expect(p).toContain('PM Tuntum'); expect(p).toContain('/financeiro/entities/11111111-1111-4111-8111-111111111111');
+    const w = systemPromptForTest(ctx, { kind: 'whatsapp', id: '11111111-1111-4111-8111-111111111111', label: 'WhatsApp · João' });
+    expect(w).toContain('/atendimento/whatsapp/conversations/11111111-1111-4111-8111-111111111111/messages');
+    expect(systemPromptForTest(ctx, null)).not.toContain('Contexto da tela');
   });
 });

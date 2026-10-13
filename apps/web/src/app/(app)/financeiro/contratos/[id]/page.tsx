@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { ADJUSTMENT_INDEXES, RENEWAL_STATUS_LABELS, formatBRL, formatBrDate, todayIso, type ContractFinancialStatus, type ContractLedger, type RenewalStatus } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { AskAssistantButton } from '@/components/assistant/assistant-chat';
 import { ContractStatusBadge } from '@/components/status';
 import { AmendmentForm, AmendmentsTable, AttachPdf, ContractDocuments, ContractForm, LedgerView, type ContractRow } from '@/components/panels/contracts-panel';
 import { Button, Dialog, Field, Input, Select, Stat, Tabs, Textarea, useToast } from '@/components/ui';
@@ -44,6 +45,7 @@ export default function ContractPage() {
           {c.object && <p className="small" style={{ margin: '6px 0 0', color: 'var(--ink2)', maxWidth: 820 }}>{c.object}</p>}
         </div>
         <div className="row">
+          <AskAssistantButton size="md" context={{ kind: 'contract', id: c.id, label: `Contrato ${c.number} · ${c.entity.name}`, path: `/financeiro/contratos/${c.id}` }} suggestions={['Resuma a situação financeira deste contrato: notas emitidas, pagas e pendentes', 'Quantos meses faltam para o fim da vigência e qual o valor total restante?', 'Crie uma tarefa para 30 dias antes do fim da vigência: iniciar renovação', 'Registre um aditivo de prazo com a justificativa que eu informar']} onChanged={() => { void qc.invalidateQueries({ queryKey: ['contract', id] }); void qc.invalidateQueries({ queryKey: ['contract-fs', id] }); }} />
           {write && c.status === 'DRAFT' && <Button onClick={() => setDialog('activate')}>Ativar contrato</Button>}
           {write && <Button variant="secondary" onClick={() => setDialog('edit')}>Editar</Button>}
           {write && c.status === 'ACTIVE' && <Button variant="secondary" onClick={() => setDialog('adjust')}>Reajuste</Button>}

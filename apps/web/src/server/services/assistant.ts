@@ -41,7 +41,7 @@ export function modelName(): string { return process.env.ASSISTANT_MODEL || ASSI
 // ---------------------------------------------------------------------------
 export const API_CATALOG = `
 # Convenções
-- Todas as rotas são relativas a /api. Listagens aceitam page, pageSize (máx. 200), sortBy, sortDir e devolvem { data, total, page, pageSize }.
+- Todas as rotas são relativas a /api. Listagens aceitam page, pageSize (máx. 200), sortBy, sortDir e devolvem { data ou items, total, page, pageSize } — algumas devolvem um array simples; leia a forma da resposta.
 - Datas: "AAAA-MM-DD". Valores monetários: string decimal com ponto, ex. "1500.00" (nunca negativos).
 - IDs são UUID. Nunca invente IDs: obtenha-os em uma consulta antes de usar.
 - Erros: 400 dados inválidos (campo "issues"), 403 sem permissão/módulo, 404 não encontrado nesta organização, 409 duplicado, 423 organização somente leitura.
@@ -100,7 +100,8 @@ GET  /atendimento/tickets?q=&entityId=&status=&open=true&priority=&assigneeUserI
 POST /atendimento/tickets { subject (≥3), description?, type: SUPPORT|COMMERCIAL|FINANCIAL|REQUEST|COMPLAINT|VISIT|MEETING|OTHER, channel: WHATSAPP|EMAIL|PHONE|IN_PERSON|PORTAL|OTHER, priority, entityId?, contactId?, contractId?, requesterName?, assigneeUserId? }
 GET/PATCH/DELETE /atendimento/tickets/{id} · POST /atendimento/tickets/{id}/status { status: OPEN|IN_PROGRESS|WAITING_CLIENT|WAITING_INTERNAL|RESOLVED|CLOSED|CANCELLED, notes?, resolutionNotes? }
 POST /atendimento/tickets/{id}/assign { assigneeUserId } · POST /atendimento/tickets/{id}/interactions { kind: NOTE|REPLY|CALL|EMAIL|WHATSAPP|VISIT|MEETING, body, direction? } · GET /atendimento/tickets/stats
-GET  /atendimento/campanhas · POST /atendimento/campanhas · POST /atendimento/campanhas/{id}/run (sensível) · GET /atendimento/whatsapp/conversations
+GET  /atendimento/campanhas · POST /atendimento/campanhas · POST /atendimento/campanhas/{id}/run (sensível)
+GET  /atendimento/whatsapp/conversations?status=&assigneeUserId= · GET /atendimento/whatsapp/conversations/{id} (mensagens) · POST /atendimento/whatsapp/conversations/{id}/messages { body } (sensível: envia ao cliente) · POST …/{id}/close · POST …/{id}/assign { assigneeUserId }
 
 # Parceiros e comissões  perm partners.*
 GET  /parceiros?q= · POST /parceiros { name, kind: REPRESENTANTE|INDICADOR|EMPRESA, document?, contactName?, email?, phone?, whatsapp?, notes? }
@@ -186,7 +187,8 @@ function truncate(v: unknown): string {
 }
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 
-function systemPrompt(ctx: Ctx): string {
+export function systemPromptForTest(ctx: Ctx, context?: ScreenContext | null): string { return systemPrompt(ctx, context); }
+function systemPrompt(ctx: Ctx, context?: ScreenContext | null): string {
   const u = ctx.user;
   const today = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' });
   const iso = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
@@ -213,13 +215,25 @@ Como trabalhar
 9. Nunca invente funcionalidades: se algo não existir na API (ex.: upload de arquivos), diga como fazer pela tela.
 
 Catálogo da API
-${API_CATALOG}`;
+${API_CATALOG}${context ? `
+
+Contexto da tela
+O usuário está com este registro aberto: ${context.label} (${context.kind}). Quando ele disser "esta entidade", "este contrato", "esta oportunidade", "este chamado", "esta conversa" ou "o cliente", refere-se a ele. ${CONTEXT_HINTS[context.kind]?.(context.id) ?? ''} Comece consultando o registro quando precisar de dados dele.` : ''}`;
 }
 
 // ---------------------------------------------------------------------------
 // Execução do agente
 // ---------------------------------------------------------------------------
-export interface RunInput { messages: AssistantMessage[]; approvals?: PendingAction[]; conversationId?: string | null; inputMode?: 'text' | 'voice' }
+export interface ScreenContext { kind: 'entity' | 'contract' | 'opportunity' | 'ticket' | 'whatsapp' | 'tender'; id: string; label: string; path?: string }
+export interface RunInput { messages: AssistantMessage[]; approvals?: PendingAction[]; conversationId?: string | null; inputMode?: 'text' | 'voice'; context?: ScreenContext | null }
+const CONTEXT_HINTS: Record<ScreenContext['kind'], (id: string) => string> = {
+  entity: (id) => `Entidade (cliente) id ${id}. Dados: GET /financeiro/entities/${id}; contratos: GET /financeiro/contracts?entityId=${id}; notas: GET /financeiro/invoices?entityId=${id}&status=ALL; chamados: GET /atendimento/tickets?entityId=${id}; oportunidades: GET /comercial/opportunities?entityId=${id}; tarefas: GET /financeiro/tasks?entityId=${id}; linha do tempo: GET /financeiro/entities/${id}/timeline; saúde: GET /financeiro/entities/${id}/health. Ao criar contrato/oportunidade/tarefa/chamado para "esta entidade", use entityId=${id}.`,
+  contract: (id) => `Contrato id ${id}. Dados: GET /financeiro/contracts/${id}; situação financeira: GET /financeiro/contracts/${id}/financial-status; razão: GET /financeiro/contracts/${id}/ledger; notas: GET /financeiro/invoices?contractId=${id}&status=ALL. Aditivos: POST /financeiro/contracts/${id}/amendments. Ao criar tarefa/chamado para "este contrato", use contractId=${id} e o entityId do contrato.`,
+  opportunity: (id) => `Oportunidade (lead) id ${id}. Dados: GET /comercial/opportunities/${id} (inclui entidade, etapa, valores, histórico); funil e etapas: GET /comercial/pipelines. Mover: POST /comercial/opportunities/${id}/move { stageId }; propostas: GET/POST /comercial/opportunities/${id}/proposals; tarefas: use opportunityId=${id}.`,
+  ticket: (id) => `Chamado id ${id}. Dados: GET /atendimento/tickets/${id} (inclui interações). Registrar interação: POST /atendimento/tickets/${id}/interactions { kind, body, direction }; mudar situação: POST /atendimento/tickets/${id}/status { status, notes, resolutionNotes }; atribuir: POST /atendimento/tickets/${id}/assign; tarefa: POST /atendimento/tickets/${id}/tasks ou use ticketId=${id}.`,
+  whatsapp: (id) => `Conversa do WhatsApp id ${id}. Dados e mensagens: GET /atendimento/whatsapp/conversations/${id}. Responder ao cliente: POST /atendimento/whatsapp/conversations/${id}/messages { body } (ação sensível: o usuário confirma antes do envio). Ao redigir a resposta, seja cordial, objetivo e em português; quando o usuário disser "responda ao cliente que…", escreva a mensagem completa no corpo. Encerrar: POST /atendimento/whatsapp/conversations/${id}/close; atribuir: POST /atendimento/whatsapp/conversations/${id}/assign.`,
+  tender: (id) => `Licitação id ${id}. Dados: GET /licitacoes/${id}; prazos: POST /licitacoes/${id}/deadlines; checklist: POST /licitacoes/${id}/checklist; situação: POST /licitacoes/${id}/status; tarefas: use tenderId=${id}.`,
+};
 
 // ---------------------------------------------------------------------------
 // Histórico de conversas (Fase 13) — por usuário, dentro da organização.
@@ -242,12 +256,12 @@ export async function deleteConversation(ctx: Ctx, id: string): Promise<void> {
   await audit(ctx, { action: 'assistant.conversation.delete', resource: 'assistantConversation', resourceId: id });
 }
 /** Acrescenta o turno (pergunta + resposta) à conversa; cria uma nova quando não há id. */
-export async function persistTurn(ctx: Ctx, conversationId: string | null | undefined, userMsg: StoredMessage, assistantMsg: StoredMessage): Promise<string> {
+export async function persistTurn(ctx: Ctx, conversationId: string | null | undefined, userMsg: StoredMessage, assistantMsg: StoredMessage, context?: ScreenContext | null): Promise<string> {
   const existing = conversationId ? await prisma.assistantConversation.findFirst({ where: { id: conversationId, userId: ctx.user.id, deletedAt: null } }) : null;
   const prev = (existing && Array.isArray(existing.messages) ? (existing.messages as unknown as StoredMessage[]) : []);
   const messages = [...prev, userMsg, assistantMsg].slice(-MAX_STORED_MESSAGES) as unknown as Prisma.InputJsonValue;
   if (existing) { await prisma.assistantConversation.update({ where: { id: existing.id }, data: { messages, messageCount: prev.length + 2 } }); return existing.id; }
-  const title = userMsg.content.replace(/\s+/g, ' ').trim().slice(0, 80) || 'Conversa';
+  const title = (context ? `[${context.label.slice(0, 30)}] ` : '') + (userMsg.content.replace(/\s+/g, ' ').trim().slice(0, 80) || 'Conversa');
   const c = await prisma.assistantConversation.create({ data: { organizationId: currentOrgId(), userId: ctx.user.id, title, messages, messageCount: 2 } });
   return c.id;
 }
@@ -330,7 +344,7 @@ export async function run(ctx: Ctx, input: RunInput): Promise<AssistantResult> {
     max_tokens: 8_000,
     // Thinking adaptativo (padrão) com esforço médio: equilíbrio entre qualidade e latência para operação do sistema.
     output_config: { effort: 'medium' },
-    system: [{ type: 'text', text: systemPrompt(ctx), cache_control: { type: 'ephemeral' } }],
+    system: [{ type: 'text', text: systemPrompt(ctx, input.context), cache_control: { type: 'ephemeral' } }],
     tools: [callTool],
     messages,
     max_iterations: MAX_ITERATIONS,
@@ -338,7 +352,12 @@ export async function run(ctx: Ctx, input: RunInput): Promise<AssistantResult> {
     fallbacks: 'default',
   } as Parameters<typeof client.beta.messages.toolRunner>[0]);
 
-  const final = await runner.runUntilDone();
+  let final: Anthropic.Beta.Messages.BetaMessage;
+  try { final = await runner.runUntilDone(); }
+  catch (e) {
+    if (e instanceof Anthropic.APIError) throw new HttpError(502, `Assistente indisponível: o serviço de IA respondeu ${e.status ?? 'erro'}${e.message ? ' — ' + e.message.replace(/\s*\{[\s\S]*$/, '').replace(/^\d{3}\s*/, '').slice(0, 160) : ''}. ${e.status === 401 ? 'Verifique a ANTHROPIC_API_KEY.' : e.status === 429 ? 'Limite do serviço atingido; tente em instantes.' : ''}`.trim());
+    throw e;
+  }
   const text = final.content.filter((b): b is Anthropic.Beta.Messages.BetaTextBlock => b.type === 'text').map((b) => b.text).join('\n').trim();
   let reply = text;
   if (final.stop_reason === 'refusal') reply = 'Não posso ajudar com esse pedido. Reformule ou fale com o suporte da Siow System.';
@@ -350,7 +369,7 @@ export async function run(ctx: Ctx, input: RunInput): Promise<AssistantResult> {
   const now = new Date().toISOString();
   const lastUser = input.messages[input.messages.length - 1]!;
   let conversationId: string | undefined;
-  try { conversationId = await persistTurn(ctx, input.conversationId, { role: 'user', content: lastUser.content, at: now, inputMode: input.inputMode ?? 'text' }, { role: 'assistant', content: reply, steps, pending: pend, at: now }); }
+  try { conversationId = await persistTurn(ctx, input.conversationId, { role: 'user', content: lastUser.content, at: now, inputMode: input.inputMode ?? 'text' }, { role: 'assistant', content: reply, steps, pending: pend, at: now }, input.context); }
   catch (e) { console.error('falha ao salvar conversa do assistente', e); }
   return { reply, steps, pending: pend, stopReason: final.stop_reason, usage, conversationId };
 }

@@ -6,6 +6,7 @@ import { Suspense, useState } from 'react';
 import { OPPORTUNITY_SOURCE_LABELS, RECURRENCE_LABELS, formatBRL, formatBrDate, formatBrDateTime, type OpportunityEventRow, type OpportunityRow, type OpportunitySource, type Recurrence } from '@siow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { AskAssistantButton } from '@/components/assistant/assistant-chat';
 import { TasksPanel } from '@/components/panels/tasks-panel';
 import { Button, Stat, Tabs, useToast } from '@/components/ui';
 import { OpportunityForm, errMsg, usePipelines } from '@/components/crm/opportunity-form';
@@ -49,6 +50,7 @@ function View() {
           <div className="row small muted"><StatusBadge o={o} /><span>{o.daysInStage} dia(s) na etapa</span>{o.owner && <span>· responsável {o.owner.name}</span>}{o.expectedCloseDate && <span>· previsão {formatBrDate(o.expectedCloseDate)}</span>}{o.contractId && <Link href={`/financeiro/contratos/${o.contractId}`}>· ver contrato</Link>}</div>
         </div>
         <div className="row">
+          <AskAssistantButton size="md" context={{ kind: 'opportunity', id: o.id, label: o.title, path: `/comercial/oportunidades/${o.id}` }} suggestions={['Resuma esta oportunidade e sugira o próximo passo', 'Mova para a próxima etapa do funil', 'Crie uma tarefa de follow-up para daqui a 3 dias', 'Atualize a previsão de fechamento e a probabilidade conforme eu informar']} onChanged={refresh} />
           {can('crm.write') && o.status === 'OPEN' && <Button variant="secondary" onClick={() => setEditing(true)}>Editar</Button>}
           {can('crm.write') && o.status === 'OPEN' && <Button variant="danger" onClick={() => setDialog('lose')}>Marcar perdida</Button>}
           {can('crm.write') && o.status === 'OPEN' && <Button onClick={() => setDialog('win')}>Marcar ganha</Button>}

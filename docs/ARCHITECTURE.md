@@ -316,6 +316,12 @@ encerradas), atualização automática a cada 5 s, conversa em balões com statu
 - **Leitura em voz alta** — opcional ("Ler respostas"), com a síntese de voz do navegador (pt-BR), sem provedor; preferência salva no navegador.
 - **Histórico** — tabela `assistant_conversations` (tenant; `userId`, `title`, `messages` JSONB com turnos, passos e pendências, `messageCount`). `POST /api/assistente` recebe `conversationId` (opcional) e `inputMode` (`text|voice`) e salva o turno; `GET /api/assistente/conversas` lista as do usuário, `GET/DELETE /api/assistente/conversas/[id]` abre/exclui (exclusão lógica, auditada). Só o próprio usuário vê as suas conversas. Retenção no cron diário: excluídas há mais de 30 dias ou sem atividade há `sync.retentionDays`.
 
+## 6o. Assistente contextual nas telas (Fase 14)
+
+- **Componente** — o chat foi extraído para `components/assistant/assistant-chat.tsx` (`AssistantChat`, usado na página `/assistente` e em modo compacto dentro de um `Dialog`) e `AskAssistantButton` ("Pedir ao assistente"), que recebe `context` (`kind` entity|contract|opportunity|ticket|whatsapp|tender, `id`, `label`, `path`) e sugestões específicas da tela. Após uma ação de escrita bem-sucedida, chama `onChanged` para a tela recarregar seus dados.
+- **Telas** — Entidade, Contrato, Oportunidade, Chamado e conversa do WhatsApp (cabeçalho da conversa). Sugestões: resumo da situação, tarefa de follow-up, interação no chamado, resposta ao cliente no WhatsApp ("responda ao cliente que…"; o envio é ação sensível e passa pela confirmação).
+- **Backend** — `POST /api/assistente` aceita `context`; `services/assistant.ts` acrescenta ao prompt de sistema o bloco "Contexto da tela" com o registro aberto e as rotas relevantes (`CONTEXT_HINTS`), para que "esta entidade"/"este chamado"/"o cliente" sejam resolvidos sem ambiguidade. Conversas iniciadas com contexto recebem o prefixo `[rótulo]` no título do histórico. Erros do serviço de IA (chave inválida, limite) voltam como 502 com orientação, em vez de 500 genérico.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

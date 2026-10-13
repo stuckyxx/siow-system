@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { AskAssistantButton } from '@/components/assistant/assistant-chat';
 import { useAssignees } from '@/components/panels/tasks-panel';
 import { Badge, Button, Dialog, Empty, Field, Input, Select, Textarea, useToast } from '@/components/ui';
 import { errMsg } from '@/components/crm/opportunity-form';
@@ -84,6 +85,7 @@ function Thread({ id, onChanged, onToast }: { id: string; onChanged: () => void;
         </div>
         <div className="row">
           {write && <Select value={c.assignee?.id ?? ''} onChange={(e) => assign.mutate(e.target.value || null)} style={{ width: 180 }}><option value="">Sem atendente</option>{assignees?.map((a) => <option key={a.id} value={a.id}>{a.id === user?.id ? `${a.name} (você)` : a.name}</option>)}</Select>}
+          <AskAssistantButton context={{ kind: 'whatsapp', id, label: `WhatsApp · ${c.contact?.name ?? c.displayName ?? fmtPhone(c.waId)}`, path: '/atendimento/whatsapp' }} suggestions={['Resuma esta conversa e o que o cliente precisa', 'Responda ao cliente que recebemos a solicitação e retornaremos até amanhã', 'Abra uma tarefa para amanhã com o pedido do cliente', 'Encerre a conversa e resolva o chamado']} onChanged={invalidate} />
           {write && !c.assignee && <Button size="sm" variant="secondary" onClick={() => assign.mutate(user?.id ?? null)}>Assumir</Button>}
           {write && c.status === 'OPEN' ? <Button size="sm" variant="secondary" onClick={() => close.mutate()}>Encerrar</Button> : write && <Button size="sm" variant="secondary" onClick={() => reopen.mutate()}>Reabrir</Button>}
         </div>
