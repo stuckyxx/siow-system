@@ -13,6 +13,9 @@ export interface ContractRow {
   amendments: Array<{ id: string; sequence: number; label: string | null; kind: AmendmentKind; newEndDate: string | null; newMonthlyValue: string | null; newObject?: string | null; signedAt: string | null; description: string | null; origin?: string; documentId?: string | null }>;
   entity?: { id: string; name: string; shortName: string | null };
   responsibleUser: { id: string; name: string } | null;
+  /** Lista: último PDF vinculado e total de documentos. */
+  documents?: Array<{ id: string; name: string; type: string; capturedAt: string }>;
+  _count?: { invoices?: number; serviceOrders?: number; documents?: number };
 }
 interface DocRow { id: string; name: string; capturedAt: string; type: string; blob: { size: number; mimeType: string } }
 
@@ -102,7 +105,7 @@ export function ContractsPanel({ entityId, manualOnly = false }: { entityId?: st
   );
 }
 
-export function AttachPdf({ contractId, onDone, onError }: { contractId: string; onDone: (name: string) => void; onError: (m: string) => void }) {
+export function AttachPdf({ contractId, onDone, onError, label = 'Anexar PDF', className = 'btn sm' }: { contractId: string; onDone: (name: string) => void; onError: (m: string) => void; label?: string; className?: string }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const upload = async (files: FileList | null): Promise<void> => {
@@ -128,7 +131,7 @@ export function AttachPdf({ contractId, onDone, onError }: { contractId: string;
   return (
     <>
       <input ref={ref} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => void upload(e.target.files)} />
-      <button className="btn sm" onClick={() => ref.current?.click()} disabled={busy}>{busy ? 'Enviando…' : 'Anexar PDF'}</button>
+      <button className={className} onClick={(e) => { e.stopPropagation(); ref.current?.click(); }} disabled={busy} title="Vincular o PDF do contrato assinado">{busy ? 'Enviando…' : label}</button>
     </>
   );
 }
@@ -231,22 +234,27 @@ export function ContractForm({ contract, entityId, onClose, onSaved }: { contrac
   const editing = contract && contract !== 'new' ? contract : null;
   const blank = { number: '', object: '', monthlyValue: '', startDate: '', endDate: '', status: 'ACTIVE', notes: '' };
   const [f, setF] = useState(blank);
+  const [pdf, setPdf] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastKey, setLastKey] = useState<string | null>(null);
   const key = contract === 'new' ? 'new' : contract?.id ?? null;
   if (key !== lastKey) {
     setLastKey(key);
     setError(null);
+    setPdf(null);
     setF(editing ? { number: editing.number, object: editing.object ?? '', monthlyValue: editing.monthlyValue ?? '', startDate: editing.startDate ?? '', endDate: editing.endDate ?? '', status: editing.status, notes: editing.notes ?? '' } : blank);
   }
   const m = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const body = { number: f.number.trim(), object: f.object || null, monthlyValue: f.monthlyValue ? f.monthlyValue.replace(',', '.') : null, startDate: f.startDate || null, endDate: f.endDate || null, status: f.status as ContractStatus, notes: f.notes || null };
-      return editing ? api(`/financeiro/contracts/${editing.id}`, { method: 'PATCH', body }) : api('/financeiro/contracts', { method: 'POST', body: { entityId, ...body } });
+      const saved = editing ? await api<{ id: string }>(`/financeiro/contracts/${editing.id}`, { method: 'PATCH', body }) : await api<{ id: string }>('/financeiro/contracts', { method: 'POST', body: { entityId, ...body } });
+      // PDF opcional: vinculado logo após o cadastro (um documento do tipo CONTRATO).
+      if (pdf) { const fd = new FormData(); fd.append('file', pdf); fd.append('type', 'CONTRACT'); fd.append('name', pdf.name); await api(`/financeiro/contracts/${saved.id}/documents`, { method: 'POST', formData: fd }); }
+      return saved;
     },
     onSuccess: () => {
       const ended = f.status !== 'ACTIVE' || (f.endDate && f.endDate < new Date().toISOString().slice(0, 10));
-      onSaved(editing ? (ended ? 'Contrato salvo — encerrado, a entidade sai da lista de ativas' : 'Contrato atualizado') : 'Contrato cadastrado');
+      onSaved((editing ? (ended ? 'Contrato salvo — encerrado, a entidade sai da lista de ativas' : 'Contrato atualizado') : 'Contrato cadastrado') + (pdf ? ' com PDF vinculado' : ''));
     },
     onError: (e) => setError(errMsg(e)),
   });
@@ -255,6 +263,8 @@ export function ContractForm({ contract, entityId, onClose, onSaved }: { contrac
     if (!f.number.trim()) return setError('Informe o número do contrato');
     if (f.startDate && f.endDate && f.endDate < f.startDate) return setError('A data de fim não pode ser anterior ao início');
     if (f.monthlyValue && !/^\d+([.,]\d{1,2})?$/.test(f.monthlyValue)) return setError('Valor mensal inválido (ex.: 1320,00)');
+    if (pdf && pdf.type !== 'application/pdf' && !/\.pdf$/i.test(pdf.name)) return setError('O arquivo do contrato deve ser um PDF');
+    if (pdf && pdf.size > 25 * 1048576) return setError('O PDF deve ter até 25 MB');
     setError(null);
     m.mutate();
   };
@@ -269,7 +279,11 @@ export function ContractForm({ contract, entityId, onClose, onSaved }: { contrac
         <div />
         <Field label="Objeto" className="w"><Textarea rows={2} {...b('object')} /></Field>
         <Field label="Observações" className="w"><Textarea rows={2} {...b('notes')} /></Field>
+        <Field label={editing ? 'Vincular novo PDF do contrato (opcional)' : 'PDF do contrato (opcional)'} className="w">
+          <div className="row"><input type="file" accept="application/pdf,.pdf" onChange={(e) => setPdf(e.target.files?.[0] ?? null)} />{pdf && <span className="small muted">{pdf.name} · {kb(pdf.size)}</span>}</div>
+        </Field>
       </div>
+      <p className="small muted" style={{ margin: '6px 0 0' }}>O PDF fica na aba Documentos do contrato e pode ser aberto pela lista de contratos (coluna PDF). Outros PDFs podem ser anexados depois.</p>
       {editing && <p className="small muted">Com data de fim passada ou situação diferente de "Ativo", a entidade sai da lista de ativas.</p>}
       {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
       <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={submit} disabled={m.isPending}>Salvar</Button></div>

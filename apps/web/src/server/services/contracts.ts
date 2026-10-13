@@ -34,7 +34,8 @@ export async function list(filter: ContractListFilter) {
       entity: { select: { id: true, name: true, shortName: true, type: true, municipality: true, uf: true } },
       amendments: { orderBy: { sequence: 'asc' } },
       responsibleUser: { select: { id: true, name: true } },
-      _count: { select: { invoices: true, serviceOrders: true } },
+      documents: { where: { deletedAt: null }, select: { id: true, name: true, type: true, capturedAt: true }, orderBy: { capturedAt: 'desc' }, take: 1 },
+      _count: { select: { invoices: true, serviceOrders: true, documents: { where: { deletedAt: null } } } },
     },
     orderBy: [{ endDate: 'asc' }],
   });

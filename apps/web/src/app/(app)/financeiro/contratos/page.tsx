@@ -4,10 +4,10 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { CONTRACT_STATUSES, CONTRACT_STATUS_LABELS, RENEWAL_STATUS_LABELS, TASK_STATUS_LABELS, formatBRL, formatBrDate, type ContractRenewalRow, type RenewalStatus, type TaskStatus } from '@siow/shared';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ContractStatusBadge } from '@/components/status';
-import type { ContractRow } from '@/components/panels/contracts-panel';
+import { AttachPdf, type ContractRow } from '@/components/panels/contracts-panel';
 import { Badge, Button, Dialog, Empty, Field, Input, Select, Table, Td, Textarea, Th, useToast } from '@/components/ui';
 
 const errMsg = (e: unknown): string => (e instanceof ApiError ? e.message : 'Erro inesperado');
@@ -31,6 +31,9 @@ function View() {
 
 function ContractsList() {
   const router = useRouter();
+  const qc = useQueryClient();
+  const { can } = useAuth();
+  const [toast, showToast] = useToast();
   const [f, setF] = useState({ q: '', status: '', expiring: '' });
   const { data } = useQuery({ queryKey: ['contracts-list', f], queryFn: () => api<ContractRow[]>('/financeiro/contracts', { query: { q: f.q || undefined, status: f.status || undefined, expiringDays: f.expiring ? Number(f.expiring) : undefined } }) });
   const today = new Date().toISOString().slice(0, 10);
@@ -44,7 +47,7 @@ function ContractsList() {
       <div className="card">
         {!data ? <div className="bd small muted">Carregando…</div> : data.length === 0 ? <div className="bd"><Empty>Nenhum contrato</Empty></div> : (
           <div className="tbl"><Table>
-            <thead><tr><Th>Contrato</Th><Th>Entidade</Th><Th>Situação</Th><Th>Vigência</Th><Th className="r">Valor mensal</Th><Th className="r hide-m">Aditivos</Th><Th className="hide-m">Responsável</Th></tr></thead>
+            <thead><tr><Th>Contrato</Th><Th>Entidade</Th><Th>Situação</Th><Th>Vigência</Th><Th className="r">Valor mensal</Th><Th className="r hide-m">Aditivos</Th><Th className="hide-m">Responsável</Th><Th>PDF</Th></tr></thead>
             <tbody>
               {data.map((c) => (
                 <tr key={c.id} className="click" onClick={() => router.push(`/financeiro/contratos/${c.id}`)}>
@@ -55,12 +58,18 @@ function ContractsList() {
                   <Td className="r num">{c.monthlyValue ? formatBRL(c.monthlyValue) : '—'}</Td>
                   <Td className="r num hide-m">{c.amendments.length}</Td>
                   <Td className="hide-m">{c.responsibleUser?.name ?? '—'}</Td>
+                  <Td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                    {c.documents?.[0] && can('documents.read') && <a className="btn sm ghost" href={apiUrl(`/documents/${c.documents[0].id}/download`)} target="_blank" rel="noreferrer" title={c.documents[0].name}>Abrir PDF{(c._count?.documents ?? 0) > 1 ? ` (+${(c._count?.documents ?? 1) - 1})` : ''}</a>}
+                    {can('contracts.write') && can('documents.write') && <AttachPdf contractId={c.id} label={c.documents?.[0] ? 'Novo PDF' : 'Vincular PDF'} className={c.documents?.[0] ? 'btn sm ghost' : 'btn sm'} onDone={(n) => { showToast(`${n} vinculado ao contrato ${c.number}`); void qc.invalidateQueries({ queryKey: ['contracts-list'] }); }} onError={showToast} />}
+                    {!c.documents?.[0] && !can('contracts.write') && <span className="muted small">—</span>}
+                  </Td>
                 </tr>
               ))}
             </tbody>
           </Table></div>
         )}
       </div>
+      {toast}
     </div>
   );
 }
