@@ -337,3 +337,11 @@ atendente; duplicata ignorada; segunda mensagem na mesma conversa; número desco
 registrado (download exige token real); envio de texto com token falso fica FAILED (nada marcado como enviado); erro claro ao listar
 modelos sem conta válida; atribuir, encerrar (chamado resolvido), nova mensagem reabre e abre novo chamado; vínculo de número a contato.
 
+
+## Executado na Fase 9 — SaaS e white-label (13/10/2026)
+
+**Entregue** — configurações isoladas por organização; login e console da plataforma (`/plataforma`); planos com módulos e limites (PROPRIA, SaaS Básico, SaaS Pro); bloqueio de módulo não licenciado (403) e menu filtrado; limites de usuários/entidades; assinaturas com teste, faturas mensais, atraso, bloqueio suave (somente leitura, 423 em mutações) e reativação ao pagar; cron diário `/api/cron/platform`; marca por organização (logo, cores, nome, domínio) aplicada no login e no sistema; chaves de API com permissões limitadas; onboarding em 3 passos e autocadastro opcional (`/cadastro`); exportação LGPD em JSON; auditoria de todas as ações da plataforma.
+
+**Validação** — local: criação de organização com seed completo (14 configurações próprias, papéis, administrador com troca de senha), módulo Comercial/Licitações negados no plano Básico, limite de usuários aplicado, fatura vencida → cron → bloqueio suave (mutação 423, leitura 200, faixa no sistema) → pagamento de todas as faturas → organização ativa; cron idempotente; marca por host; chave de API lista entidades, 403 sem permissão, 401 após revogação e com chave inválida; exportação LGPD das duas organizações; autocadastro bloqueado/habilitado; organização padrão não bloqueável; organização Siow com configurações e Financeiro intactos. Produção: migração idempotente com backup prévio, superadmin criado, validação dos mesmos fluxos com organização de teste removida ao final (exclusão lógica) e regressão do Financeiro sem alteração.
+
+**Fora do escopo (próximas fases)** — pagamento automático das faturas da plataforma (boleto/PIX), domínio próprio automático na Vercel (hoje: CNAME + cadastro do domínio pela Siow), e-mails transacionais de cobrança.

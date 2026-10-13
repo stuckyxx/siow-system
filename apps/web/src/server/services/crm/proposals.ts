@@ -70,7 +70,7 @@ export async function setStatus(ctx: Ctx, id: string, input: z.infer<typeof upda
 export async function pdf(id: string): Promise<{ buffer: Buffer; fileName: string }> {
   const p = await prisma.proposal.findFirst({ where: { id }, include: { items: { orderBy: { position: 'asc' } }, opportunity: { include: { entity: true, owner: { select: { name: true, email: true } } } } } });
   if (!p) throw notFound('Proposta não encontrada');
-  const [org, company] = await Promise.all([prisma.organization.findUnique({ where: { id: currentOrgId() }, select: { name: true, branding: true } }), prisma.setting.findUnique({ where: { key: 'company.name' } })]);
+  const [org, company] = await Promise.all([prisma.organization.findUnique({ where: { id: currentOrgId() }, select: { name: true, branding: true } }), prisma.setting.findFirst({ where: { key: 'company.name' } })]);
   const companyName = (typeof company?.value === 'string' && company.value) || org?.name || 'Siow System Tecnologia';
   const buffer = await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 48 });

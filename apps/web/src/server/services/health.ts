@@ -11,7 +11,7 @@ export interface HealthWeights { overdueInvoice: number; overdueOver60: number; 
 export const DEFAULT_WEIGHTS: HealthWeights = { overdueInvoice: 10, overdueOver60: 20, collectionNoReply: 10, contractEndingUnrenewed: 15, syncFailed: 5, recentPayment: 5 };
 
 export async function weights(): Promise<HealthWeights> {
-  const s = await prisma.setting.findUnique({ where: { key: 'health.weights' } });
+  const s = await prisma.setting.findFirst({ where: { key: 'health.weights' } });
   const v = (s?.value ?? {}) as Partial<HealthWeights>;
   return { ...DEFAULT_WEIGHTS, ...Object.fromEntries(Object.entries(v).filter(([, x]) => typeof x === 'number')) } as HealthWeights;
 }

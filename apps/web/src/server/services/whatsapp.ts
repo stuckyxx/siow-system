@@ -57,7 +57,7 @@ export async function markRead(id: string): Promise<void> { await prisma.waConve
 
 // ---------------- fila / atribuição ----------------
 async function pickAgent(): Promise<string | null> {
-  const [auto, max] = await Promise.all([prisma.setting.findUnique({ where: { key: 'whatsapp.autoAssign' } }), prisma.setting.findUnique({ where: { key: 'whatsapp.maxPerAgent' } })]);
+  const [auto, max] = await Promise.all([prisma.setting.findFirst({ where: { key: 'whatsapp.autoAssign' } }), prisma.setting.findFirst({ where: { key: 'whatsapp.maxPerAgent' } })]);
   if (auto && auto.value === false) return null;
   const limit = Number(max?.value ?? 8);
   const agents = await prisma.user.findMany({ where: { deletedAt: null, isActive: true, OR: [{ roles: { some: { role: { permissions: { some: { permission: { code: 'tickets.write' } } } } } } }, { userPermissions: { some: { permission: { code: 'tickets.write' }, granted: true } } }] }, select: { id: true } });

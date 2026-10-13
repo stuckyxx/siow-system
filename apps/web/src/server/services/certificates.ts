@@ -10,7 +10,7 @@ import { audit } from '../audit.js';
 import { notFound, type Ctx } from '../http.js';
 
 export async function expiringDays(): Promise<number> {
-  const s = await prisma.setting.findUnique({ where: { key: 'certificates.expiringDays' } });
+  const s = await prisma.setting.findFirst({ where: { key: 'certificates.expiringDays' } });
   return typeof s?.value === 'number' ? s.value : 30;
 }
 

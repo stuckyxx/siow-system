@@ -24,7 +24,7 @@ export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async setting(key: string, fallback: number): Promise<number> {
-    const s = await this.prisma.setting.findUnique({ where: { key } });
+    const s = await this.prisma.setting.findFirst({ where: { key } });
     return typeof s?.value === 'number' ? s.value : fallback;
   }
 

@@ -89,11 +89,12 @@ export class SystemController {
   @Put('settings/:key')
   @RequirePermissions('settings.manage')
   async setSetting(@Ctx() ctx: RequestContext, @Param('key') key: string, @Body(zod(settingSchema)) body: { value: unknown }) {
-    const before = await this.prisma.setting.findUnique({ where: { key } });
+    const before = await this.prisma.setting.findFirst({ where: { key } });
     const after = await this.prisma.setting.upsert({
-      where: { key },
+      // Legado (NestJS): opera na organização padrão; o app Next.js usa a organização do contexto.
+      where: { organizationId_key: { organizationId: '7a1b5c3e-5e1f-4a4e-8c0d-000000000001', key } },
       update: { value: body.value as Prisma.InputJsonValue, updatedByUserId: ctx.user.id },
-      create: { key, value: body.value as Prisma.InputJsonValue, updatedByUserId: ctx.user.id },
+      create: { organizationId: '7a1b5c3e-5e1f-4a4e-8c0d-000000000001', key, value: body.value as Prisma.InputJsonValue, updatedByUserId: ctx.user.id },
     });
     await this.audit.log(ctx, { action: 'SETTING_CHANGED', resource: 'setting', resourceId: key, before: before?.value, after: after.value });
     return after;

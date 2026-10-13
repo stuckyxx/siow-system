@@ -1189,6 +1189,13 @@ model Organization {
   branding  Json      @default("{}")
   locale    String    @default("pt-BR")
   status    String    @default("ACTIVE") // ACTIVE | SUSPENDED | READONLY
+  /// Limites do plano (sobrescrevem o plano): { maxUsers, maxEntities }
+  limits    Json      @default("{}")
+  /// Domínio próprio (white-label): resolve marca e login por host
+  domain    String?   @unique
+  trialEndsAt DateTime?
+  blockedAt   DateTime?
+  blockReason String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1235,19 +1242,101 @@ model Organization {
   integrationLogs  IntegrationLog[]
   webhooks         Webhook[]
   waConversations  WaConversation[]
+  settings         Setting[]
+  subscription     Subscription?
+  subscriptionInvoices SubscriptionInvoice[]
+  apiKeys          ApiKey[]
   @@map("organizations")
 }
 
 /// Administrador da plataforma (Siow) — fora das organizações; usado pelo superadmin do SaaS (Fase 9).
 model PlatformAdmin {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
   name         String
   passwordHash String
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
 
   @@map("platform_admins")
+}
+
+/// Fase 9 — SaaS: planos (licenciamento por módulo e limites), assinaturas e faturas da plataforma, chaves de API por organização.
+model Plan {
+  key          String   @id // PROPRIA | SAAS_BASICO | SAAS_PRO | …
+  name         String
+  description  String?
+  priceMonthly Decimal  @db.Decimal(12, 2) @default(0)
+  maxUsers     Int?
+  maxEntities  Int?
+  /// Módulos licenciados (vazio = todos)
+  modules      Json     @default("[]")
+  trialDays    Int      @default(14)
+  isActive     Boolean  @default(true)
+  isPublic     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                 String       @id @default(uuid())
+  organizationId     String       @unique
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  planKey            String
+  status             String       @default("TRIAL") // TRIAL | ACTIVE | PAST_DUE | BLOCKED | CANCELLED | EXEMPT
+  amount             Decimal      @db.Decimal(12, 2) @default(0)
+  billingDay         Int          @default(10)
+  graceDays          Int          @default(10)
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime?    @db.Date
+  currentPeriodEnd   DateTime?    @db.Date
+  cancelledAt        DateTime?
+  notes              String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@map("subscriptions")
+}
+
+model SubscriptionInvoice {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  period         String // "2026-10"
+  amount         Decimal      @db.Decimal(12, 2)
+  dueDate        DateTime     @db.Date
+  status         String       @default("OPEN") // OPEN | PAID | OVERDUE | CANCELLED
+  paidAt         DateTime?    @db.Date
+  paymentRef     String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, period])
+  @@index([status, dueDate])
+  @@map("subscription_invoices")
+}
+
+model ApiKey {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  prefix         String // primeiros caracteres para identificação
+  keyHash        String       @unique
+  permissions    Json         @default("[]")
+  isActive       Boolean      @default(true)
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  createdByUserId String?
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+
+  @@index([organizationId])
+  @@map("api_keys")
 }
 
 /// Agente público (prefeito, presidente da câmara, secretário, controlador, contador, pregoeiro…) com mandato.
@@ -1319,13 +1408,16 @@ model Notification {
 }
 
 model Setting {
-  key             String   @id
+  organizationId  String       @default("7a1b5c3e-5e1f-4a4e-8c0d-000000000001")
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  key             String
   value           Json
   description     String?
   updatedByUserId String?
-  updatedBy       User?    @relation(fields: [updatedByUserId], references: [id])
-  updatedAt       DateTime @updatedAt
+  updatedBy       User?        @relation(fields: [updatedByUserId], references: [id])
+  updatedAt       DateTime     @updatedAt
 
+  @@id([organizationId, key])
   @@map("settings")
 }
 

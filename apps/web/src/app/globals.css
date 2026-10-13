@@ -87,6 +87,9 @@
   .hnav a.on { background: var(--accent-soft); color: var(--accent); border-color: rgba(76, 201, 240, .35); box-shadow: inset 0 0 20px rgba(76, 201, 240, .06); }
   .hnav svg { width: 15px; height: 15px; flex: 0 0 15px; }
   .content { padding: 20px 22px 48px; max-width: 1500px; width: 100%; margin: 0 auto; }
+  .banner { padding: 9px 18px; font-size: 13px; border-bottom: 1px solid var(--line); text-align: center; }
+  .banner.crit { background: var(--crit-soft); color: var(--ink); border-color: rgba(251, 113, 133, .35); }
+  .banner.info { background: var(--info-soft); color: var(--ink2); }
   .sub { color: var(--ink3); font-size: 12px; margin: 0 0 14px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .between { justify-content: space-between; }

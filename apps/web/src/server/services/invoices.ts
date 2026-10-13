@@ -77,7 +77,7 @@ const listInclude = {
 type InvoiceWithRels = Prisma.InvoiceGetPayload<{ include: typeof listInclude }>;
 
 export async function overdueAfterDays(): Promise<number> {
-  const s = await prisma.setting.findUnique({ where: { key: 'invoices.overdueAfterDays' } });
+  const s = await prisma.setting.findFirst({ where: { key: 'invoices.overdueAfterDays' } });
   return typeof s?.value === 'number' ? s.value : 30;
 }
 

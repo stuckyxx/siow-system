@@ -22,7 +22,7 @@ const DEFAULT_SLA: SlaTable = { URGENT: { response: 2, resolution: 8 }, HIGH: { 
 const AT_RISK_HOURS = 2;
 
 export async function slaTable(): Promise<SlaTable> {
-  const s = await prisma.setting.findUnique({ where: { key: 'tickets.sla' } });
+  const s = await prisma.setting.findFirst({ where: { key: 'tickets.sla' } });
   const v = (s?.value ?? null) as SlaTable | null;
   return v && typeof v === 'object' ? { ...DEFAULT_SLA, ...v } : DEFAULT_SLA;
 }

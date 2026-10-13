@@ -11,6 +11,7 @@ import { prisma } from '../db.js';
 import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { currentOrgId } from '../tenant.js';
+import { resolveAccess } from '../access.js';
 
 type EntityFilter = z.infer<typeof entityListFilterSchema>;
 
@@ -132,6 +133,11 @@ export async function get(id: string) {
 }
 
 export async function create(ctx: Ctx, input: z.infer<typeof createEntitySchema>) {
+  const maxEntities = ctx.user.access?.limits.maxEntities ?? (await resolveAccess(currentOrgId())).limits.maxEntities;
+  if (maxEntities !== null) {
+    const count = await prisma.entity.count({ where: { deletedAt: null } });
+    if (count >= maxEntities) throw badRequest(`Limite de ${maxEntities} entidades do plano atingido. Amplie o plano para cadastrar mais.`);
+  }
   const entity = await prisma.entity.create({ data: { ...input, organizationId: currentOrgId(), uf: input.uf.toUpperCase() } });
   await audit(ctx, { action: 'CREATE', resource: 'entity', resourceId: entity.id, after: entity });
   return entity;

@@ -4,26 +4,28 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Briefcase, Building2, FileBarChart, FileSignature, Gavel, Handshake, Headset, LayoutDashboard, Settings, Wallet } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { applyBranding, orgBranding } from '@/lib/branding';
+import { useEffect } from 'react';
 import { api } from '@/lib/api';
 import { GlobalSearch } from '@/components/global-search';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { QuickSearch } from '@/components/quick-search';
 
 /** Menu (PROMPT MESTRE v2): Dashboard | Comercial | Entidades | Contratos | Financeiro | Relatórios | Administração — Licitações, Atendimento e Parceiros entram nas fases 4–6. Cada item filtrado por permissão. */
-const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean; onlyIfMissing?: string }> = [
+const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; perms: string[]; match: (p: string) => boolean; onlyIfMissing?: string; module?: string }> = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, perms: ['dashboard.read'], match: (p) => p === '/dashboard' || p === '/financeiro' },
-  { href: '/comercial', label: 'Comercial', icon: Briefcase, perms: ['crm.read'], match: (p) => p.startsWith('/comercial') },
-  { href: '/licitacoes', label: 'Licitações', icon: Gavel, perms: ['tenders.read'], match: (p) => p.startsWith('/licitacoes') },
+  { href: '/comercial', label: 'Comercial', icon: Briefcase, perms: ['crm.read'], match: (p) => p.startsWith('/comercial'), module: 'COMERCIAL' },
+  { href: '/licitacoes', label: 'Licitações', icon: Gavel, perms: ['tenders.read'], match: (p) => p.startsWith('/licitacoes'), module: 'LICITACOES' },
   { href: '/financeiro/entidades', label: 'Entidades', icon: Building2, perms: ['entities.read'], match: (p) => p.startsWith('/financeiro/entidades') },
   { href: '/financeiro/contratos', label: 'Contratos', icon: FileSignature, perms: ['contracts.read'], match: (p) => p.startsWith('/financeiro/contratos') },
   {
     href: '/financeiro/central', label: 'Financeiro', icon: Wallet, perms: ['invoices.read', 'collections.read', 'certificates.read', 'sync.read', 'tasks.read'],
     match: (p) => ['/financeiro/central', '/financeiro/notas', '/financeiro/cobrancas', '/financeiro/alarmes', '/financeiro/agenda', '/financeiro/ordens-de-servico', '/financeiro/certidoes', '/financeiro/sincronizacao'].some((x) => p.startsWith(x)),
   },
-  { href: '/atendimento', label: 'Atendimento', icon: Headset, perms: ['tickets.read'], match: (p) => p.startsWith('/atendimento') },
-  { href: '/parceiros', label: 'Parceiros', icon: Handshake, perms: ['partners.read'], match: (p) => p.startsWith('/parceiros') },
-  { href: '/parceiro', label: 'Meu portal', icon: Handshake, perms: ['partners.portal'], match: (p) => p === '/parceiro', onlyIfMissing: 'partners.read' },
-  { href: '/financeiro/relatorios', label: 'Relatórios', icon: FileBarChart, perms: ['reports.read'], match: (p) => p.startsWith('/financeiro/relatorios') },
+  { href: '/atendimento', label: 'Atendimento', icon: Headset, perms: ['tickets.read'], match: (p) => p.startsWith('/atendimento'), module: 'ATENDIMENTO' },
+  { href: '/parceiros', label: 'Parceiros', icon: Handshake, perms: ['partners.read'], match: (p) => p.startsWith('/parceiros'), module: 'PARCEIROS' },
+  { href: '/parceiro', label: 'Meu portal', icon: Handshake, perms: ['partners.portal'], match: (p) => p === '/parceiro', onlyIfMissing: 'partners.read', module: 'PARCEIROS' },
+  { href: '/financeiro/relatorios', label: 'Relatórios', icon: FileBarChart, perms: ['reports.read'], match: (p) => p.startsWith('/financeiro/relatorios'), module: 'RELATORIOS' },
   { href: '/admin', label: 'Administração', icon: Settings, perms: ['users.manage', 'settings.manage', 'templates.manage', 'audit.read'], match: (p) => p.startsWith('/admin') },
 ];
 
@@ -47,6 +49,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const allowed = (perms: string[]): boolean => perms.some(can);
+  const access = user?.access;
+  const hasModule = (m?: string): boolean => !m || !access || access.modules.length === 0 || access.modules.includes(m);
+  const brand = orgBranding(user?.organization?.branding);
+  useEffect(() => { applyBranding(brand); }, [brand.accent, brand.accent2, brand.productName]);
   const isHome = pathname === '/financeiro';
   const goBack = (): void => {
     if (typeof window !== 'undefined' && window.history.length > 1) router.back();
@@ -55,9 +61,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <header className="top">
-        <Link href="/financeiro" className="brand" title="Siow System — Dashboard">
-          <img className="logo" src="/logo.png" alt="Siow System" />
-          <small>Módulo Financeiro</small>
+        <Link href="/financeiro" className="brand" title={`${brand.productName} — Dashboard`}>
+          <img className="logo" src={brand.logoUrl} alt={brand.productName} />
+          <small>{brand.tagline}</small>
         </Link>
         <GlobalSearch />
         {can('sync.read') && <SyncIndicator />}
@@ -69,12 +75,20 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <nav className="hnav" aria-label="Menu principal">
-        {NAV.filter((n) => allowed(n.perms) && !(n.onlyIfMissing && can(n.onlyIfMissing))).map((n) => (
+        {NAV.filter((n) => allowed(n.perms) && hasModule(n.module) && !(n.onlyIfMissing && can(n.onlyIfMissing))).map((n) => (
           <Link key={n.href} href={n.href} className={n.match(pathname) ? 'on' : ''}>
             <n.icon strokeWidth={1.8} /> {n.label}
           </Link>
         ))}
       </nav>
+      {access?.readOnly && (
+        <div className="banner crit" role="alert">
+          <b>Modo somente leitura.</b> {access.blockReason ?? 'A organização está bloqueada.'} Consulta liberada; alterações desabilitadas até a regularização{brand.supportEmail ? ` — contato: ${brand.supportEmail}` : ' — fale com a Siow System'}.
+        </div>
+      )}
+      {!access?.readOnly && access?.subscriptionStatus === 'TRIAL' && access.trialEndsAt && (
+        <div className="banner info">Período de teste do plano <b>{access.planName}</b> até {new Date(access.trialEndsAt).toLocaleDateString('pt-BR')}.</div>
+      )}
       <main className="content">
         {!isHome && <button className="back" onClick={goBack}>← Voltar</button>}
         {children}

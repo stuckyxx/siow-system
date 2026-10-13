@@ -2375,3 +2375,115 @@ DO $$ BEGIN
     ALTER TABLE "wa_messages" ADD CONSTRAINT "wa_messages_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "wa_conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- =====================================================================
+-- FASE 9 (SAAS / WHITE-LABEL) — idempotente. Configurações por organização, planos, assinaturas, faturas da plataforma, chaves de API.
+-- =====================================================================
+ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "organizationId" TEXT NOT NULL DEFAULT '7a1b5c3e-5e1f-4a4e-8c0d-000000000001';
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey) WHERE c.conname = 'settings_pkey' GROUP BY c.oid HAVING count(*) = 1) THEN
+    ALTER TABLE "settings" DROP CONSTRAINT "settings_pkey";
+    ALTER TABLE "settings" ADD CONSTRAINT "settings_pkey" PRIMARY KEY ("organizationId", "key");
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'settings_organizationId_fkey') THEN
+    ALTER TABLE "settings" ADD CONSTRAINT "settings_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "limits" JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "domain" TEXT NULL;
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "trialEndsAt" TIMESTAMP(3) NULL;
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "blockedAt" TIMESTAMP(3) NULL;
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "blockReason" TEXT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "organizations_domain_key" ON "organizations"("domain");
+ALTER TABLE "platform_admins" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP(3) NULL;
+
+CREATE TABLE IF NOT EXISTS "plans" (
+  "key" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "description" TEXT NULL,
+  "priceMonthly" DECIMAL(12,2) NOT NULL DEFAULT 0,
+  "maxUsers" INTEGER NULL,
+  "maxEntities" INTEGER NULL,
+  "modules" JSONB NOT NULL DEFAULT '[]',
+  "trialDays" INTEGER NOT NULL DEFAULT 14,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "isPublic" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "plans_pkey" PRIMARY KEY ("key")
+);
+INSERT INTO "plans" ("key", "name", "description", "priceMonthly", "maxUsers", "maxEntities", "modules", "trialDays", "isActive", "isPublic", "updatedAt") VALUES
+  ('PROPRIA', 'Edição Própria', 'Uso interno da Siow: todos os módulos, sem limites e sem cobrança', 0, NULL, NULL, '[]', 0, true, false, now()),
+  ('SAAS_BASICO', 'SaaS Básico', 'Cadastro, Financeiro, Contratos, Atendimento e Relatórios', 490, 5, 60, '["CADASTRO","FINANCEIRO","CONTRATOS","ATENDIMENTO","RELATORIOS"]', 14, true, true, now()),
+  ('SAAS_PRO', 'SaaS Pro', 'Todos os módulos, incluindo Comercial, Licitações, Parceiros e Integrações', 990, 15, 250, '[]', 14, true, true, now())
+ON CONFLICT ("key") DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS "subscriptions" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "planKey" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'TRIAL',
+  "amount" DECIMAL(12,2) NOT NULL DEFAULT 0,
+  "billingDay" INTEGER NOT NULL DEFAULT 10,
+  "graceDays" INTEGER NOT NULL DEFAULT 10,
+  "trialEndsAt" TIMESTAMP(3) NULL,
+  "currentPeriodStart" DATE NULL,
+  "currentPeriodEnd" DATE NULL,
+  "cancelledAt" TIMESTAMP(3) NULL,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "subscriptions_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "subscriptions_organizationId_key" ON "subscriptions"("organizationId");
+
+CREATE TABLE IF NOT EXISTS "subscription_invoices" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "period" TEXT NOT NULL,
+  "amount" DECIMAL(12,2) NOT NULL,
+  "dueDate" DATE NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'OPEN',
+  "paidAt" DATE NULL,
+  "paymentRef" TEXT NULL,
+  "notes" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "subscription_invoices_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "subscription_invoices_organizationId_period_key" ON "subscription_invoices"("organizationId", "period");
+CREATE INDEX IF NOT EXISTS "subscription_invoices_status_dueDate_idx" ON "subscription_invoices"("status", "dueDate");
+
+CREATE TABLE IF NOT EXISTS "api_keys" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "prefix" TEXT NOT NULL,
+  "keyHash" TEXT NOT NULL,
+  "permissions" JSONB NOT NULL DEFAULT '[]',
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "lastUsedAt" TIMESTAMP(3) NULL,
+  "expiresAt" TIMESTAMP(3) NULL,
+  "createdByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "revokedAt" TIMESTAMP(3) NULL,
+  CONSTRAINT "api_keys_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "api_keys_keyHash_key" ON "api_keys"("keyHash");
+CREATE INDEX IF NOT EXISTS "api_keys_organizationId_idx" ON "api_keys"("organizationId");
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'subscriptions_organizationId_fkey') THEN
+    ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'subscription_invoices_organizationId_fkey') THEN
+    ALTER TABLE "subscription_invoices" ADD CONSTRAINT "subscription_invoices_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'api_keys_organizationId_fkey') THEN
+    ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+-- Assinatura isenta para a organização padrão (Edição Própria)
+INSERT INTO "subscriptions" ("id", "organizationId", "planKey", "status", "amount", "updatedAt")
+SELECT gen_random_uuid()::text, o.id, 'PROPRIA', 'EXEMPT', 0, now() FROM "organizations" o WHERE o.slug = 'siow-system-tecnologia' AND NOT EXISTS (SELECT 1 FROM "subscriptions" s WHERE s."organizationId" = o.id);

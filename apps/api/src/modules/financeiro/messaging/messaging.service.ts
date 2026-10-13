@@ -34,7 +34,7 @@ export class MessagingService {
       input.contactId ? this.prisma.contact.findFirst({ where: { id: input.contactId, deletedAt: null } }) : null,
       input.invoiceId ? this.prisma.invoice.findFirst({ where: { id: input.invoiceId }, include: { contract: true } }) : null,
       input.serviceOrderId ? this.prisma.serviceOrder.findFirst({ where: { id: input.serviceOrderId }, include: { contract: true } }) : null,
-      this.prisma.setting.findUnique({ where: { key: 'company.name' } }),
+      this.prisma.setting.findFirst({ where: { key: 'company.name' } }),
     ]);
     if (!entity) throw new NotFoundException('Entidade não encontrada');
     const comp = so ?? invoice;

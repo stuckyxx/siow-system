@@ -24,6 +24,19 @@ export interface CurrentUser {
   permissions: string[];
   organizationId: string;
   organization: { id: string; name: string; slug: string; branding: Record<string, unknown> };
+  /** Fase 9 — licenciamento: módulos habilitados (vazio = todos), somente leitura (bloqueio suave) e plano. */
+  access?: OrgAccess;
+}
+
+export interface OrgAccess {
+  planKey: string;
+  planName: string;
+  modules: string[];
+  readOnly: boolean;
+  blockReason: string | null;
+  subscriptionStatus: string | null;
+  trialEndsAt: string | null;
+  limits: { maxUsers: number | null; maxEntities: number | null };
 }
 
 export interface EntitySummary {

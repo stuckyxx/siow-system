@@ -45,7 +45,7 @@ export interface Forecast {
 export type DashboardWithForecast = DashboardResponse & Forecast;
 
 async function setting(key: string, fallback: number): Promise<number> {
-  const s = await prisma.setting.findUnique({ where: { key } });
+  const s = await prisma.setting.findFirst({ where: { key } });
   return typeof s?.value === 'number' ? s.value : fallback;
 }
 

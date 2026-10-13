@@ -16,7 +16,7 @@ import { notifyDeadlines as notifyTenderDeadlines } from './tenders.js';
 import { notifySla as notifyTicketSla } from './tickets.js';
 
 async function settingNumber(key: string, fallback: number): Promise<number> {
-  const s = await prisma.setting.findUnique({ where: { key } });
+  const s = await prisma.setting.findFirst({ where: { key } });
   const v = s?.value;
   return typeof v === 'number' ? v : Number(v ?? fallback) || fallback;
 }

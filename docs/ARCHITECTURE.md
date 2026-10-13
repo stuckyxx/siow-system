@@ -270,6 +270,24 @@ desconhecido a um contato, iniciar conversa com contato cadastrado. Tudo passa p
 com confirmação da Meta. Interface `/atendimento/whatsapp`: caixa de entrada com filtros (todas, minhas, sem atendente, não lidas,
 encerradas), atualização automática a cada 5 s, conversa em balões com status, compositor de texto ou modelo, atribuição e encerramento.
 
+## 6j. SaaS e white-label (Fase 9)
+
+**Isolamento das configurações** — `Setting` passou a ser por organização (chave composta `organizationId + key`); o seed cria o conjunto padrão em cada organização nova e as leituras usam o filtro de tenant (`findFirst`). A organização padrão (Siow, Edição Própria) manteve todas as chaves existentes.
+
+**Plataforma** — `PlatformAdmin` (superadmin Siow) com login próprio (`/plataforma/login` → `POST /api/platform/auth/login`, JWT tipo `platform` em cookie HttpOnly `siow_platform`, 8 h). As rotas `/api/platform/*` usam `platformRoute()` (`server/platform-auth.ts`) e rodam em modo plataforma (sem tenant), auditadas com `organizationId` da organização afetada e `justification = plataforma:<e-mail>`. Console em `/plataforma`: visão geral (MRR, faturas vencidas), organizações (onboarding em 3 passos: empresa → plano → administrador; dados/limites/módulos/situação; assinatura; faturas; uso e exportação), planos, faturas e configurações (autocadastro, senha).
+
+**Planos e licenciamento** — `Plan` (chave, mensalidade, `maxUsers`, `maxEntities`, `modules`, dias de teste, público). Módulos: `MODULES` em `@siow/shared` (núcleo sempre liberado: CADASTRO, FINANCEIRO, CONTRATOS). `server/access.ts` resolve o acesso efetivo de uma organização (plano ∩ restrições da organização, limites da organização sobrescrevem o plano, `readOnly`) com cache de 30 s; `route()` em `http.ts` bloqueia o módulo não licenciado por prefixo de rota (403) e qualquer mutação em organização em somente leitura (423, exceto `/api/auth`). `/api/auth/me` devolve `access` (módulos, limites, situação) e o menu esconde os módulos não licenciados; `users.create` e `entities.create` aplicam os limites. Planos semeados: PROPRIA (isento, sem limites), SAAS_BASICO, SAAS_PRO.
+
+**Assinaturas e cobrança** — `Subscription` por organização (TRIAL → ACTIVE → PAST_DUE → BLOCKED → ACTIVE; EXEMPT para a Siow/planos gratuitos; CANCELLED) e `SubscriptionInvoice` (uma por período `AAAA-MM`, vencimento no `billingDay`). Rotina `runBilling()` (cron `GET /api/cron/platform`, diário 09:30 UTC, ou botão "Executar cobrança"): encerra testes vencidos, gera a fatura do mês (idempotente), marca vencidas (PAST_DUE) e, após a carência (`graceDays`), aplica o **bloqueio suave** (BLOCKED → organização READONLY, com motivo exibido em faixa; leitura liberada). Registrar o pagamento (manual, pela plataforma) reativa a organização quando não restam faturas vencidas. A organização padrão nunca é bloqueada nem removida. Nada é apagado: remoção de organização é lógica e só sem dados de negócio.
+
+**White-label** — `Organization.branding` (`productName`, `tagline`, `logoUrl`, `accent`, `accent2`, `supportEmail`) e `Organization.domain`. `GET /api/public/branding?host=` resolve a marca pelo domínio (login/cadastro); após o login a marca da organização do usuário prevalece (`lib/branding.tsx` aplica as variáveis CSS do tema e o título). Aba **Marca e plano** em Administração: logotipo por upload (Vercel Blob), cores, textos, situação do plano e exportação LGPD.
+
+**Chaves de API** — `ApiKey` por organização (`sk_<prefixo>_<segredo>`; só o SHA-256 é guardado; permissões ⊆ do criador e recalculadas a cada uso). `route()` aceita `Authorization: Bearer sk_…` como usuário sintético da organização (CSRF não se aplica a bearer). Gerência na aba **Chaves de API** (`/api/settings/api-keys`).
+
+**Onboarding e autocadastro** — `POST /api/public/signup` + página `/cadastro`, habilitado pela configuração de plataforma `platform.selfSignup` (plano padrão `platform.defaultPlan`, só planos públicos); cria a organização em teste gratuito pelo prazo do plano.
+
+**LGPD / portabilidade** — `GET /api/settings/export` (organização, exige `settings.manage` + `audit.read`, auditado como EXPORT) e `GET /api/platform/organizations/[id]/export` devolvem JSON completo (`siow-export/v1`) da organização: usuários (sem hashes), entidades, contratos, notas, cobranças, OS, certidões, oportunidades, licitações, chamados, campanhas, parceiros, tarefas, configurações, documentos (metadados) e WhatsApp.
+
 ## 7. Mensageria e assinatura
 
 - `MessageAdapter` (WhatsApp Cloud API, SMTP). Sem credenciais configuradas → mensagem fica `MANUAL_PENDING`

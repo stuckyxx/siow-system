@@ -16,7 +16,7 @@ export const TENANT_MODELS = new Set<string>([
   'User', 'Role', 'Entity', 'DataSource', 'SyncRun', 'Contract', 'Invoice', 'SyncConflict', 'DocumentBlob', 'Document',
   'Certificate', 'Contact', 'FinancialTask', 'CollectionCase', 'MessageTemplate', 'OutboundMessage', 'ServiceOrder',
   'SignatureRequest', 'IssuanceAlarm', 'Notification', 'AuditLog', 'PublicAgent', 'EntityHealthSnapshot',
-  'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal', 'ContractRenewal', 'Partner', 'CommissionRule', 'Commission', 'Tender', 'Ticket', 'Campaign', 'Integration', 'IntegrationLog', 'Webhook', 'WaConversation',
+  'Pipeline', 'PipelineStage', 'Opportunity', 'OpportunityItem', 'Proposal', 'CatalogItem', 'Goal', 'ContractRenewal', 'Partner', 'CommissionRule', 'Commission', 'Tender', 'Ticket', 'Campaign', 'Integration', 'IntegrationLog', 'Webhook', 'WaConversation', 'Setting', 'Subscription', 'SubscriptionInvoice', 'ApiKey',
 ]);
 
 /** Modelos filhos: caminho de relação até um modelo tenant. */
@@ -29,7 +29,7 @@ export const CHILD_TENANT_PATHS: Record<string, string> = {
 };
 
 /** Modelos globais (sem tenant): catálogo de permissões, configurações da plataforma, organizações, superadmin. */
-export const GLOBAL_MODELS = new Set<string>(['Permission', 'Setting', 'Organization', 'PlatformAdmin']);
+export const GLOBAL_MODELS = new Set<string>(['Permission', 'Organization', 'PlatformAdmin', 'Plan']);
 
 const READ_OPS = new Set(['findFirst', 'findFirstOrThrow', 'findMany', 'findUnique', 'findUniqueOrThrow', 'count', 'aggregate', 'groupBy', 'update', 'updateMany', 'delete', 'deleteMany', 'upsert']);
 const CREATE_OPS = new Set(['create', 'createMany', 'createManyAndReturn', 'upsert']);

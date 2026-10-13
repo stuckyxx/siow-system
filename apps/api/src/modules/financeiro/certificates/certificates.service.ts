@@ -14,7 +14,7 @@ export class CertificatesService {
   ) {}
 
   private async expiringDays(): Promise<number> {
-    const s = await this.prisma.setting.findUnique({ where: { key: 'certificates.expiringDays' } });
+    const s = await this.prisma.setting.findFirst({ where: { key: 'certificates.expiringDays' } });
     return typeof s?.value === 'number' ? s.value : 30;
   }
 

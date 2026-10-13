@@ -9,7 +9,7 @@ import type { WorkerContext } from './context.js';
  * installSchedules) substitui o agendamento anterior.
  */
 export async function installSchedules(ctx: WorkerContext): Promise<void> {
-  const setting = await ctx.prisma.setting.findUnique({ where: { key: 'sync.cron' } });
+  const setting = await ctx.prisma.setting.findFirst({ where: { key: 'sync.cron' } });
   const cron = (typeof setting?.value === 'string' ? setting.value : null) ?? process.env['SYNC_CRON'] ?? '0 */6 * * *';
   const tz = process.env['TZ'] ?? 'America/Sao_Paulo';
 

@@ -3,9 +3,12 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
+import { usePublicBranding } from '@/lib/branding';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
+  const brand = usePublicBranding();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +49,8 @@ export default function LoginPage() {
     <main className="login-wrap">
       <div className="lg-card">
         <div style={{ position: 'absolute', top: 12, right: 12 }}><ThemeToggle className="btn sm ghost" /></div>
-        <img className="lg-logo" src="/logo.png" alt="Siow System" />
-        <div className="lg-sub">Módulo Financeiro</div>
+        <img className="lg-logo" src={brand.logoUrl} alt={brand.productName} />
+        <div className="lg-sub">{brand.tagline}</div>
         <form onSubmit={submit}>
           <label className="f">E-mail<input type="email" autoComplete="username" placeholder="voce@siowsystem.com.br" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
           <label className="f">Senha<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
@@ -59,6 +62,7 @@ export default function LoginPage() {
         </form>
         <button className="link small" style={{ marginTop: 12 }} onClick={() => setInfo('Peça ao administrador do sistema para redefinir sua senha (Administração → Usuários → Redefinir senha).')}>Esqueci minha senha</button>
         {info && <p className="small muted" style={{ marginTop: 8 }}>{info}</p>}
+        {brand.selfSignup && !brand.organizationSlug && <p className="small muted" style={{ marginTop: 14 }}>Ainda não tem conta? <Link href="/cadastro" style={{ color: 'var(--accent)' }}>Criar conta de teste</Link></p>}
       </div>
     </main>
   );

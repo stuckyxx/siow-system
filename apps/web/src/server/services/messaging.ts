@@ -31,7 +31,7 @@ export async function buildVars(input: { entityId: string; contactId?: string | 
     input.contactId ? prisma.contact.findFirst({ where: { id: input.contactId, deletedAt: null } }) : null,
     input.invoiceId ? prisma.invoice.findFirst({ where: { id: input.invoiceId }, include: { contract: true } }) : null,
     input.serviceOrderId ? prisma.serviceOrder.findFirst({ where: { id: input.serviceOrderId }, include: { contract: true } }) : null,
-    prisma.setting.findUnique({ where: { key: 'company.name' } }),
+    prisma.setting.findFirst({ where: { key: 'company.name' } }),
   ]);
   if (!entity) throw notFound('Entidade não encontrada');
   const comp = so ?? invoice;

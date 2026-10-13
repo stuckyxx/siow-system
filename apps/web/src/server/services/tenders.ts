@@ -262,7 +262,7 @@ export async function formalize(ctx: Ctx, id: string, input: z.infer<typeof form
 
 // ---------------- alertas (cron) ----------------
 export async function notifyDeadlines(today = todayIso()): Promise<{ due: number; overdue: number }> {
-  const s = await prisma.setting.findUnique({ where: { key: 'tenders.alertDays' } });
+  const s = await prisma.setting.findFirst({ where: { key: 'tenders.alertDays' } });
   const days = typeof s?.value === 'number' ? s.value : 3;
   const rows = await prisma.tenderDeadline.findMany({ where: { done: false, dueAt: { lte: new Date(`${addDaysIso(today, days)}T23:59:59Z`) }, tender: { deletedAt: null, status: { in: ['IDENTIFIED', 'ANALYZING', 'PREPARING', 'SUBMITTED', 'IN_SESSION', 'WON'] } } }, include: { tender: { select: { id: true, number: true, entityId: true, ownerUserId: true, entity: { select: { name: true, shortName: true } } } } } });
   let due = 0, overdue = 0;

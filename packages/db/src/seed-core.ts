@@ -311,15 +311,15 @@ export async function runSeed(prisma: PrismaClient, opts: SeedOptions): Promise<
   log('→ configurações');
   for (const s of SETTINGS) {
     await prisma.setting.upsert({
-      where: { key: s.key },
+      where: { organizationId_key: { organizationId: opts.organizationId, key: s.key } },
       update: { description: s.description },
-      create: { key: s.key, value: s.value as object, description: s.description },
+      create: { organizationId: opts.organizationId, key: s.key, value: s.value as object, description: s.description },
     });
   }
   await prisma.setting.upsert({
-    where: { key: 'tasks.typeLabels' },
+    where: { organizationId_key: { organizationId: opts.organizationId, key: 'tasks.typeLabels' } },
     update: { value: TASK_TYPE_LABELS },
-    create: { key: 'tasks.typeLabels', value: TASK_TYPE_LABELS, description: 'Rótulos dos tipos de tarefa' },
+    create: { organizationId: opts.organizationId, key: 'tasks.typeLabels', value: TASK_TYPE_LABELS, description: 'Rótulos dos tipos de tarefa' },
   });
 
   log('→ proteção da auditoria');

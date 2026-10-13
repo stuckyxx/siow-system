@@ -29,7 +29,7 @@ export const include = {
 type Row = Prisma.OpportunityGetPayload<{ include: typeof include }>;
 
 export async function stalledDaysDefault(): Promise<number> {
-  const s = await prisma.setting.findUnique({ where: { key: 'crm.stalledDays' } });
+  const s = await prisma.setting.findFirst({ where: { key: 'crm.stalledDays' } });
   return typeof s?.value === 'number' && s.value > 0 ? s.value : 15;
 }
 

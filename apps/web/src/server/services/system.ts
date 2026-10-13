@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Prisma } from '@siow/db';
 import { paginationSchema } from '@siow/shared';
 import { prisma } from '../db.js';
+import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import type { Ctx } from '../http.js';
 
@@ -56,11 +57,11 @@ export async function settings() {
 }
 
 export async function setSetting(ctx: Ctx, key: string, value: unknown) {
-  const before = await prisma.setting.findUnique({ where: { key } });
+  const before = await prisma.setting.findFirst({ where: { key } });
   const after = await prisma.setting.upsert({
-    where: { key },
+    where: { organizationId_key: { organizationId: currentOrgId(), key } },
     update: { value: value as Prisma.InputJsonValue, updatedByUserId: ctx.user.id },
-    create: { key, value: value as Prisma.InputJsonValue, updatedByUserId: ctx.user.id },
+    create: { organizationId: currentOrgId(), key, value: value as Prisma.InputJsonValue, updatedByUserId: ctx.user.id },
   });
   await audit(ctx, { action: 'SETTING_CHANGED', resource: 'setting', resourceId: key, before: before?.value, after: after.value });
   return after;

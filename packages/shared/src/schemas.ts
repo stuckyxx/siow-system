@@ -844,3 +844,78 @@ export const executiveFilterSchema = z.object({
   responsibleUserId: uuid.optional(),
   partnerId: uuid.optional(),
 });
+
+// ---------- SaaS / Plataforma (Fase 9) ----------
+/** Módulos licenciáveis. FINANCEIRO e CADASTRO são o núcleo e nunca são desligados. */
+export const MODULES = ['CADASTRO', 'FINANCEIRO', 'CONTRATOS', 'COMERCIAL', 'LICITACOES', 'ATENDIMENTO', 'PARCEIROS', 'RELATORIOS', 'INTEGRACOES'] as const;
+export type ModuleKey = (typeof MODULES)[number];
+export const MODULE_LABELS: Record<ModuleKey, string> = {
+  CADASTRO: 'Cadastro de entidades', FINANCEIRO: 'Financeiro', CONTRATOS: 'Contratos', COMERCIAL: 'Comercial (CRM)', LICITACOES: 'Licitações',
+  ATENDIMENTO: 'Atendimento e WhatsApp', PARCEIROS: 'Parceiros e comissões', RELATORIOS: 'Relatórios e BI', INTEGRACOES: 'Integrações e webhooks',
+};
+export const CORE_MODULES: ModuleKey[] = ['CADASTRO', 'FINANCEIRO', 'CONTRATOS'];
+export const SUBSCRIPTION_STATUSES = ['TRIAL', 'ACTIVE', 'PAST_DUE', 'BLOCKED', 'CANCELLED', 'EXEMPT'] as const;
+export const SUBSCRIPTION_INVOICE_STATUSES = ['OPEN', 'PAID', 'OVERDUE', 'CANCELLED'] as const;
+
+export const platformLoginSchema = loginSchema;
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida (use #RRGGBB)');
+export const brandingSchema = z.object({
+  productName: z.string().max(60).optional().nullable(),
+  tagline: z.string().max(80).optional().nullable(),
+  logoUrl: z.string().url().max(500).optional().nullable(),
+  accent: hexColor.optional().nullable(),
+  accent2: hexColor.optional().nullable(),
+  supportEmail: z.string().email().optional().nullable(),
+});
+export type BrandingDto = z.infer<typeof brandingSchema>;
+
+export const planUpsertSchema = z.object({
+  key: z.string().min(2).max(30).regex(/^[A-Z0-9_]+$/, 'Use letras maiúsculas, números e _'),
+  name: z.string().min(2).max(80),
+  description: z.string().max(300).optional().nullable(),
+  priceMonthly: money.default('0'),
+  maxUsers: z.coerce.number().int().min(1).optional().nullable(),
+  maxEntities: z.coerce.number().int().min(1).optional().nullable(),
+  modules: z.array(z.enum(MODULES)).default([]),
+  trialDays: z.coerce.number().int().min(0).max(90).default(14),
+  isActive: z.boolean().default(true),
+  isPublic: z.boolean().default(false),
+});
+
+export const platformCreateOrganizationSchema = createOrganizationSchema.extend({
+  planKey: z.string().min(2).max(30).default('SAAS_BASICO'),
+  domain: z.string().max(120).regex(/^[a-z0-9.-]+$/, 'Domínio inválido').optional().nullable(),
+  branding: brandingSchema.optional(),
+  trial: z.boolean().default(true),
+});
+export const platformUpdateOrganizationSchema = z.object({
+  name: z.string().min(2).max(120).optional(),
+  document: z.string().max(20).optional().nullable(),
+  domain: z.string().max(120).regex(/^[a-z0-9.-]+$/, 'Domínio inválido').optional().nullable(),
+  modules: z.array(z.enum(MODULES)).optional(),
+  limits: z.object({ maxUsers: z.coerce.number().int().min(1).optional().nullable(), maxEntities: z.coerce.number().int().min(1).optional().nullable() }).optional(),
+  branding: brandingSchema.optional(),
+  status: z.enum(['ACTIVE', 'READONLY', 'SUSPENDED']).optional(),
+  blockReason: z.string().max(300).optional().nullable(),
+});
+export const subscriptionUpsertSchema = z.object({
+  planKey: z.string().min(2).max(30),
+  status: z.enum(SUBSCRIPTION_STATUSES),
+  amount: money.optional(),
+  billingDay: z.coerce.number().int().min(1).max(28).default(10),
+  graceDays: z.coerce.number().int().min(0).max(60).default(10),
+  trialEndsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  notes: z.string().max(500).optional().nullable(),
+});
+export const subscriptionInvoicePaySchema = z.object({ paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), paymentRef: z.string().max(120).optional().nullable(), notes: z.string().max(300).optional().nullable() });
+export const apiKeyCreateSchema = z.object({ name: z.string().min(2).max(80), permissions: z.array(z.string()).min(1), expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable() });
+export const signupSchema = z.object({
+  companyName: z.string().min(2).max(120),
+  document: z.string().max(20).optional().nullable(),
+  adminName: z.string().min(2).max(120),
+  adminEmail: z.string().email(),
+  adminPassword: z.string().min(10).max(200),
+  planKey: z.string().min(2).max(30).optional(),
+  acceptTerms: z.literal(true, { errorMap: () => ({ message: 'É necessário aceitar os termos de uso' }) }),
+});
+export const platformChangePasswordSchema = z.object({ currentPassword: z.string().min(8), newPassword: z.string().min(10).max(200) });

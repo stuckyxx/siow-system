@@ -5,6 +5,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { Prisma } from '@siow/db';
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
+import { resolveAccess } from '../access.js';
 import { audit } from '../audit.js';
 import { hashPassword, isStrongPassword } from '../password.js';
 import { badRequest, forbidden, notFound, type Ctx } from '../http.js';
@@ -83,6 +84,11 @@ export async function permissions() {
 
 export async function create(ctx: Ctx, input: { name: string; email: string; password: string; roleIds: string[] }): Promise<UserView> {
   if (!isStrongPassword(input.password)) throw badRequest('Senha fraca: mínimo 10 caracteres com letras, números e símbolo');
+  const maxUsers = ctx.user.access?.limits.maxUsers ?? (await resolveAccess(currentOrgId())).limits.maxUsers;
+  if (maxUsers !== null) {
+    const active = await prisma.user.count({ where: { isActive: true, deletedAt: null } });
+    if (active >= maxUsers) throw badRequest(`Limite de ${maxUsers} usuários ativos do plano atingido. Desative um usuário ou amplie o plano.`);
+  }
   const passwordHash = await hashPassword(input.password);
   const user = await prisma.user.create({
     data: { organizationId: currentOrgId(), name: input.name, email: input.email.toLowerCase(), passwordHash, mustChangePassword: true, roles: { create: input.roleIds.map((roleId) => ({ roleId })) } },

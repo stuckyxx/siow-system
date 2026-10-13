@@ -76,7 +76,7 @@ export class InvoicesService {
   ) {}
 
   private async overdueAfterDays(): Promise<number> {
-    const s = await this.prisma.setting.findUnique({ where: { key: 'invoices.overdueAfterDays' } });
+    const s = await this.prisma.setting.findFirst({ where: { key: 'invoices.overdueAfterDays' } });
     return typeof s?.value === 'number' ? s.value : 30;
   }
 

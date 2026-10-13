@@ -8,6 +8,8 @@ import type { CurrentUser } from '@siow/shared';
 import { Prisma } from '@siow/db';
 import { getCurrentUser } from './auth.js';
 import { runAsPlatform, runWithOrg } from './tenant.js';
+import { moduleAllowed, moduleForPath, resolveAccess } from './access.js';
+import { resolveApiKey } from './services/api-keys.js';
 
 export class HttpError extends Error {
   constructor(public status: number, message: string, public issues?: Array<{ path: string; message: string }>) { super(message); }
@@ -71,9 +73,20 @@ export function route(permissions: string[] | null, fn: Handler) {
       let user: CurrentUser | null = null;
       if (permissions !== null) {
         user = await getCurrentUser(req);
+        // Chave de API (integrações externas): `Authorization: Bearer sk_…` vira um usuário sintético da organização.
+        if (!user) { const auth = req.headers.get('authorization') ?? ''; if (auth.startsWith('Bearer sk_')) user = await runAsPlatform(() => resolveApiKey(auth.slice(7).trim())); }
         if (!user) throw unauthorized();
         const missing = permissions.filter((p) => !user!.permissions.includes(p));
         if (missing.length) throw forbidden('Permissão necessária: ' + missing.join(', '));
+        // Licenciamento (Fase 9): módulo não contratado → 403; organização em somente leitura → bloqueia mutações (exceto auth).
+        const path = req.nextUrl.pathname;
+        if (!path.startsWith('/api/auth/')) {
+          const access = await resolveAccess(user.organizationId);
+          user.access = access;
+          const mod = moduleForPath(path);
+          if (!moduleAllowed(access, mod)) throw new HttpError(403, `Módulo não incluído no seu plano (${access.planName}). Fale com a Siow System para habilitar ${mod}.`);
+          if (access.readOnly && MUTATING.has(req.method)) throw new HttpError(423, access.blockReason ?? 'Organização em modo somente leitura');
+        }
       }
       const ctx: Ctx = { req, user: user as CurrentUser, params, query, ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null, userAgent: req.headers.get('user-agent')?.slice(0, 300) ?? null };
       // Rota autenticada: tudo roda dentro da organização do usuário. Rota pública: modo plataforma (sem tenant).

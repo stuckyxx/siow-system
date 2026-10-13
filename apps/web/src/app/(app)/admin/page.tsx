@@ -5,6 +5,8 @@ import { formatBrDateTime } from '@siow/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { IntegrationsPanel } from '@/components/admin/integrations-panel';
+import { BrandingPanel } from '@/components/admin/branding-panel';
+import { ApiKeysPanel } from '@/components/admin/api-keys-panel';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Dialog, Field, Input, Select, Table, Tabs, Td, Textarea, Th } from '@/components/ui';
 
 interface UserRow { id: string; name: string; email: string; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null; roles: Array<{ id: string; name: string }>; effectivePermissions: string[]; extraPermissions: string[]; revokedPermissions: string[] }
@@ -20,12 +22,14 @@ export default function AdminPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Administração</h1>
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'users', label: 'Usuários' }, { key: 'roles', label: 'Papéis e permissões' }, { key: 'settings', label: 'Configurações' }, { key: 'templates', label: 'Modelos de mensagem' }, { key: 'integrations', label: 'Integrações' }, { key: 'audit', label: 'Auditoria' }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'users', label: 'Usuários' }, { key: 'roles', label: 'Papéis e permissões' }, { key: 'settings', label: 'Configurações' }, { key: 'templates', label: 'Modelos de mensagem' }, { key: 'integrations', label: 'Integrações' }, { key: 'branding', label: 'Marca e plano' }, { key: 'apikeys', label: 'Chaves de API' }, { key: 'audit', label: 'Auditoria' }]} />
       {tab === 'users' && <Users />}
       {tab === 'roles' && <Roles />}
       {tab === 'settings' && <Settings />}
       {tab === 'templates' && <Templates />}
       {tab === 'integrations' && <IntegrationsPanel />}
+      {tab === 'branding' && <BrandingPanel />}
+      {tab === 'apikeys' && <ApiKeysPanel />}
       {tab === 'audit' && <AuditLog />}
     </div>
   );

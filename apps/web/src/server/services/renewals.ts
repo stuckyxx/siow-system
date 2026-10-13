@@ -15,7 +15,7 @@ import { badRequest, notFound, type Ctx } from '../http.js';
 import { ensureDefault } from './crm/pipelines.js';
 
 async function renewalDays(): Promise<number> {
-  const s = await prisma.setting.findUnique({ where: { key: 'contracts.renewalDays' } });
+  const s = await prisma.setting.findFirst({ where: { key: 'contracts.renewalDays' } });
   return typeof s?.value === 'number' && s.value > 0 ? s.value : 90;
 }
 

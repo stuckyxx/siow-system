@@ -2,7 +2,7 @@ import { addDaysIso, todayIso, isoToDate } from '@siow/shared';
 import type { WorkerContext } from '../context.js';
 
 async function settingNumber(ctx: WorkerContext, key: string, fallback: number): Promise<number> {
-  const s = await ctx.prisma.setting.findUnique({ where: { key } });
+  const s = await ctx.prisma.setting.findFirst({ where: { key } });
   const v = s?.value;
   return typeof v === 'number' ? v : Number(v ?? fallback) || fallback;
 }
