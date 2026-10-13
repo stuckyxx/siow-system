@@ -143,6 +143,8 @@
   label.f input, label.f select, label.f textarea { text-transform: none; letter-spacing: 0; font-size: 13px; }
   .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   @media (max-width: 600px) { .frm { grid-template-columns: 1fr; } }
+  /* Celular: nada expande o viewport; filtros em linha quebram e campos encolhem. */
+  @media (max-width: 600px) { html, body { overflow-x: hidden; } .row > * { min-width: 0; max-width: 100%; } .row > b[style] { min-width: 0 !important; } .content { padding-left: 12px; padding-right: 12px; } }
   .frm .w { grid-column: 1 / -1; }
   .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; margin-bottom: 14px; backdrop-filter: blur(10px); }
   .filters select { min-width: 120px; }

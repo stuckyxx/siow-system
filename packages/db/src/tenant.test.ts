@@ -32,12 +32,24 @@ describe('applyTenantArgs — isolamento por organização', () => {
 
   it('não toca em modelos globais', () => {
     expect(applyTenantArgs('Permission', 'findMany', {}, ORG)).toEqual({});
-    expect(applyTenantArgs('Setting', 'findUnique', { where: { key: 'x' } }, null)).toEqual({ where: { key: 'x' } });
+    expect(applyTenantArgs('Plan', 'findUnique', { where: { key: 'x' } }, null)).toEqual({ where: { key: 'x' } });
+    expect(applyTenantArgs('Setting', 'findFirst', { where: { key: 'x' } }, ORG)).toEqual({ where: { key: 'x', organizationId: ORG } });
     expect(applyTenantArgs('Organization', 'create', { data: { name: 'o' } }, null)).toEqual({ data: { name: 'o' } });
   });
   it('recusa operação sem contexto, salvo em modo plataforma', () => {
     expect(() => applyTenantArgs('Entity', 'findMany', {}, null)).toThrow(TenantContextError);
     expect(() => applyTenantArgs('InvoiceEvent', 'findMany', {}, undefined)).toThrow(TenantContextError);
     expect(applyTenantArgs('User', 'findFirst', { where: { email: 'a@b' } }, null, true)).toEqual({ where: { email: 'a@b' } });
+  });
+});
+
+describe('collectTenantRefs — referências a validar em escritas', () => {
+  it('extrai campos *Id mapeados e connect.id', async () => {
+    const { collectTenantRefs } = await import('./tenant.js');
+    const refs = collectTenantRefs({ title: 'x', entityId: 'e1', assigneeUserId: 'u1', contract: { connect: { id: 'c1' } }, amount: '10', notes: null });
+    expect(refs).toEqual([{ field: 'entityId', model: 'Entity', id: 'e1' }, { field: 'assigneeUserId', model: 'User', id: 'u1' }, { field: 'contract', model: 'Contract', id: 'c1' }]);
+    expect(collectTenantRefs([{ entityId: 'a' }, { entityId: 'b' }]).length).toBe(2);
+    expect(collectTenantRefs({ roleIds: ['r1', 'r2'], items: [{ catalogItemId: 'c1' }] })).toEqual([{ field: 'roleIds.0', model: 'Role', id: 'r1' }, { field: 'roleIds.1', model: 'Role', id: 'r2' }, { field: 'catalogItemId', model: 'CatalogItem', id: 'c1' }]);
+    expect(collectTenantRefs(undefined)).toEqual([]);
   });
 });

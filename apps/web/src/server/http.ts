@@ -5,7 +5,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError, type ZodTypeAny, type output } from 'zod';
 import type { CurrentUser } from '@siow/shared';
-import { Prisma } from '@siow/db';
+import { Prisma, TenantReferenceError, collectTenantRefs } from '@siow/db';
+import { prisma } from './db.js';
+import { currentOrgIdOrNull } from './tenant.js';
 import { getCurrentUser } from './auth.js';
 import { runAsPlatform, runWithOrg } from './tenant.js';
 import { moduleAllowed, moduleForPath, resolveAccess } from './access.js';
@@ -51,6 +53,7 @@ export function toResponse(result: unknown): Response {
 
 export function errorResponse(e: unknown): Response {
   if (e instanceof HttpError) { const retry = (e as HttpError & { retryAfter?: number }).retryAfter; return NextResponse.json({ statusCode: e.status, message: e.message, issues: e.issues }, { status: e.status, headers: retry ? { 'Retry-After': String(retry) } : undefined }); }
+  if (e instanceof TenantReferenceError) return NextResponse.json({ statusCode: 404, message: 'Registro referenciado não encontrado nesta organização', issues: [{ path: e.field, message: 'não encontrado' }] }, { status: 404 });
   if (e instanceof ZodError) return NextResponse.json({ statusCode: 400, message: 'Dados inválidos', issues: e.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) }, { status: 400 });
   if (e instanceof Prisma.PrismaClientKnownRequestError) {
     if (e.code === 'P2002') return NextResponse.json({ statusCode: 409, message: 'Registro duplicado' }, { status: 409 });
@@ -99,6 +102,25 @@ export function route(permissions: string[] | null, fn: Handler) {
 export async function json<S extends ZodTypeAny>(req: NextRequest, schema: S): Promise<output<S>> {
   let body: unknown;
   try { body = await req.json(); } catch { throw badRequest('JSON inválido'); }
-  return schema.parse(body);
+  const parsed = schema.parse(body);
+  await assertTenantRefs(parsed);
+  return parsed;
+}
+
+/**
+ * Isolamento na borda: todo id de registro tenant informado pelo cliente (entityId, contractId, assigneeUserId, roleIds…)
+ * precisa existir na organização atual; caso contrário 404, sem revelar se o id existe em outra organização.
+ */
+export async function assertTenantRefs(body: unknown): Promise<void> {
+  if (!currentOrgIdOrNull()) return;
+  const refs = collectTenantRefs(body);
+  if (!refs.length) return;
+  const seen = new Set<string>();
+  await Promise.all(refs.filter((r) => { const k = `${r.model}:${r.id}`; if (seen.has(k)) return false; seen.add(k); return true; }).map(async (r) => {
+    const delegate = (prisma as unknown as Record<string, { count: (x: { where: Record<string, unknown> }) => Promise<number> }>)[r.model.charAt(0).toLowerCase() + r.model.slice(1)];
+    if (!delegate) return;
+    const n = await delegate.count({ where: { id: r.id } }).catch(() => 1); // id inválido para o Prisma → deixa a validação de formato responder
+    if (n === 0) throw new TenantReferenceError(r.field, r.model, r.id);
+  }));
 }
 export function parseQuery<S extends ZodTypeAny>(query: Record<string, string>, schema: S): output<S> { return schema.parse(query); }

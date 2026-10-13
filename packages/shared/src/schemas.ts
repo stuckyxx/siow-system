@@ -20,7 +20,7 @@ export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar 
 export const decimalString = z
   .union([z.string(), z.number()])
   .transform((v) => (typeof v === 'number' ? v.toFixed(2) : v))
-  .pipe(z.string().regex(/^-?\d+(\.\d{1,2})?$/, 'Valor decimal inválido'));
+  .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Valor decimal inválido (use um número não negativo com até 2 casas)'));
 export const uuid = z.string().uuid();
 export const uf = z.string().length(2).transform((s) => s.toUpperCase());
 /**

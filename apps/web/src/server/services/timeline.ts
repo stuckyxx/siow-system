@@ -4,11 +4,13 @@
  */
 import { formatBRL, type TimelineEvent } from '@siow/shared';
 import { prisma } from '../db.js';
+import { notFound } from '../http.js';
 import { interactionLabel } from './tickets.js';
 
 const INVOICE_EVENT_LABEL: Record<string, string> = { CREATED: 'Nota registrada', STATUS_CHANGED: 'Situação da nota alterada', MANUAL_OVERRIDE: 'Alteração manual', CONFLICT_DETECTED: 'Conflito com a fonte', CONFLICT_RESOLVED: 'Conflito resolvido', RECONCILED: 'Nota reconciliada', NOTE: 'Observação', FIELD_CHANGED: 'Campo alterado', MISSING_FROM_SOURCE: 'Nota sumiu da fonte', REAPPEARED: 'Nota voltou à fonte' };
 
 export async function timeline(entityId: string, limit = 300): Promise<TimelineEvent[]> {
+  if (!(await prisma.entity.findFirst({ where: { id: entityId }, select: { id: true } }))) throw notFound('Entidade não encontrada');
   const [invoiceEvents, contracts, runs, tasks, attempts, documents, alarms, agents, audits, notifications, opportunities, tenders, tickets] = await Promise.all([
     prisma.invoiceEvent.findMany({ where: { invoice: { entityId } }, include: { invoice: { select: { number: true, amount: true } }, user: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 150 }),
     prisma.contract.findMany({ where: { entityId, deletedAt: null }, include: { amendments: true }, orderBy: { createdAt: 'desc' } }),

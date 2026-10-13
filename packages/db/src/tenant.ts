@@ -86,6 +86,50 @@ export function applyTenantArgs(model: string, operation: string, args: Args, or
 
 export interface TenantContext { organizationId: string | null; platform: boolean }
 
+/**
+ * Campos de chave estrangeira cujo alvo é um modelo tenant: um id vindo do cliente precisa pertencer à mesma organização.
+ * A verificação acontece na borda da API (`json()` em apps/web/src/server/http.ts) sobre o corpo já validado, para que
+ * jobs internos e transações (que criam e referenciam registros no mesmo passo) não sejam afetados.
+ */
+export const TENANT_REFS: Record<string, string> = {
+  entityId: 'Entity', contractId: 'Contract', newContractId: 'Contract', invoiceId: 'Invoice', contactId: 'Contact', partnerId: 'Partner',
+  opportunityId: 'Opportunity', tenderId: 'Tender', ticketId: 'Ticket', serviceOrderId: 'ServiceOrder', documentId: 'Document', signedDocumentId: 'Document',
+  pipelineId: 'Pipeline', stageId: 'PipelineStage', catalogItemId: 'CatalogItem', dataSourceId: 'DataSource', certificateId: 'Certificate',
+  campaignId: 'Campaign', conversationId: 'WaConversation', templateId: 'MessageTemplate', ruleId: 'CommissionRule', webhookId: 'Webhook',
+  taskId: 'FinancialTask', outboundMessageId: 'OutboundMessage', blobId: 'DocumentBlob', roleId: 'Role',
+  userId: 'User', assigneeUserId: 'User', responsibleUserId: 'User', ownerUserId: 'User', createdByUserId: 'User', updatedByUserId: 'User',
+  requestedByUserId: 'User', decidedByUserId: 'User', paidByUserId: 'User', performedByUserId: 'User', sentByUserId: 'User',
+  registeredByUserId: 'User', uploadedByUserId: 'User', overriddenByUserId: 'User', resolvedByUserId: 'User',
+};
+/** Relações aninhadas `{ connect: { id } }` → modelo alvo (mesmo critério). */
+const RELATION_REFS: Record<string, string> = { entity: 'Entity', contract: 'Contract', invoice: 'Invoice', contact: 'Contact', partner: 'Partner', opportunity: 'Opportunity', tender: 'Tender', ticket: 'Ticket', serviceOrder: 'ServiceOrder', document: 'Document', pipeline: 'Pipeline', stage: 'PipelineStage', user: 'User', assignee: 'User', owner: 'User', responsible: 'User', createdBy: 'User', role: 'Role' };
+
+export class TenantReferenceError extends Error {
+  constructor(public readonly field: string, public readonly targetModel: string, public readonly id: string) {
+    super(`Referência ${field} (${targetModel}) não pertence à organização atual`);
+    this.name = 'TenantReferenceError';
+  }
+}
+
+/** Extrai as referências a validar de um `data` de create/update (campos *_Id e `connect: { id }`). */
+export function collectTenantRefs(data: unknown): Array<{ field: string; model: string; id: string }> {
+  const out: Array<{ field: string; model: string; id: string }> = [];
+  const visit = (d: unknown): void => {
+    if (!d || typeof d !== 'object') return;
+    for (const [k, v] of Object.entries(d as Record<string, unknown>)) {
+      const model = TENANT_REFS[k] ?? (k.endsWith('Ids') ? TENANT_REFS[k.slice(0, -3) + 'Id'] : undefined);
+      if (model && typeof v === 'string' && v) out.push({ field: k, model, id: v });
+      else if (model && Array.isArray(v)) v.forEach((x, i) => { if (typeof x === 'string' && x) out.push({ field: `${k}.${i}`, model, id: x }); });
+      else if (Array.isArray(v)) v.forEach(visit);
+      else if (model && v && typeof v === 'object' && typeof (v as { set?: unknown }).set === 'string') out.push({ field: k, model, id: (v as { set: string }).set });
+      const rel = RELATION_REFS[k];
+      if (rel && v && typeof v === 'object') { const c = (v as { connect?: { id?: unknown } }).connect; if (c && typeof c.id === 'string') out.push({ field: k, model: rel, id: c.id }); }
+    }
+  };
+  if (Array.isArray(data)) data.forEach(visit); else visit(data);
+  return out;
+}
+
 /** Extensão do Prisma: `resolve()` devolve o contexto atual (AsyncLocalStorage no app). */
 export function tenantExtension(resolve: () => TenantContext | undefined) {
   return Prisma.defineExtension({
