@@ -376,16 +376,18 @@
 
 /* ---------- Fase 15: Mapa de cobertura (Comercial) ---------- */
 :root {
-  --cov-ativo: #22c55e; --cov-implantacao: #3b82f6; --cov-negociacao: #facc15; --cov-nenhuma: #2a3550; --cov-capital: #a855f7;
+  --cov-ativo: #22c55e; --cov-implantacao: #3b82f6; --cov-negociacao: #facc15; --cov-cadastrada: #2dd4bf; --cov-nenhuma: #2a3550; --cov-capital: #a855f7;
   --cov-mun-stroke: rgba(7, 11, 20, .55); --cov-border: #e8eefc; --cov-sel: #ffffff; --cov-pin: #c084fc; --cov-label: #f5f3ff; --cov-label-halo: rgba(7, 11, 20, .85);
 }
 :root[data-theme="light"] {
-  --cov-ativo: #16a34a; --cov-implantacao: #2563eb; --cov-negociacao: #eab308; --cov-nenhuma: #e5e9f0; --cov-capital: #9333ea;
+  --cov-ativo: #16a34a; --cov-implantacao: #2563eb; --cov-negociacao: #eab308; --cov-cadastrada: #0d9488; --cov-nenhuma: #e5e9f0; --cov-capital: #9333ea;
   --cov-mun-stroke: rgba(255, 255, 255, .9); --cov-border: #1e293b; --cov-sel: #0f172a; --cov-pin: #6b21a8; --cov-label: #3b0764; --cov-label-halo: rgba(255, 255, 255, .92);
 }
+.cov-filters { position: relative; z-index: 20; overflow: visible; }
 .cov-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
 .cov-map { position: relative; padding: 8px; }
-.cov-map svg { width: 100%; height: auto; max-height: 76vh; display: block; touch-action: manipulation; }
+.cov-map svg { width: 100%; height: 76vh; display: block; touch-action: manipulation; }
+.cov-map.zoomed svg { height: 84vh; }
 .cov-map path.m { stroke: var(--cov-mun-stroke); stroke-width: .5; vector-effect: non-scaling-stroke; cursor: pointer; transition: fill .2s, opacity .2s; }
 .cov-map path.m:hover { filter: brightness(1.15); }
 .cov-map path.m.sel { stroke: var(--cov-sel); stroke-width: 2.4; }
@@ -413,5 +415,6 @@
 @media (max-width: 1000px) { .cov-grid { grid-template-columns: 1fr; } .cov-list { max-height: 300px; } .cov-panel { position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; max-height: 72vh; overflow-y: auto; border-radius: 16px 16px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.35); } }
 @media (max-width: 600px) {
   .cov-legend { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
-  .cov-map svg { max-height: 60vh; }
+  .cov-map svg { height: 60vh; }
+  .cov-map.zoomed svg { height: 70vh; }
 }

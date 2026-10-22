@@ -14,7 +14,7 @@ import { audit } from '../audit.js';
 import { badRequest, type Ctx } from '../http.js';
 import { CAPITALS, COVERAGE_UFS, MUNICIPALITIES } from '../geo/municipios-ma-pi-to.js';
 
-export const COVERAGE_STATUSES = ['ATIVO', 'IMPLANTACAO', 'NEGOCIACAO', 'NENHUMA'] as const;
+export const COVERAGE_STATUSES = ['ATIVO', 'IMPLANTACAO', 'NEGOCIACAO', 'CADASTRADA', 'NENHUMA'] as const;
 export type CoverageStatus = (typeof COVERAGE_STATUSES)[number];
 export const MANUAL_STATUSES = ['IMPLANTACAO', 'NEGOCIACAO', 'NENHUMA'] as const;
 export type ManualStatus = (typeof MANUAL_STATUSES)[number];
@@ -46,10 +46,11 @@ export function findIbgeCode(uf: string, municipality: string): string | null {
 export function isCoverageCode(code: string): boolean { return BY_CODE.has(code); }
 
 /** Situação efetiva. `hasOpenOpportunity`: há oportunidade (lead) em aberto no Comercial → "Em negociação" automática. */
-export function effectiveStatus(hasActiveContract: boolean, manual: string | null | undefined, hasOpenOpportunity = false): CoverageStatus {
+export function effectiveStatus(hasActiveContract: boolean, manual: string | null | undefined, hasOpenOpportunity = false, hasEntity = false): CoverageStatus {
   if (manual === 'IMPLANTACAO') return 'IMPLANTACAO';
   if (hasActiveContract) return 'ATIVO';
   if (manual === 'NEGOCIACAO' || hasOpenOpportunity) return 'NEGOCIACAO';
+  if (hasEntity) return 'CADASTRADA'; // entidade cadastrada sem contrato vigente nem lead (ex-cliente / cadastro)
   return 'NENHUMA';
 }
 
@@ -61,7 +62,7 @@ export interface CoverageMunicipality {
   entities: CoverageEntity[]; modules: string[];
 }
 export interface CoverageSummary {
-  uf: string; total: number; ativo: number; implantacao: number; negociacao: number; livres: number; atendidosPct: number;
+  uf: string; total: number; ativo: number; implantacao: number; negociacao: number; cadastrada: number; livres: number; atendidosPct: number;
   /** entidades cadastradas no estado (com código IBGE) e quantas têm contrato vigente; municípios com entidade mas sem contrato vigente */
   entidades: number; entidadesVigentes: number; municipiosSemContrato: number;
 }
@@ -112,7 +113,7 @@ export async function getMap(): Promise<CoverageMap> {
     const manualStatus = (st?.status as ManualStatus | undefined) ?? null;
     return {
       ibge: code, uf: m.uf, name: m.name, capital: Boolean(CAPITALS[code]),
-      status: effectiveStatus(Boolean(g?.active), manualStatus, Boolean(g?.negotiating)), manualStatus, hasActiveContract: Boolean(g?.active), hasOpenOpportunity: Boolean(g?.negotiating),
+      status: effectiveStatus(Boolean(g?.active), manualStatus, Boolean(g?.negotiating), Boolean(g?.entities.length)), manualStatus, hasActiveContract: Boolean(g?.active), hasOpenOpportunity: Boolean(g?.negotiating),
       notes: st?.notes ?? null, updatedAt: st?.updatedAt.toISOString() ?? null,
       entities: g?.entities ?? [], modules: [...(g?.modules ?? [])].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     };
@@ -121,12 +122,12 @@ export async function getMap(): Promise<CoverageMap> {
     const total = MUNICIPALITIES.filter((m) => m[1] === uf).length;
     const inUf = municipalities.filter((m) => m.uf === uf);
     const count = (s: CoverageStatus): number => inUf.filter((m) => m.status === s).length;
-    const ativo = count('ATIVO'), implantacao = count('IMPLANTACAO'), negociacao = count('NEGOCIACAO');
+    const ativo = count('ATIVO'), implantacao = count('IMPLANTACAO'), negociacao = count('NEGOCIACAO'), cadastrada = count('CADASTRADA');
     const ents = entities.filter((e) => e.uf === uf && BY_CODE.has(e.ibgeCode!));
     return {
-      uf, total, ativo, implantacao, negociacao, livres: total - ativo - implantacao - negociacao, atendidosPct: total ? Math.round(((ativo + implantacao) / total) * 1000) / 10 : 0,
+      uf, total, ativo, implantacao, negociacao, cadastrada, livres: total - ativo - implantacao - negociacao - cadastrada, atendidosPct: total ? Math.round(((ativo + implantacao) / total) * 1000) / 10 : 0,
       entidades: ents.length, entidadesVigentes: ents.filter((e) => e.contracts.length > 0).length,
-      municipiosSemContrato: inUf.filter((m) => m.status === 'NENHUMA' && m.entities.length > 0).length,
+      municipiosSemContrato: cadastrada,
     };
   });
   // código IBGE que não corresponde ao município/UF cadastrado (provável erro de cadastro)

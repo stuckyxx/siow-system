@@ -86,7 +86,7 @@ GET  /comercial/opportunities?q=&entityId=&status=OPEN|WON|LOST&stageId=&ownerUs
 POST /comercial/opportunities { entityId, title, pipelineId?, stageId?, description?, monthlyAmount?, oneTimeAmount?, termMonths?, probability?, expectedCloseDate?, source: PROSPECCAO|INDICACAO|PARCEIRO|LICITACAO|RENOVACAO|INBOUND|OUTRO?, ownerUserId?, items? }
 GET/PATCH/DELETE /comercial/opportunities/{id} · POST /comercial/opportunities/{id}/move { stageId, notes? }
 POST /comercial/opportunities/{id}/win { notes? } (sensível) · POST /comercial/opportunities/{id}/lose { reason, notes? } (sensível) · POST /comercial/opportunities/{id}/reopen · POST /comercial/opportunities/{id}/formalize (gera contrato; sensível)
-GET  /comercial/mapa (Mapa de cobertura MA/PI/TO: situação por município — ATIVO automático por contrato ativo, IMPLANTACAO, NEGOCIACAO, NENHUMA — entidades, módulos e cobertura por estado)
+GET  /comercial/mapa (Mapa de cobertura MA/PI/TO: situação por município — ATIVO automático por contrato vigente, NEGOCIACAO automático por lead em aberto, CADASTRADA = entidade sem contrato nem lead, IMPLANTACAO manual, NENHUMA — entidades, módulos e cobertura por estado)
 PUT  /comercial/mapa/{codigoIBGE} { status: IMPLANTACAO|NEGOCIACAO|NENHUMA, notes? } (situação manual do município; use o código IBGE de 7 dígitos)
 GET/POST /comercial/opportunities/{id}/proposals (propostas) · GET /comercial/catalog (produtos/serviços) · GET /comercial/goals (metas) · GET /comercial/dashboard
 

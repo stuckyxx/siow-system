@@ -13,23 +13,24 @@ import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Empty, Input, Select, Skeleton, Textarea } from '@/components/ui';
 
-type Status = 'ATIVO' | 'IMPLANTACAO' | 'NEGOCIACAO' | 'NENHUMA';
+type Status = 'ATIVO' | 'IMPLANTACAO' | 'NEGOCIACAO' | 'CADASTRADA' | 'NENHUMA';
 type Manual = 'IMPLANTACAO' | 'NEGOCIACAO' | 'NENHUMA';
 interface GeoMun { id: string; n: string; uf: string; d: string; c: [number, number]; cap?: 1 }
 interface GeoState { uf: string; name: string; d: string; box: [number, number, number, number]; count: number }
 interface Geo { viewBox: [number, number, number, number]; states: GeoState[]; municipalities: GeoMun[] }
 interface CovEntity { id: string; name: string; shortName: string | null; type: string; activeContracts: number; openOpportunities: Array<{ id: string; title: string; stage: string }> }
 interface CovMun { ibge: string; uf: string; name: string; capital: boolean; status: Status; manualStatus: Manual | null; hasActiveContract: boolean; hasOpenOpportunity: boolean; notes: string | null; updatedAt: string | null; entities: CovEntity[]; modules: string[] }
-interface CovSummary { uf: string; total: number; ativo: number; implantacao: number; negociacao: number; livres: number; atendidosPct: number; entidades: number; entidadesVigentes: number; municipiosSemContrato: number }
+interface CovSummary { uf: string; total: number; ativo: number; implantacao: number; negociacao: number; cadastrada: number; livres: number; atendidosPct: number; entidades: number; entidadesVigentes: number; municipiosSemContrato: number }
 interface CovMap { municipalities: CovMun[]; summary: CovSummary[]; entitiesWithoutIbge: number; ibgeMismatches: Array<{ id: string; name: string; municipality: string; uf: string; ibgeCode: string; ibgeName: string | null }> }
 
 const STATUS: Record<Status, { label: string; color: string }> = {
   ATIVO: { label: 'Cliente ativo', color: 'var(--cov-ativo)' },
   IMPLANTACAO: { label: 'Em implantação', color: 'var(--cov-implantacao)' },
   NEGOCIACAO: { label: 'Em negociação', color: 'var(--cov-negociacao)' },
+  CADASTRADA: { label: 'Cadastrada sem contrato', color: 'var(--cov-cadastrada)' },
   NENHUMA: { label: 'Sem atuação', color: 'var(--cov-nenhuma)' },
 };
-const ORDER: Status[] = ['ATIVO', 'IMPLANTACAO', 'NEGOCIACAO', 'NENHUMA'];
+const ORDER: Status[] = ['ATIVO', 'IMPLANTACAO', 'NEGOCIACAO', 'CADASTRADA', 'NENHUMA'];
 const UF_NAMES: Record<string, string> = { MA: 'Maranhão', PI: 'Piauí', TO: 'Tocantins' };
 const norm = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 type LegendKey = Status | 'CAPITAL';
@@ -62,7 +63,7 @@ export function CoverageMap() {
   const target = useMemo<[number, number, number, number]>(() => {
     const st = geo.data?.states.find((s) => s.uf === uf);
     if (!st) return full as [number, number, number, number];
-    const [x1, y1, x2, y2] = st.box; const pad = Math.max(x2 - x1, y2 - y1) * 0.06;
+    const [x1, y1, x2, y2] = st.box; const pad = Math.max(x2 - x1, y2 - y1) * 0.03;
     return [x1 - pad, y1 - pad, x2 - x1 + pad * 2, y2 - y1 + pad * 2];
   }, [uf, geo.data, full]);
   const [vb, setVb] = useState<[number, number, number, number]>(full as [number, number, number, number]);
@@ -90,12 +91,7 @@ export function CoverageMap() {
     if (hidden.has(s)) return 'var(--cov-nenhuma)';
     return STATUS[s].color;
   };
-  const opacityOf = (m: GeoMun): number => {
-    const s = statusOf(m.id); let o = 1;
-    if (uf && m.uf !== uf) o = 0.3;
-    if (hidden.has(s) && s !== 'NENHUMA' && !(m.cap && !hidden.has('CAPITAL'))) o *= 0.45;
-    return o;
-  };
+  const opacityOf = (m: GeoMun): number => { const s = statusOf(m.id); return hidden.has(s) && s !== 'NENHUMA' && !(m.cap && !hidden.has('CAPITAL')) ? 0.45 : 1; };
   const toggle = (k: LegendKey): void => setHidden((h) => { const n = new Set(h); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   if (geo.isError) return <Empty>Não foi possível carregar o mapa.</Empty>;
@@ -111,7 +107,7 @@ export function CoverageMap() {
 
   return (
     <div className="space-y-3">
-      <div className="filters" style={{ gap: 10 }}>
+      <div className="filters cov-filters" style={{ gap: 10 }}>
         <div className="seg" role="group" aria-label="Filtrar por estado">
           {[['', 'Todos'], ['MA', 'Maranhão'], ['PI', 'Piauí'], ['TO', 'Tocantins']].map(([k, l]) => <button key={k} className={uf === k ? 'on' : ''} onClick={() => setUf(k!)} aria-pressed={uf === k}>{l}</button>)}
         </div>
@@ -137,16 +133,16 @@ export function CoverageMap() {
       )}
 
       <div className="cov-grid">
-        <div className="card cov-map">
-          <svg ref={svgRef} viewBox={vb.join(' ')} role="img" aria-label="Mapa de cobertura comercial de Maranhão, Piauí e Tocantins" onMouseLeave={() => setTip(null)}>
-            {g.municipalities.map((m) => (
+        <div className={`card cov-map${uf ? ' zoomed' : ''}`}>
+          <svg ref={svgRef} viewBox={vb.join(' ')} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa de cobertura comercial de Maranhão, Piauí e Tocantins" onMouseLeave={() => setTip(null)}>
+            {g.municipalities.filter((m) => !uf || m.uf === uf).map((m) => (
               <path key={m.id} className={`m${selected === m.id ? ' sel' : ''}`} d={m.d} fill={fillOf(m)} opacity={opacityOf(m)}
                 onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, id: m.id })} onClick={() => setSelected(m.id)} />
             ))}
-            {g.states.map((s) => <path key={s.uf} className="st" d={s.d} opacity={uf && s.uf !== uf ? 0.5 : 1} />)}
+            {g.states.filter((s) => !uf || s.uf === uf).map((s) => <path key={s.uf} className="st" d={s.d} />)}
             {sel && <path className="m sel" d={sel.d} fill="none" style={{ pointerEvents: 'none' }} />}
-            {g.municipalities.filter((m) => m.cap).map((m) => (
-              <g key={`cap-${m.id}`} opacity={uf && m.uf !== uf ? 0.4 : 1}>
+            {g.municipalities.filter((m) => m.cap && (!uf || m.uf === uf)).map((m) => (
+              <g key={`cap-${m.id}`}>
                 <path className="pin" strokeWidth={unit * 1.2} d={`M${m.c[0]} ${m.c[1]} l${-pinR} ${-pinR * 1.6} a${pinR} ${pinR} 0 1 1 ${pinR * 2} 0 z`} />
                 <circle cx={m.c[0]} cy={m.c[1] - pinR * 2.1} r={pinR * 0.4} fill="var(--cov-label-halo)" pointerEvents="none" />
                 <text className="lbl" x={m.c[0] + pinR * 1.4} y={m.c[1] - pinR * 1.2} fontSize={fontSize} strokeWidth={fontSize * 0.28}>{m.n}</text>
@@ -167,17 +163,17 @@ export function CoverageMap() {
             {summaries.map((s) => (
               <div key={s.uf} style={{ marginTop: 10 }}>
                 <div className="row between small"><span><b>{UF_NAMES[s.uf]}</b> <span className="muted">· {s.total} municípios</span></span><b style={{ color: 'var(--cov-ativo)' }}>{s.atendidosPct.toLocaleString('pt-BR')}% atendidos</b></div>
-                <div className="cov-bar" title={`Ativos ${s.ativo} · Implantação ${s.implantacao} · Negociação ${s.negociacao} · Livres ${s.livres}`}>
-                  {(['ativo', 'implantacao', 'negociacao'] as const).map((k) => <span key={k} style={{ width: `${(s[k] / s.total) * 100}%`, background: STATUS[k.toUpperCase() as Status].color }} />)}
+                <div className="cov-bar" title={`Ativos ${s.ativo} · Implantação ${s.implantacao} · Negociação ${s.negociacao} · Cadastradas sem contrato ${s.cadastrada} · Livres ${s.livres}`}>
+                  {(['ativo', 'implantacao', 'negociacao', 'cadastrada'] as const).map((k) => <span key={k} style={{ width: `${(s[k] / s.total) * 100}%`, background: STATUS[k.toUpperCase() as Status].color }} />)}
                 </div>
-                <div className="small muted">{s.ativo + s.implantacao} atendidos ({s.ativo} ativos · {s.implantacao} em implantação) · {s.negociacao} em negociação · {s.livres} livres</div>
-                <div className="small muted" title="Um município pode ter mais de uma entidade cliente (ex.: Prefeitura e Câmara)">{s.entidadesVigentes} entidade(s) com contrato vigente em {s.ativo} município(s) · {s.entidades} cadastrada(s){s.municipiosSemContrato ? ` · ${s.municipiosSemContrato} município(s) só com entidade sem contrato vigente` : ''}</div>
+                <div className="small muted">{s.ativo + s.implantacao} atendidos ({s.ativo} ativos · {s.implantacao} em implantação) · {s.negociacao} em negociação · {s.cadastrada} cadastrada(s) sem contrato · {s.livres} livres</div>
+                <div className="small muted" title="Um município pode ter mais de uma entidade cliente (ex.: Prefeitura e Câmara)">{s.entidadesVigentes} entidade(s) com contrato vigente em {s.ativo} município(s) · {s.entidades} entidade(s) cadastrada(s) no total</div>
               </div>
             ))}
           </div></div>
           <div className="card"><div className="bd">
             <b className="small">Municípios com atuação ({list.length})</b>
-            <div className="small muted">Contrato vigente (verde), em implantação (azul) ou em negociação (amarelo: lead em aberto no Comercial ou marcação manual). Entidade sem contrato nem lead fica em cinza.</div>
+            <div className="small muted">Verde: contrato vigente · azul: em implantação · amarelo: lead em aberto no Comercial ou marcação manual · verde-água: entidade cadastrada sem contrato vigente nem lead.</div>
             {list.length === 0 ? <Empty>Nenhum município com atuação{uf ? ` em ${UF_NAMES[uf]}` : ''}</Empty> : (
               <div className="cov-list" style={{ marginTop: 6 }}>
                 {list.map((m) => (
@@ -255,7 +251,7 @@ function MunicipalityPanel({ geo, data, canWrite, onClose, onSaved }: { geo: Geo
         {canWrite ? (
           <div className="space-y-2" style={{ marginTop: 6 }}>
             <Select value={manual} onChange={(e) => { setManual(e.target.value as Manual); setMsg(null); }} aria-label="Situação comercial">
-              <option value="NENHUMA">{data?.hasActiveContract ? 'Automática (cliente ativo pelo contrato)' : 'Sem atuação'}</option>
+              <option value="NENHUMA">{data?.hasActiveContract ? 'Automática (cliente ativo pelo contrato)' : data?.entities.length ? 'Automática (cadastrada sem contrato)' : 'Sem atuação'}</option>
               <option value="NEGOCIACAO">Em negociação{data?.hasOpenOpportunity ? ' (já automática: há lead em aberto)' : ''}</option>
               <option value="IMPLANTACAO">Em implantação</option>
             </Select>
