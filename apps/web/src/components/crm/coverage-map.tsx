@@ -20,7 +20,7 @@ interface GeoState { uf: string; name: string; d: string; box: [number, number, 
 interface Geo { viewBox: [number, number, number, number]; states: GeoState[]; municipalities: GeoMun[] }
 interface CovEntity { id: string; name: string; shortName: string | null; type: string; activeContracts: number }
 interface CovMun { ibge: string; uf: string; name: string; capital: boolean; status: Status; manualStatus: Manual | null; hasActiveContract: boolean; notes: string | null; updatedAt: string | null; entities: CovEntity[]; modules: string[] }
-interface CovSummary { uf: string; total: number; ativo: number; implantacao: number; negociacao: number; livres: number; atendidosPct: number }
+interface CovSummary { uf: string; total: number; ativo: number; implantacao: number; negociacao: number; livres: number; atendidosPct: number; entidades: number; entidadesVigentes: number; municipiosSemContrato: number }
 interface CovMap { municipalities: CovMun[]; summary: CovSummary[]; entitiesWithoutIbge: number; ibgeMismatches: Array<{ id: string; name: string; municipality: string; uf: string; ibgeCode: string; ibgeName: string | null }> }
 
 const STATUS: Record<Status, { label: string; color: string }> = {
@@ -81,7 +81,8 @@ export function CoverageMap() {
   const pick = (id: string): void => { const m = geoByCode.get(id); setSelected(id); setQ(''); if (m && uf && m.uf !== uf) setUf(m.uf); };
 
   // ---------- lista ----------
-  const list = useMemo(() => (cov.data?.municipalities ?? []).filter((m) => (m.status !== 'NENHUMA' || m.entities.length) && (!uf || m.uf === uf)).sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || a.name.localeCompare(b.name, 'pt-BR')), [cov.data, uf]);
+  // só municípios com contrato vigente ou situação manual; entidade cadastrada sem contrato vigente fica fora (e em cinza no mapa)
+  const list = useMemo(() => (cov.data?.municipalities ?? []).filter((m) => m.status !== 'NENHUMA' && (!uf || m.uf === uf)).sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || a.name.localeCompare(b.name, 'pt-BR')), [cov.data, uf]);
 
   const fillOf = (m: GeoMun): string => {
     const s = statusOf(m.id);
@@ -170,18 +171,20 @@ export function CoverageMap() {
                   {(['ativo', 'implantacao', 'negociacao'] as const).map((k) => <span key={k} style={{ width: `${(s[k] / s.total) * 100}%`, background: STATUS[k.toUpperCase() as Status].color }} />)}
                 </div>
                 <div className="small muted">{s.ativo + s.implantacao} atendidos ({s.ativo} ativos · {s.implantacao} em implantação) · {s.negociacao} em negociação · {s.livres} livres</div>
+                <div className="small muted" title="Um município pode ter mais de uma entidade cliente (ex.: Prefeitura e Câmara)">{s.entidadesVigentes} entidade(s) com contrato vigente em {s.ativo} município(s) · {s.entidades} cadastrada(s){s.municipiosSemContrato ? ` · ${s.municipiosSemContrato} município(s) só com entidade sem contrato vigente` : ''}</div>
               </div>
             ))}
           </div></div>
           <div className="card"><div className="bd">
             <b className="small">Municípios com atuação ({list.length})</b>
+            <div className="small muted">Contrato vigente, em implantação ou em negociação. Entidade cadastrada sem contrato vigente fica fora da lista e em cinza no mapa.</div>
             {list.length === 0 ? <Empty>Nenhum município com atuação{uf ? ` em ${UF_NAMES[uf]}` : ''}</Empty> : (
               <div className="cov-list" style={{ marginTop: 6 }}>
                 {list.map((m) => (
                   <button key={m.ibge} className={selected === m.ibge ? 'on' : ''} onClick={() => setSelected(m.ibge)}>
                     <span className="cov-sw" style={{ background: STATUS[m.status].color }} />
                     <span style={{ flex: 1, minWidth: 0 }}>{m.name}<span className="muted">/{m.uf}</span>{m.capital ? <span className="muted"> · capital</span> : null}</span>
-                    <span className="small muted">{m.entities.length ? `${m.entities.length} ent.` : STATUS[m.status].label}</span>
+                    <span className="small muted">{m.entities.some((e) => e.activeContracts > 0) ? `${m.entities.filter((e) => e.activeContracts > 0).length} ent.` : STATUS[m.status].label}</span>
                   </button>
                 ))}
               </div>
@@ -230,7 +233,7 @@ function MunicipalityPanel({ geo, data, canWrite, onClose, onSaved }: { geo: Geo
         <b className="small">Entidades atendidas</b>
         {data?.entities.length ? (
           <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-            {data.entities.map((e) => <li key={e.id}><Link href={`/financeiro/entidades/${e.id}`}>{e.shortName ?? e.name}</Link> <span className="muted">· {ENTITY_TYPE_LABELS[e.type as EntityType] ?? e.type}{e.activeContracts ? ` · ${e.activeContracts} contrato(s) ativo(s)` : ' · sem contrato ativo'}</span></li>)}
+            {data.entities.map((e) => <li key={e.id}><Link href={`/financeiro/entidades/${e.id}`}>{e.shortName ?? e.name}</Link> <span className="muted">· {ENTITY_TYPE_LABELS[e.type as EntityType] ?? e.type}{e.activeContracts ? ` · ${e.activeContracts} contrato(s) vigente(s)` : ' · sem contrato vigente'}</span></li>)}
           </ul>
         ) : <div className="small muted">Nenhuma entidade cadastrada neste município.</div>}
       </div>

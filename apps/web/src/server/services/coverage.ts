@@ -59,18 +59,24 @@ export interface CoverageMunicipality {
   notes: string | null; updatedAt: string | null;
   entities: CoverageEntity[]; modules: string[];
 }
-export interface CoverageSummary { uf: string; total: number; ativo: number; implantacao: number; negociacao: number; livres: number; atendidosPct: number }
+export interface CoverageSummary {
+  uf: string; total: number; ativo: number; implantacao: number; negociacao: number; livres: number; atendidosPct: number;
+  /** entidades cadastradas no estado (com código IBGE) e quantas têm contrato vigente; municípios com entidade mas sem contrato vigente */
+  entidades: number; entidadesVigentes: number; municipiosSemContrato: number;
+}
 export interface IbgeMismatch { id: string; name: string; municipality: string; uf: string; ibgeCode: string; ibgeName: string | null }
 export interface CoverageMap { municipalities: CoverageMunicipality[]; summary: CoverageSummary[]; entitiesWithoutIbge: number; ibgeMismatches: IbgeMismatch[] }
 
 /** Municípios com alguma atuação (entidade cadastrada ou situação manual) e totais por estado. */
 export async function getMap(): Promise<CoverageMap> {
+  const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
   const [entities, statuses, withoutIbge] = await Promise.all([
     prisma.entity.findMany({
       where: { deletedAt: null, uf: { in: [...COVERAGE_UFS] }, ibgeCode: { not: null } },
       select: {
         id: true, name: true, shortName: true, type: true, ibgeCode: true, municipality: true, uf: true,
-        contracts: { where: { deletedAt: null, status: 'ACTIVE' }, select: { object: true, opportunityId: true } },
+        // contrato VIGENTE: ativo e dentro do prazo (início ≤ hoje ≤ fim; sem datas conta como vigente)
+        contracts: { where: { deletedAt: null, status: 'ACTIVE', OR: [{ endDate: null }, { endDate: { gte: today } }], AND: [{ OR: [{ startDate: null }, { startDate: { lte: today } }] }] }, select: { object: true, opportunityId: true } },
       },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
     }),
@@ -112,7 +118,12 @@ export async function getMap(): Promise<CoverageMap> {
     const inUf = municipalities.filter((m) => m.uf === uf);
     const count = (s: CoverageStatus): number => inUf.filter((m) => m.status === s).length;
     const ativo = count('ATIVO'), implantacao = count('IMPLANTACAO'), negociacao = count('NEGOCIACAO');
-    return { uf, total, ativo, implantacao, negociacao, livres: total - ativo - implantacao - negociacao, atendidosPct: total ? Math.round(((ativo + implantacao) / total) * 1000) / 10 : 0 };
+    const ents = entities.filter((e) => e.uf === uf && BY_CODE.has(e.ibgeCode!));
+    return {
+      uf, total, ativo, implantacao, negociacao, livres: total - ativo - implantacao - negociacao, atendidosPct: total ? Math.round(((ativo + implantacao) / total) * 1000) / 10 : 0,
+      entidades: ents.length, entidadesVigentes: ents.filter((e) => e.contracts.length > 0).length,
+      municipiosSemContrato: inUf.filter((m) => m.status === 'NENHUMA' && m.entities.length > 0).length,
+    };
   });
   // código IBGE que não corresponde ao município/UF cadastrado (provável erro de cadastro)
   const ibgeMismatches: IbgeMismatch[] = entities.filter((e) => { const exp = findIbgeCode(e.uf, e.municipality); return (exp && exp !== e.ibgeCode) || !BY_CODE.has(e.ibgeCode!); })
