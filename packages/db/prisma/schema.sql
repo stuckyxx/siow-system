@@ -2523,3 +2523,26 @@ DO $$ BEGIN
     ALTER TABLE "assistant_conversations" ADD CONSTRAINT "assistant_conversations_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- =====================================================================
+-- FASE 15 (MAPA DE COBERTURA) — idempotente. Situação comercial manual por município (código IBGE).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "municipality_statuses" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "ibgeCode" CHAR(7) NOT NULL,
+  "uf" CHAR(2) NOT NULL,
+  "status" TEXT NOT NULL,
+  "notes" TEXT,
+  "updatedByUserId" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "municipality_statuses_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "municipality_statuses_organizationId_ibgeCode_key" ON "municipality_statuses"("organizationId", "ibgeCode");
+CREATE INDEX IF NOT EXISTS "entities_organizationId_ibgeCode_idx" ON "entities"("organizationId", "ibgeCode");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'municipality_statuses_organizationId_fkey') THEN
+    ALTER TABLE "municipality_statuses" ADD CONSTRAINT "municipality_statuses_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;

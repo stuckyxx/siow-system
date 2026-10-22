@@ -15,3 +15,4 @@ infra/data/
 
 # Netlify
 .netlify
+scripts/geo/.cache/

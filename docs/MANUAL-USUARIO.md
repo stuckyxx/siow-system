@@ -26,6 +26,9 @@ Vigência, valores, aditivos, renovações e documentos. Alertas de vencimento a
 ## Comercial
 Quadro (kanban) de oportunidades por etapa, propostas com itens do catálogo, metas, motivos de perda. Ganhar uma oportunidade pode formalizar o contrato sem duplicar.
 
+### Mapa de cobertura
+Em **Comercial → Mapa** você vê os municípios do Maranhão, Piauí e Tocantins coloridos pela situação: verde (cliente ativo), azul (em implantação), amarelo (em negociação) e cinza (sem atuação). As capitais ficam sempre em roxo com um pino: são o ponto de saída da equipe. Escolha o estado para aproximar, clique na legenda para destacar ou esconder uma situação, passe o mouse para ver o nome e busque pelo nome do município, com ou sem acento. Ao clicar num município, o painel mostra o código IBGE, as entidades atendidas, os módulos contratados e permite marcar "Em negociação" ou "Em implantação". "Cliente ativo" é automático quando há contrato ativo. Ao lado ficam a cobertura de cada estado e a lista de municípios com atuação.
+
 ## Licitações
 Busca no PNCP/Compras.gov, importação de planilha, prazos no calendário, documentos e formalização do contrato ao vencer.
 

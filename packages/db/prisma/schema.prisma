@@ -227,6 +227,7 @@ model Entity {
   @@unique([organizationId, type, municipality, uf])
   @@index([municipality])
   @@index([uf])
+  @@index([organizationId, ibgeCode])
   @@index([organizationId])
   tickets         Ticket[]
   campaignRecipients CampaignRecipient[]
@@ -1250,6 +1251,7 @@ model Organization {
   subscriptionInvoices SubscriptionInvoice[]
   apiKeys          ApiKey[]
   assistantConversations AssistantConversation[]
+  municipalityStatuses   MunicipalityStatus[]
   @@map("organizations")
 }
 
@@ -1324,6 +1326,25 @@ model SubscriptionInvoice {
   @@unique([organizationId, period])
   @@index([status, dueDate])
   @@map("subscription_invoices")
+}
+
+/// Fase 15 — situação comercial manual por município (Mapa de cobertura). "Cliente ativo" é calculado
+/// pelos contratos ativos das entidades com o mesmo código IBGE; aqui ficam implantação, negociação e "sem atuação".
+model MunicipalityStatus {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  ibgeCode        String       @db.Char(7)
+  uf              String       @db.Char(2)
+  /// IMPLANTACAO | NEGOCIACAO | NENHUMA
+  status          String
+  notes           String?
+  updatedByUserId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([organizationId, ibgeCode])
+  @@map("municipality_statuses")
 }
 
 /// Fase 13 — conversas do Assistente virtual (histórico por usuário).

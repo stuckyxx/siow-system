@@ -11,10 +11,11 @@ import { Button, Empty, Select, Skeleton, Stat, useToast } from '@/components/ui
 import { Kanban } from '@/components/crm/kanban';
 import { OpportunitiesTable } from '@/components/crm/opportunities-table';
 import { CrmCalendar } from '@/components/crm/crm-calendar';
+import { CoverageMap } from '@/components/crm/coverage-map';
 import { OpportunityForm } from '@/components/crm/opportunity-form';
 import { LoseDialog, WinDialog } from '@/components/crm/opportunity-dialogs';
 
-const VIEWS = [{ key: 'painel', label: 'Painel' }, { key: 'funil', label: 'Funil (Kanban)' }, { key: 'lista', label: 'Lista' }, { key: 'calendario', label: 'Calendário' }];
+const VIEWS = [{ key: 'painel', label: 'Painel' }, { key: 'funil', label: 'Funil (Kanban)' }, { key: 'lista', label: 'Lista' }, { key: 'calendario', label: 'Calendário' }, { key: 'mapa', label: 'Mapa' }];
 
 export default function ComercialPage() {
   return <Suspense fallback={<div className="muted">Carregando…</div>}><Comercial /></Suspense>;
@@ -52,6 +53,7 @@ function Comercial() {
       {view === 'funil' && <Kanban ownerUserId={owner || undefined} onWin={setWin} onLose={setLose} />}
       {view === 'lista' && <OpportunitiesTable />}
       {view === 'calendario' && <CrmCalendar ownerUserId={owner || undefined} />}
+      {view === 'mapa' && <CoverageMap />}
       <OpportunityForm open={creating} onClose={() => setCreating(false)} onSaved={(o) => { setCreating(false); refresh(); router.push(`/comercial/oportunidades/${o.id}`); }} />
       {win && <WinDialog open opportunity={win} onClose={() => setWin(null)} onDone={() => { setWin(null); refresh(); showToast('Oportunidade ganha! Abra-a para formalizar o contrato.'); }} />}
       {lose && <LoseDialog open opportunity={lose} onClose={() => setLose(null)} onDone={() => { setLose(null); refresh(); }} />}

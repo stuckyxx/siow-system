@@ -12,6 +12,7 @@ import { audit } from '../audit.js';
 import { badRequest, notFound, type Ctx } from '../http.js';
 import { currentOrgId } from '../tenant.js';
 import { resolveAccess } from '../access.js';
+import { findIbgeCode } from './coverage.js';
 
 type EntityFilter = z.infer<typeof entityListFilterSchema>;
 
@@ -138,7 +139,9 @@ export async function create(ctx: Ctx, input: z.infer<typeof createEntitySchema>
     const count = await prisma.entity.count({ where: { deletedAt: null } });
     if (count >= maxEntities) throw badRequest(`Limite de ${maxEntities} entidades do plano atingido. Amplie o plano para cadastrar mais.`);
   }
-  const entity = await prisma.entity.create({ data: { ...input, organizationId: currentOrgId(), uf: input.uf.toUpperCase() } });
+  // Fase 15: código IBGE preenchido pelo nome do município quando não informado (MA, PI e TO).
+  const ibgeCode = input.ibgeCode ?? findIbgeCode(input.uf, input.municipality);
+  const entity = await prisma.entity.create({ data: { ...input, ibgeCode, organizationId: currentOrgId(), uf: input.uf.toUpperCase() } });
   await audit(ctx, { action: 'CREATE', resource: 'entity', resourceId: entity.id, after: entity });
   return entity;
 }
@@ -146,7 +149,15 @@ export async function create(ctx: Ctx, input: z.infer<typeof createEntitySchema>
 export async function update(ctx: Ctx, id: string, input: z.infer<typeof updateEntitySchema>) {
   const before = await prisma.entity.findFirst({ where: { id, deletedAt: null } });
   if (!before) throw notFound('Entidade não encontrada');
-  const after = await prisma.entity.update({ where: { id }, data: { ...input, uf: input.uf?.toUpperCase() } });
+  // Fase 15: mantém o código IBGE coerente com município/UF quando ele não vem no corpo.
+  let ibgeCode = input.ibgeCode;
+  if (ibgeCode === undefined) {
+    const uf = (input.uf ?? before.uf).toUpperCase(); const mun = input.municipality ?? before.municipality;
+    const moved = (input.uf !== undefined && input.uf.toUpperCase() !== before.uf) || (input.municipality !== undefined && input.municipality !== before.municipality);
+    const found = findIbgeCode(uf, mun);
+    if (found && (moved || !before.ibgeCode)) ibgeCode = found; else if (moved && !found) ibgeCode = null;
+  }
+  const after = await prisma.entity.update({ where: { id }, data: { ...input, ...(ibgeCode !== undefined ? { ibgeCode } : {}), uf: input.uf?.toUpperCase() } });
   await audit(ctx, { action: 'UPDATE', resource: 'entity', resourceId: id, before, after });
   return after;
 }
