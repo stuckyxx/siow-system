@@ -45,17 +45,18 @@ export function findIbgeCode(uf: string, municipality: string): string | null {
 }
 export function isCoverageCode(code: string): boolean { return BY_CODE.has(code); }
 
-export function effectiveStatus(hasActiveContract: boolean, manual: string | null | undefined): CoverageStatus {
+/** Situação efetiva. `hasOpenOpportunity`: há oportunidade (lead) em aberto no Comercial → "Em negociação" automática. */
+export function effectiveStatus(hasActiveContract: boolean, manual: string | null | undefined, hasOpenOpportunity = false): CoverageStatus {
   if (manual === 'IMPLANTACAO') return 'IMPLANTACAO';
   if (hasActiveContract) return 'ATIVO';
-  if (manual === 'NEGOCIACAO') return 'NEGOCIACAO';
+  if (manual === 'NEGOCIACAO' || hasOpenOpportunity) return 'NEGOCIACAO';
   return 'NENHUMA';
 }
 
-export interface CoverageEntity { id: string; name: string; shortName: string | null; type: string; activeContracts: number }
+export interface CoverageEntity { id: string; name: string; shortName: string | null; type: string; activeContracts: number; openOpportunities: Array<{ id: string; title: string; stage: string }> }
 export interface CoverageMunicipality {
   ibge: string; uf: string; name: string; capital: boolean;
-  status: CoverageStatus; manualStatus: ManualStatus | null; hasActiveContract: boolean;
+  status: CoverageStatus; manualStatus: ManualStatus | null; hasActiveContract: boolean; hasOpenOpportunity: boolean;
   notes: string | null; updatedAt: string | null;
   entities: CoverageEntity[]; modules: string[];
 }
@@ -77,6 +78,8 @@ export async function getMap(): Promise<CoverageMap> {
         id: true, name: true, shortName: true, type: true, ibgeCode: true, municipality: true, uf: true,
         // contrato VIGENTE: ativo e dentro do prazo (início ≤ hoje ≤ fim; sem datas conta como vigente)
         contracts: { where: { deletedAt: null, status: 'ACTIVE', OR: [{ endDate: null }, { endDate: { gte: today } }], AND: [{ OR: [{ startDate: null }, { startDate: { lte: today } }] }] }, select: { object: true, opportunityId: true } },
+        // oportunidades (leads) em aberto → município "Em negociação" automaticamente
+        opportunities: { where: { deletedAt: null, status: 'OPEN' }, select: { id: true, title: true, stage: { select: { name: true } } }, orderBy: { updatedAt: 'desc' } },
       },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
     }),
@@ -89,11 +92,12 @@ export async function getMap(): Promise<CoverageMap> {
   const itemsByOpp = new Map<string, string[]>();
   for (const it of items) { const l = itemsByOpp.get(it.opportunityId) ?? []; l.push(it.catalogItem?.name ?? it.description); itemsByOpp.set(it.opportunityId, l); }
 
-  const byCode = new Map<string, { entities: CoverageEntity[]; modules: Set<string>; active: boolean }>();
+  const byCode = new Map<string, { entities: CoverageEntity[]; modules: Set<string>; active: boolean; negotiating: boolean }>();
   for (const e of entities) {
     const code = e.ibgeCode!; if (!BY_CODE.has(code)) continue;
-    const g = byCode.get(code) ?? { entities: [], modules: new Set<string>(), active: false };
-    g.entities.push({ id: e.id, name: e.name, shortName: e.shortName, type: e.type, activeContracts: e.contracts.length });
+    const g = byCode.get(code) ?? { entities: [], modules: new Set<string>(), active: false, negotiating: false };
+    g.entities.push({ id: e.id, name: e.name, shortName: e.shortName, type: e.type, activeContracts: e.contracts.length, openOpportunities: e.opportunities.map((o) => ({ id: o.id, title: o.title, stage: o.stage.name })) });
+    if (e.opportunities.length) g.negotiating = true;
     for (const c of e.contracts) {
       g.active = true;
       const mods = c.opportunityId ? itemsByOpp.get(c.opportunityId) : undefined;
@@ -108,7 +112,7 @@ export async function getMap(): Promise<CoverageMap> {
     const manualStatus = (st?.status as ManualStatus | undefined) ?? null;
     return {
       ibge: code, uf: m.uf, name: m.name, capital: Boolean(CAPITALS[code]),
-      status: effectiveStatus(Boolean(g?.active), manualStatus), manualStatus, hasActiveContract: Boolean(g?.active),
+      status: effectiveStatus(Boolean(g?.active), manualStatus, Boolean(g?.negotiating)), manualStatus, hasActiveContract: Boolean(g?.active), hasOpenOpportunity: Boolean(g?.negotiating),
       notes: st?.notes ?? null, updatedAt: st?.updatedAt.toISOString() ?? null,
       entities: g?.entities ?? [], modules: [...(g?.modules ?? [])].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     };
@@ -142,5 +146,5 @@ export async function setStatus(ctx: Ctx, ibge: string, input: z.infer<typeof se
     : await prisma.municipalityStatus.create({ data: { ...data, organizationId: currentOrgId(), ibgeCode: ibge, uf: m.uf } });
   await audit(ctx, { action: before ? 'UPDATE' : 'CREATE', resource: 'municipalityStatus', resourceId: ibge, before: before ? { status: before.status, notes: before.notes } : null, after: { municipio: `${m.name}/${m.uf}`, status: after.status, notes: after.notes } });
   const map = await getMap();
-  return map.municipalities.find((x) => x.ibge === ibge) ?? { ibge, uf: m.uf, name: m.name, capital: Boolean(CAPITALS[ibge]), status: 'NENHUMA', manualStatus: input.status, hasActiveContract: false, notes: after.notes, updatedAt: after.updatedAt.toISOString(), entities: [], modules: [] };
+  return map.municipalities.find((x) => x.ibge === ibge) ?? { ibge, uf: m.uf, name: m.name, capital: Boolean(CAPITALS[ibge]), status: 'NENHUMA', manualStatus: input.status, hasActiveContract: false, hasOpenOpportunity: false, notes: after.notes, updatedAt: after.updatedAt.toISOString(), entities: [], modules: [] };
 }

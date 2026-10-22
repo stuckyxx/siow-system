@@ -18,8 +18,8 @@ type Manual = 'IMPLANTACAO' | 'NEGOCIACAO' | 'NENHUMA';
 interface GeoMun { id: string; n: string; uf: string; d: string; c: [number, number]; cap?: 1 }
 interface GeoState { uf: string; name: string; d: string; box: [number, number, number, number]; count: number }
 interface Geo { viewBox: [number, number, number, number]; states: GeoState[]; municipalities: GeoMun[] }
-interface CovEntity { id: string; name: string; shortName: string | null; type: string; activeContracts: number }
-interface CovMun { ibge: string; uf: string; name: string; capital: boolean; status: Status; manualStatus: Manual | null; hasActiveContract: boolean; notes: string | null; updatedAt: string | null; entities: CovEntity[]; modules: string[] }
+interface CovEntity { id: string; name: string; shortName: string | null; type: string; activeContracts: number; openOpportunities: Array<{ id: string; title: string; stage: string }> }
+interface CovMun { ibge: string; uf: string; name: string; capital: boolean; status: Status; manualStatus: Manual | null; hasActiveContract: boolean; hasOpenOpportunity: boolean; notes: string | null; updatedAt: string | null; entities: CovEntity[]; modules: string[] }
 interface CovSummary { uf: string; total: number; ativo: number; implantacao: number; negociacao: number; livres: number; atendidosPct: number; entidades: number; entidadesVigentes: number; municipiosSemContrato: number }
 interface CovMap { municipalities: CovMun[]; summary: CovSummary[]; entitiesWithoutIbge: number; ibgeMismatches: Array<{ id: string; name: string; municipality: string; uf: string; ibgeCode: string; ibgeName: string | null }> }
 
@@ -177,7 +177,7 @@ export function CoverageMap() {
           </div></div>
           <div className="card"><div className="bd">
             <b className="small">Municípios com atuação ({list.length})</b>
-            <div className="small muted">Contrato vigente, em implantação ou em negociação. Entidade cadastrada sem contrato vigente fica fora da lista e em cinza no mapa.</div>
+            <div className="small muted">Contrato vigente (verde), em implantação (azul) ou em negociação (amarelo: lead em aberto no Comercial ou marcação manual). Entidade sem contrato nem lead fica em cinza.</div>
             {list.length === 0 ? <Empty>Nenhum município com atuação{uf ? ` em ${UF_NAMES[uf]}` : ''}</Empty> : (
               <div className="cov-list" style={{ marginTop: 6 }}>
                 {list.map((m) => (
@@ -226,7 +226,8 @@ function MunicipalityPanel({ geo, data, canWrite, onClose, onSaved }: { geo: Geo
         <dt>Código IBGE</dt><dd className="num">{geo.id}</dd>
         <dt>Situação</dt><dd><span className="row" style={{ gap: 6 }}><span className="cov-sw" style={{ background: STATUS[status].color }} /><b>{STATUS[status].label}</b></span>
           {status === 'ATIVO' && <div className="small muted">automática: há contrato ativo</div>}
-          {status === 'IMPLANTACAO' && data?.hasActiveContract && <div className="small muted">contrato ativo em implantação</div>}</dd>
+          {status === 'IMPLANTACAO' && data?.hasActiveContract && <div className="small muted">contrato ativo em implantação</div>}
+          {status === 'NEGOCIACAO' && data?.hasOpenOpportunity && data.manualStatus !== 'NEGOCIACAO' && <div className="small muted">automática: há oportunidade em aberto no Comercial</div>}</dd>
         {data?.updatedAt && <><dt>Atualizado</dt><dd className="small">{new Date(data.updatedAt).toLocaleString('pt-BR')}</dd></>}
       </dl>
       <div style={{ marginTop: 6 }}>
@@ -237,6 +238,14 @@ function MunicipalityPanel({ geo, data, canWrite, onClose, onSaved }: { geo: Geo
           </ul>
         ) : <div className="small muted">Nenhuma entidade cadastrada neste município.</div>}
       </div>
+      {data?.entities.some((e) => e.openOpportunities.length) && (
+        <div style={{ marginTop: 10 }}>
+          <b className="small">Oportunidades em aberto</b>
+          <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            {data.entities.flatMap((e) => e.openOpportunities.map((o) => <li key={o.id}><Link href={`/comercial/oportunidades/${o.id}`}>{o.title}</Link> <span className="muted">· {e.shortName ?? e.name} · etapa {o.stage}</span></li>))}
+          </ul>
+        </div>
+      )}
       <div style={{ marginTop: 10 }}>
         <b className="small">Módulos contratados</b>
         {data?.modules.length ? <div className="row" style={{ flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{data.modules.map((m) => <span key={m} className="pill">{m}</span>)}</div> : <div className="small muted">{data?.hasActiveContract ? 'Contrato ativo sem módulos detalhados.' : 'Nenhum módulo contratado.'}</div>}
@@ -247,11 +256,11 @@ function MunicipalityPanel({ geo, data, canWrite, onClose, onSaved }: { geo: Geo
           <div className="space-y-2" style={{ marginTop: 6 }}>
             <Select value={manual} onChange={(e) => { setManual(e.target.value as Manual); setMsg(null); }} aria-label="Situação comercial">
               <option value="NENHUMA">{data?.hasActiveContract ? 'Automática (cliente ativo pelo contrato)' : 'Sem atuação'}</option>
-              <option value="NEGOCIACAO">Em negociação</option>
+              <option value="NEGOCIACAO">Em negociação{data?.hasOpenOpportunity ? ' (já automática: há lead em aberto)' : ''}</option>
               <option value="IMPLANTACAO">Em implantação</option>
             </Select>
             <Textarea rows={2} value={notes} onChange={(e) => { setNotes(e.target.value); setMsg(null); }} placeholder="Observação (opcional)" maxLength={1000} />
-            <div className="row between"><span className="small muted">"Cliente ativo" é automático quando há contrato ativo.</span><Button size="sm" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending ? 'Salvando…' : 'Salvar'}</Button></div>
+            <div className="row between"><span className="small muted">"Cliente ativo" é automático com contrato vigente; "Em negociação", com lead em aberto.</span><Button size="sm" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>{save.isPending ? 'Salvando…' : 'Salvar'}</Button></div>
             {msg && <div className="small" role="status">{msg}</div>}
           </div>
         ) : <div className="small muted">Sem permissão para alterar a situação.</div>}

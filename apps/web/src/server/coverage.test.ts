@@ -41,4 +41,8 @@ describe('mapa de cobertura — situação efetiva', () => {
   it('implantação manual vence o ativo automático', () => { expect(effectiveStatus(true, 'IMPLANTACAO')).toBe('IMPLANTACAO'); expect(effectiveStatus(false, 'IMPLANTACAO')).toBe('IMPLANTACAO'); });
   it('negociação não rebaixa um cliente ativo', () => { expect(effectiveStatus(true, 'NEGOCIACAO')).toBe('ATIVO'); expect(effectiveStatus(false, 'NEGOCIACAO')).toBe('NEGOCIACAO'); });
   it('sem nada → sem atuação', () => { expect(effectiveStatus(false, null)).toBe('NENHUMA'); });
+  it('oportunidade em aberto → em negociação automática, sem rebaixar cliente ativo nem implantação', () => {
+    expect(effectiveStatus(false, null, true)).toBe('NEGOCIACAO'); expect(effectiveStatus(false, 'NENHUMA', true)).toBe('NEGOCIACAO');
+    expect(effectiveStatus(true, null, true)).toBe('ATIVO'); expect(effectiveStatus(false, 'IMPLANTACAO', true)).toBe('IMPLANTACAO');
+  });
 });
