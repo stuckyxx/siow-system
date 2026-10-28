@@ -353,6 +353,8 @@ export interface PartnerRow {
   id: string; name: string; kind: string; document: string | null; contactName: string | null; email: string | null; phone: string | null; whatsapp: string | null;
   userId: string | null; userName: string | null; bankInfo: string | null; notes: string | null; isActive: boolean;
   entityCount: number; contractCount: number; opportunityCount: number; ruleCount: number;
+  /** soma do valor mensal das entidades vinculadas (decimal string) */
+  monthlyTotal: string;
   totals: { forecast: string; due: string; paid: string; reversed: string };
 }
 export interface CommissionRuleRow { id: string; partnerId: string; name: string; basis: string; percent: string; entityId: string | null; entityName: string | null; contractId: string | null; contractNumber: string | null; startDate: string | null; endDate: string | null; maxMonths: number | null; isActive: boolean; notes: string | null }
@@ -365,7 +367,7 @@ export interface PartnerStatement {
   partner: PartnerRow;
   totals: { forecast: string; due: string; paid: string; reversed: string; dueCount: number };
   byMonth: Array<{ competence: string; forecast: string; due: string; paid: string }>;
-  entities: Array<{ id: string; name: string; shortName: string | null; municipality: string; uf: string; activeContract: string | null }>;
+  entities: Array<{ id: string; name: string; shortName: string | null; municipality: string; uf: string; activeContract: string | null; monthlyValue: string | null; partnerNotes: string | null }>;
   opportunities: Array<{ id: string; title: string; status: string; stageName: string; totalAmount: string | null; entityName: string }>;
 }
 

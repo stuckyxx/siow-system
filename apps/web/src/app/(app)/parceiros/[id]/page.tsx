@@ -32,11 +32,12 @@ export default function PartnerPage() {
         <div><div className="small muted">{PARTNER_KIND_LABELS[p.kind as PartnerKind] ?? p.kind}{p.document ? ` · ${p.document}` : ''}{p.userName ? ` · portal: ${p.userName}` : ''}</div><h1>{p.name}</h1><div className="small muted">{[p.contactName, p.email, p.phone, p.whatsapp].filter(Boolean).join(' · ')}{p.bankInfo ? ` · ${p.bankInfo}` : ''} <Badge tone={p.isActive ? 'good' : 'neutral'}>{p.isActive ? 'Ativo' : 'Inativo'}</Badge></div></div>
         <div className="row">{can('partners.manage') && <Button variant="secondary" onClick={() => setEditing(true)}>Editar</Button>}{can('partners.manage') && <Button variant="ghost" onClick={() => { if (confirm('Excluir este parceiro? As comissões registradas são mantidas.')) remove.mutate(); }}>Excluir</Button>}</div>
       </div>
-      <div className="g4" style={{ marginTop: 12 }}>
+      <div className="g5" style={{ marginTop: 12 }}>
         <Stat small label="Previstas" value={formatBRL(st.totals.forecast)} tone="info" hint="notas emitidas não pagas" />
         <Stat small label="A pagar" value={formatBRL(st.totals.due)} tone={st.totals.dueCount ? 'warn' : 'good'} hint={`${st.totals.dueCount} comissão(ões)`} />
         <Stat small label="Pagas" value={formatBRL(st.totals.paid)} tone="good" />
         <Stat small label="Estornadas" value={formatBRL(st.totals.reversed)} />
+        <Stat small label="Valor mensal" value={formatBRL(p.monthlyTotal)} hint={`${p.entityCount} entidade(s) vinculada(s)`} />
       </div>
       <Tabs tabs={[TABS[0]!, { ...TABS[1]!, count: p.ruleCount }, { ...TABS[2]!, count: p.entityCount }, { ...TABS[3]!, count: st.opportunities.length }]} value={tab} onChange={setTab} />
       {tab === 'extrato' && (
@@ -104,14 +105,34 @@ function EntitiesPanel({ partnerId, entities, onChanged }: { partnerId: string; 
   const { can } = useAuth();
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState('');
+  const [editing, setEditing] = useState<PartnerStatement['entities'][number] | null>(null);
   const { data: all } = useQuery({ queryKey: ['entities-lite'], queryFn: () => api<{ entities: Array<{ id: string; name: string; shortName: string | null }> }>('/financeiro/dashboard/filter-options') });
   const link = useMutation({ mutationFn: (v: { entityIds: string[]; unlink: boolean }) => api(`/parceiros/${partnerId}/link`, { method: 'POST', body: v }), onSuccess: () => { setAdding(''); onChanged(); }, onError: (e) => showToast(errMsg(e)) });
   const linked = new Set(entities.map((e) => e.id));
+  const total = entities.reduce((a, e) => a + Number(e.monthlyValue ?? 0), 0).toFixed(2);
   return (
     <div>
       {can('partners.manage') && <div className="row" style={{ marginBottom: 8 }}><Select value={adding} onChange={(e) => setAdding(e.target.value)} style={{ minWidth: 320 }}><option value="">Vincular entidade…</option>{all?.entities.filter((e) => !linked.has(e.id)).map((e) => <option key={e.id} value={e.id}>{e.shortName ?? e.name}</option>)}</Select><Button size="sm" onClick={() => link.mutate({ entityIds: [adding], unlink: false })} disabled={!adding || link.isPending}>Vincular</Button><span className="small muted">Uma entidade tem no máximo um parceiro. O vínculo também pode ser feito no cadastro da entidade.</span></div>}
-      <div className="card">{entities.length === 0 ? <div className="bd"><Empty>Nenhuma entidade vinculada</Empty></div> : <div className="tbl"><Table><thead><tr><Th>Entidade</Th><Th>Município/UF</Th><Th>Contrato ativo</Th><Th /></tr></thead><tbody>{entities.map((e) => <tr key={e.id}><Td><Link href={`/financeiro/entidades/${e.id}`} className="link">{e.shortName ?? e.name}</Link></Td><Td>{e.municipality}/{e.uf}</Td><Td className="num">{e.activeContract ?? '—'}</Td><Td className="r">{can('partners.manage') && <Button size="sm" variant="ghost" onClick={() => link.mutate({ entityIds: [e.id], unlink: true })}>Desvincular</Button>}</Td></tr>)}</tbody></Table></div>}</div>
+      <div className="card">{entities.length === 0 ? <div className="bd"><Empty>Nenhuma entidade vinculada</Empty></div> : <div className="tbl"><Table><thead><tr><Th>Entidade</Th><Th>Município/UF</Th><Th>Contrato ativo</Th><Th className="r">Valor mensal</Th><Th>Observação</Th><Th /></tr></thead><tbody>{entities.map((e) => <tr key={e.id}><Td><Link href={`/financeiro/entidades/${e.id}`} className="link">{e.shortName ?? e.name}</Link></Td><Td>{e.municipality}/{e.uf}</Td><Td className="num">{e.activeContract ?? '—'}</Td><Td className="r num">{e.monthlyValue ? formatBRL(e.monthlyValue) : '—'}</Td><Td className="small">{e.partnerNotes ?? ''}</Td><Td className="r">{can('partners.manage') && <><Button size="sm" variant="ghost" onClick={() => setEditing(e)}>Valor</Button><Button size="sm" variant="ghost" onClick={() => link.mutate({ entityIds: [e.id], unlink: true })}>Desvincular</Button></>}</Td></tr>)}<tr><Td><b>Total mensal</b></Td><Td /><Td /><Td className="r num"><b>{formatBRL(total)}</b></Td><Td /><Td /></tr></tbody></Table></div>}</div>
+      {editing && <EntityValueForm partnerId={partnerId} entity={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChanged(); showToast('Valor mensal salvo'); }} />}
       {toast}
     </div>
+  );
+}
+
+function EntityValueForm({ partnerId, entity, onClose, onSaved }: { partnerId: string; entity: PartnerStatement['entities'][number]; onClose: () => void; onSaved: () => void }) {
+  const [value, setValue] = useState(entity.monthlyValue ? entity.monthlyValue.replace('.', ',') : '');
+  const [notes, setNotes] = useState(entity.partnerNotes ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const m = useMutation({ mutationFn: () => api(`/parceiros/${partnerId}/entities/${entity.id}`, { method: 'PATCH', body: { monthlyValue: value.trim() ? value.trim().replace(/\./g, '').replace(',', '.') : null, notes: notes.trim() || null } }), onSuccess: onSaved, onError: (e) => setError(errMsg(e)) });
+  return (
+    <Dialog open onClose={onClose} title={`Valor mensal — ${entity.shortName ?? entity.name}`}>
+      <div className="grid gap-3">
+        <Field label="Valor mensal (R$)"><Input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="ex.: 1.500,00" /></Field>
+        <Field label="Observação"><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      </div>
+      {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
+      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => m.mutate()} disabled={m.isPending}>Salvar</Button></div>
+    </Dialog>
   );
 }

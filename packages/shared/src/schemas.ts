@@ -668,6 +668,7 @@ export const payCommissionsSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 export const linkPartnerEntitiesSchema = z.object({ entityIds: z.array(uuid).min(1).max(500), unlink: z.boolean().default(false) });
+export const partnerEntityValueSchema = z.object({ monthlyValue: decimalString.nullable(), notes: z.string().max(500).nullable().optional() });
 
 // ---------- Licitações (Fase 5) ----------
 const isoDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/, 'Data/hora inválida');
