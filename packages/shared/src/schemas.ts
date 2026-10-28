@@ -668,6 +668,13 @@ export const payCommissionsSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 export const linkPartnerEntitiesSchema = z.object({ entityIds: z.array(uuid).min(1).max(500), unlink: z.boolean().default(false) });
+export const partnerPaymentSchema = z.object({
+  entityId: uuid.nullable().optional(),
+  competence: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Competência deve estar no formato AAAA-MM'),
+  amount: decimalString,
+  paidAt: isoDate,
+  notes: z.string().max(500).nullable().optional(),
+});
 export const partnerEntityValueSchema = z.object({ monthlyValue: decimalString.nullable(), notes: z.string().max(500).nullable().optional() });
 
 // ---------- Licitações (Fase 5) ----------

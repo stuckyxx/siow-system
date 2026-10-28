@@ -28,18 +28,18 @@ export default function PartnersPage() {
         <Stat label="A pagar" value={formatBRL(sum('due'))} hint="recebimento confirmado" tone={Number(sum('due')) > 0 ? 'warn' : 'good'} />
         <Stat label="Pagas" value={formatBRL(sum('paid'))} tone="good" />
         <Stat label="Estornadas" value={formatBRL(sum('reversed'))} hint="notas canceladas ou que voltaram a pendente" />
-        <Stat label="Valor mensal" value={formatBRL(data.reduce((a, p) => a + Number(p.monthlyTotal), 0).toFixed(2))} hint={`${data.reduce((a, p) => a + p.entityCount, 0)} entidade(s) vinculada(s)`} />
+        <Stat label="Valor mensal" value={formatBRL(data.reduce((a, p) => a + Number(p.monthlyTotal), 0).toFixed(2))} hint={`${data.reduce((a, p) => a + p.entityCount, 0)} entidade(s) · pago no mês ${formatBRL(data.reduce((a, p) => a + Number(p.paidThisMonth), 0).toFixed(2))}`} />
       </div>}
       <div className="row" style={{ marginBottom: 10 }}><Input placeholder="Buscar parceiro" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 260 }} /></div>
       <div className="card">
         {!data ? <div className="bd small muted">Carregando…</div> : data.length === 0 ? <div className="bd"><Empty>Nenhum parceiro cadastrado</Empty></div> : (
           <div className="tbl"><Table>
-            <thead><tr><Th>Parceiro</Th><Th>Tipo</Th><Th className="r">Entidades</Th><Th className="r">Valor mensal</Th><Th className="r hide-m">Oportunidades</Th><Th className="r">Regras</Th><Th className="r">Previstas</Th><Th className="r">A pagar</Th><Th className="r hide-m">Pagas</Th><Th>Situação</Th></tr></thead>
+            <thead><tr><Th>Parceiro</Th><Th>Tipo</Th><Th className="r">Entidades</Th><Th className="r">Valor mensal</Th><Th className="r">Pago no mês</Th><Th className="r hide-m">Oportunidades</Th><Th className="r">Regras</Th><Th className="r">Previstas</Th><Th className="r">A pagar</Th><Th className="r hide-m">Pagas</Th><Th>Situação</Th></tr></thead>
             <tbody>{data.map((p) => (
               <tr key={p.id} className="click" onClick={() => router.push(`/parceiros/${p.id}`)}>
                 <Td><span className="link">{p.name}</span>{p.contactName && <div className="small muted">{p.contactName}{p.email ? ` · ${p.email}` : ''}</div>}{p.userName && <div className="small muted">portal: {p.userName}</div>}</Td>
                 <Td>{PARTNER_KIND_LABELS[p.kind as PartnerKind] ?? p.kind}</Td>
-                <Td className="r num">{p.entityCount}</Td><Td className="r num">{formatBRL(p.monthlyTotal)}</Td><Td className="r num hide-m">{p.opportunityCount}</Td><Td className="r num">{p.ruleCount}</Td>
+                <Td className="r num">{p.entityCount}</Td><Td className="r num">{formatBRL(p.monthlyTotal)}</Td><Td className="r num" style={{ color: Number(p.paidThisMonth) >= Number(p.monthlyTotal) && Number(p.monthlyTotal) > 0 ? 'var(--good)' : undefined }}>{formatBRL(p.paidThisMonth)}</Td><Td className="r num hide-m">{p.opportunityCount}</Td><Td className="r num">{p.ruleCount}</Td>
                 <Td className="r num">{formatBRL(p.totals.forecast)}</Td><Td className="r num" style={{ color: Number(p.totals.due) ? 'var(--warn)' : undefined }}>{formatBRL(p.totals.due)}</Td><Td className="r num hide-m">{formatBRL(p.totals.paid)}</Td>
                 <Td><Badge tone={p.isActive ? 'good' : 'neutral'}>{p.isActive ? 'Ativo' : 'Inativo'}</Badge></Td>
               </tr>))}</tbody>
