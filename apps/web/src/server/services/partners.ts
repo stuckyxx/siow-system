@@ -1,11 +1,12 @@
 /**
- * Parceiros (módulo 7): cadastro, vínculo com entidades (entities.partnerId), extrato consolidado.
+ * Parceiros (módulo 7): cadastro, vínculo com entidades (entities.partnerId) e valor mensal de cada vínculo
+ * (entities.partnerMonthlyValue), extrato consolidado.
  * O portal do parceiro (papel PARCEIRO) só enxerga o parceiro ligado ao próprio usuário (`Partner.userId`).
  */
 import { Prisma } from '@siow/db';
 import type { PartnerRow, PartnerStatement } from '@siow/shared';
 import type { z } from 'zod';
-import type { linkPartnerEntitiesSchema, partnerSchema, updatePartnerSchema } from '@siow/shared';
+import type { linkPartnerEntitiesSchema, partnerEntityValueSchema, partnerSchema, updatePartnerSchema } from '@siow/shared';
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
@@ -27,12 +28,21 @@ async function totalsFor(ids: string[]): Promise<Map<string, PartnerRow['totals'
   return out;
 }
 
+/** Soma do valor mensal das entidades vinculadas, por parceiro. */
+async function monthlyFor(ids: string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  const groups = await prisma.entity.groupBy({ by: ['partnerId'], where: { partnerId: { in: ids }, deletedAt: null }, _sum: { partnerMonthlyValue: true } });
+  return new Map(groups.map((g) => [g.partnerId!, (g._sum.partnerMonthlyValue ?? new Prisma.Decimal(0)).toFixed(2)]));
+}
+
 async function toRows(rows: Row[]): Promise<PartnerRow[]> {
-  const totals = await totalsFor(rows.map((r) => r.id));
+  const ids = rows.map((r) => r.id);
+  const [totals, monthly] = await Promise.all([totalsFor(ids), monthlyFor(ids)]);
   return rows.map((r) => ({
     id: r.id, name: r.name, kind: r.kind, document: r.document, contactName: r.contactName, email: r.email, phone: r.phone, whatsapp: r.whatsapp,
     userId: r.userId, userName: r.user?.name ?? null, bankInfo: r.bankInfo, notes: r.notes, isActive: r.isActive,
     entityCount: r._count.entities, contractCount: r._count.contracts, opportunityCount: r._count.opportunities, ruleCount: r._count.rules,
+    monthlyTotal: monthly.get(r.id) ?? '0.00',
     totals: totals.get(r.id) ?? { forecast: '0.00', due: '0.00', paid: '0.00', reversed: '0.00' },
   }));
 }
@@ -76,7 +86,7 @@ export async function remove(ctx: Ctx, id: string): Promise<void> {
   if (!before) throw notFound('Parceiro não encontrado');
   if (before._count.commissions) throw badRequest('Parceiro com comissões a pagar: quite ou estorne antes de excluir');
   await prisma.$transaction([
-    prisma.entity.updateMany({ where: { partnerId: id }, data: { partnerId: null } }),
+    prisma.entity.updateMany({ where: { partnerId: id }, data: { partnerId: null, partnerMonthlyValue: null, partnerNotes: null } }),
     prisma.commissionRule.updateMany({ where: { partnerId: id }, data: { isActive: false } }),
     prisma.partner.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } }),
   ]);
@@ -87,10 +97,20 @@ export async function remove(ctx: Ctx, id: string): Promise<void> {
 export async function linkEntities(ctx: Ctx, id: string, input: z.infer<typeof linkPartnerEntitiesSchema>): Promise<{ updated: number }> {
   await get(id);
   const r = input.unlink
-    ? await prisma.entity.updateMany({ where: { id: { in: input.entityIds }, partnerId: id }, data: { partnerId: null } })
+    ? await prisma.entity.updateMany({ where: { id: { in: input.entityIds }, partnerId: id }, data: { partnerId: null, partnerMonthlyValue: null, partnerNotes: null } })
     : await prisma.entity.updateMany({ where: { id: { in: input.entityIds }, deletedAt: null }, data: { partnerId: id } });
   await audit(ctx, { action: input.unlink ? 'PARTNER_UNLINK' : 'PARTNER_LINK', resource: 'partner', resourceId: id, after: { entityIds: input.entityIds, updated: r.count } });
   return { updated: r.count };
+}
+
+/** Valor mensal e observação do vínculo parceiro × entidade. */
+export async function setEntityValue(ctx: Ctx, id: string, entityId: string, input: z.infer<typeof partnerEntityValueSchema>): Promise<{ ok: true }> {
+  const before = await prisma.entity.findFirst({ where: { id: entityId, partnerId: id, deletedAt: null }, select: { partnerMonthlyValue: true, partnerNotes: true } });
+  if (!before) throw notFound('Entidade não vinculada a este parceiro');
+  const data = { partnerMonthlyValue: input.monthlyValue === null ? null : new Prisma.Decimal(input.monthlyValue), partnerNotes: input.notes === undefined ? undefined : input.notes || null };
+  await prisma.entity.update({ where: { id: entityId }, data });
+  await audit(ctx, { action: 'UPDATE', resource: 'partner', resourceId: id, before: { entityId, ...before }, after: { entityId, ...data } });
+  return { ok: true };
 }
 
 /** Extrato do parceiro: totais por situação, por competência, entidades e oportunidades vinculadas. */
@@ -98,7 +118,7 @@ export async function statement(id: string): Promise<PartnerStatement> {
   const partner = await get(id);
   const [commissions, entities, opportunities] = await Promise.all([
     prisma.commission.findMany({ where: { partnerId: id }, select: { status: true, amount: true, competenceYear: true, competenceMonth: true } }),
-    prisma.entity.findMany({ where: { partnerId: id, deletedAt: null }, select: { id: true, name: true, shortName: true, municipality: true, uf: true, contracts: { where: { deletedAt: null, status: 'ACTIVE' }, select: { number: true }, take: 1 } }, orderBy: { name: 'asc' } }),
+    prisma.entity.findMany({ where: { partnerId: id, deletedAt: null }, select: { id: true, name: true, shortName: true, municipality: true, uf: true, partnerMonthlyValue: true, partnerNotes: true, contracts: { where: { deletedAt: null, status: 'ACTIVE' }, select: { number: true }, take: 1 } }, orderBy: { name: 'asc' } }),
     prisma.opportunity.findMany({ where: { OR: [{ partnerId: id }, { entity: { partnerId: id } }], deletedAt: null }, select: { id: true, title: true, status: true, totalAmount: true, stage: { select: { name: true } }, entity: { select: { name: true, shortName: true } } }, orderBy: { updatedAt: 'desc' }, take: 50 }),
   ]);
   const months = new Map<string, { forecast: Prisma.Decimal; due: Prisma.Decimal; paid: Prisma.Decimal }>();
@@ -113,7 +133,7 @@ export async function statement(id: string): Promise<PartnerStatement> {
     partner,
     totals: { ...partner.totals, dueCount },
     byMonth: [...months.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([competence, m]) => ({ competence, forecast: m.forecast.toFixed(2), due: m.due.toFixed(2), paid: m.paid.toFixed(2) })),
-    entities: entities.map((e) => ({ id: e.id, name: e.name, shortName: e.shortName, municipality: e.municipality, uf: e.uf, activeContract: e.contracts[0]?.number ?? null })),
+    entities: entities.map((e) => ({ id: e.id, name: e.name, shortName: e.shortName, municipality: e.municipality, uf: e.uf, activeContract: e.contracts[0]?.number ?? null, monthlyValue: e.partnerMonthlyValue ? e.partnerMonthlyValue.toFixed(2) : null, partnerNotes: e.partnerNotes })),
     opportunities: opportunities.map((o) => ({ id: o.id, title: o.title, status: o.status, stageName: o.stage.name, totalAmount: o.totalAmount ? o.totalAmount.toFixed(2) : null, entityName: o.entity.shortName ?? o.entity.name })),
   };
 }

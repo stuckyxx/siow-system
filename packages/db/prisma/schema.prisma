@@ -196,6 +196,10 @@ model Entity {
   /// Parceiro/representante responsável (FK criada na Fase 4 — Parceiros)
   partnerId         String?
   partner         Partner?   @relation(fields: [partnerId], references: [id])
+  /// Valor mensal devido pela entidade no vínculo com o parceiro (relatório consolidado de parceiros)
+  partnerMonthlyValue Decimal? @db.Decimal(14, 2)
+  /// Observação do vínculo com o parceiro (ex.: "valor a verificar")
+  partnerNotes      String?
   /// Saúde do cliente (0–100) calculada no cron diário; null = sem dados suficientes
   healthScore       Int?
   healthUpdatedAt   DateTime?

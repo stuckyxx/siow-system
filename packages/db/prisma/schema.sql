@@ -2546,3 +2546,9 @@ DO $$ BEGIN
     ALTER TABLE "municipality_statuses" ADD CONSTRAINT "municipality_statuses_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- =====================================================================
+-- PARCEIROS — valor mensal por entidade vinculada — idempotente.
+-- =====================================================================
+ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "partnerMonthlyValue" DECIMAL(14,2) NULL;
+ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "partnerNotes" TEXT NULL;
