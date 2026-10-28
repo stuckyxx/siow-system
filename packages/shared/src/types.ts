@@ -355,6 +355,9 @@ export interface PartnerRow {
   entityCount: number; contractCount: number; opportunityCount: number; ruleCount: number;
   /** soma do valor mensal das entidades vinculadas (decimal string) */
   monthlyTotal: string;
+  /** total pago pelo parceiro na competência atual e no total (decimal strings) */
+  paidThisMonth: string;
+  paidTotal: string;
   totals: { forecast: string; due: string; paid: string; reversed: string };
 }
 export interface CommissionRuleRow { id: string; partnerId: string; name: string; basis: string; percent: string; entityId: string | null; entityName: string | null; contractId: string | null; contractNumber: string | null; startDate: string | null; endDate: string | null; maxMonths: number | null; isActive: boolean; notes: string | null }
@@ -362,6 +365,12 @@ export interface CommissionRow {
   id: string; partnerId: string; partnerName: string; ruleId: string; ruleName: string; invoiceId: string; invoiceNumber: string; invoiceStatus: string;
   entity: { id: string; name: string; shortName: string | null }; contractNumber: string | null; competence: string;
   baseAmount: string; percent: string; amount: string; status: string; dueAt: string | null; paidAt: string | null; paymentRef: string | null; notes: string | null;
+}
+export interface PartnerPaymentRow { id: string; entityId: string | null; entityName: string | null; competence: string; amount: string; paidAt: string; notes: string | null; createdAt: string }
+export interface PartnerPaymentsSummary {
+  payments: PartnerPaymentRow[];
+  /** por competência (AAAA-MM, mais recente primeiro): esperado = soma dos valores mensais atuais */
+  byMonth: Array<{ competence: string; expected: string; paid: string; balance: string }>;
 }
 export interface PartnerStatement {
   partner: PartnerRow;

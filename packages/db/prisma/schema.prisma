@@ -226,6 +226,7 @@ model Entity {
   healthSnapshots EntityHealthSnapshot[]
   opportunities   Opportunity[]
   commissions     Commission[]
+  partnerPayments PartnerPayment[]
   tenders         Tender[]
 
   @@unique([organizationId, type, municipality, uf])
@@ -1242,6 +1243,7 @@ model Organization {
   partners         Partner[]
   commissionRules  CommissionRule[]
   commissions      Commission[]
+  partnerPayments  PartnerPayment[]
   tenders          Tender[]
 
   tickets          Ticket[]
@@ -1757,6 +1759,7 @@ model Partner {
   opportunities Opportunity[]
   rules         CommissionRule[]
   commissions   Commission[]
+  payments      PartnerPayment[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1825,6 +1828,28 @@ model Commission {
   @@index([organizationId, partnerId, status])
   @@index([invoiceId])
   @@map("commissions")
+}
+
+/// Pagamento feito pelo parceiro (valor mensal das entidades vinculadas). entityId nulo = pagamento geral do parceiro.
+model PartnerPayment {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  partnerId       String
+  partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  entityId        String?
+  entity          Entity?      @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  competenceYear  Int
+  competenceMonth Int
+  amount          Decimal      @db.Decimal(14, 2)
+  paidAt          DateTime     @db.Date
+  notes           String?
+  createdByUserId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([organizationId, partnerId, competenceYear, competenceMonth])
+  @@map("partner_payments")
 }
 
 // =====================================================================

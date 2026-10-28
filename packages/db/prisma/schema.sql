@@ -2552,3 +2552,34 @@ END $$;
 -- =====================================================================
 ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "partnerMonthlyValue" DECIMAL(14,2) NULL;
 ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "partnerNotes" TEXT NULL;
+
+-- =====================================================================
+-- PARCEIROS — pagamentos feitos pelos parceiros — idempotente.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "partner_payments" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "partnerId" TEXT NOT NULL,
+  "entityId" TEXT NULL,
+  "competenceYear" INTEGER NOT NULL,
+  "competenceMonth" INTEGER NOT NULL,
+  "amount" DECIMAL(14,2) NOT NULL,
+  "paidAt" DATE NOT NULL,
+  "notes" TEXT NULL,
+  "createdByUserId" TEXT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "partner_payments_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "partner_payments_organizationId_partnerId_competenceYear_competenceMonth_idx" ON "partner_payments"("organizationId", "partnerId", "competenceYear", "competenceMonth");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'partner_payments_organizationId_fkey') THEN
+    ALTER TABLE "partner_payments" ADD CONSTRAINT "partner_payments_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'partner_payments_partnerId_fkey') THEN
+    ALTER TABLE "partner_payments" ADD CONSTRAINT "partner_payments_partnerId_fkey" FOREIGN KEY ("partnerId") REFERENCES "partners"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'partner_payments_entityId_fkey') THEN
+    ALTER TABLE "partner_payments" ADD CONSTRAINT "partner_payments_entityId_fkey" FOREIGN KEY ("entityId") REFERENCES "entities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;

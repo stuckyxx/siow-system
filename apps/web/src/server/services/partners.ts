@@ -1,12 +1,12 @@
 /**
  * Parceiros (módulo 7): cadastro, vínculo com entidades (entities.partnerId) e valor mensal de cada vínculo
- * (entities.partnerMonthlyValue), extrato consolidado.
+ * (entities.partnerMonthlyValue), pagamentos feitos pelo parceiro (partner_payments), extrato consolidado.
  * O portal do parceiro (papel PARCEIRO) só enxerga o parceiro ligado ao próprio usuário (`Partner.userId`).
  */
 import { Prisma } from '@siow/db';
-import type { PartnerRow, PartnerStatement } from '@siow/shared';
+import { todayIso, type PartnerPaymentRow, type PartnerPaymentsSummary, type PartnerRow, type PartnerStatement } from '@siow/shared';
 import type { z } from 'zod';
-import type { linkPartnerEntitiesSchema, partnerEntityValueSchema, partnerSchema, updatePartnerSchema } from '@siow/shared';
+import type { linkPartnerEntitiesSchema, partnerEntityValueSchema, partnerPaymentSchema, partnerSchema, updatePartnerSchema } from '@siow/shared';
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
@@ -35,14 +35,28 @@ async function monthlyFor(ids: string[]): Promise<Map<string, string>> {
   return new Map(groups.map((g) => [g.partnerId!, (g._sum.partnerMonthlyValue ?? new Prisma.Decimal(0)).toFixed(2)]));
 }
 
+/** Total pago por parceiro: na competência atual e no total. */
+async function paidFor(ids: string[]): Promise<Map<string, { month: string; total: string }>> {
+  const out = new Map<string, { month: string; total: string }>();
+  if (!ids.length) return out;
+  const [y, m] = todayIso().split('-').map(Number) as [number, number];
+  const [all, month] = await Promise.all([
+    prisma.partnerPayment.groupBy({ by: ['partnerId'], where: { partnerId: { in: ids } }, _sum: { amount: true } }),
+    prisma.partnerPayment.groupBy({ by: ['partnerId'], where: { partnerId: { in: ids }, competenceYear: y, competenceMonth: m }, _sum: { amount: true } }),
+  ]);
+  for (const g of all) out.set(g.partnerId, { month: '0.00', total: (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2) });
+  for (const g of month) out.get(g.partnerId)!.month = (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2);
+  return out;
+}
+
 async function toRows(rows: Row[]): Promise<PartnerRow[]> {
   const ids = rows.map((r) => r.id);
-  const [totals, monthly] = await Promise.all([totalsFor(ids), monthlyFor(ids)]);
+  const [totals, monthly, paid] = await Promise.all([totalsFor(ids), monthlyFor(ids), paidFor(ids)]);
   return rows.map((r) => ({
     id: r.id, name: r.name, kind: r.kind, document: r.document, contactName: r.contactName, email: r.email, phone: r.phone, whatsapp: r.whatsapp,
     userId: r.userId, userName: r.user?.name ?? null, bankInfo: r.bankInfo, notes: r.notes, isActive: r.isActive,
     entityCount: r._count.entities, contractCount: r._count.contracts, opportunityCount: r._count.opportunities, ruleCount: r._count.rules,
-    monthlyTotal: monthly.get(r.id) ?? '0.00',
+    monthlyTotal: monthly.get(r.id) ?? '0.00', paidThisMonth: paid.get(r.id)?.month ?? '0.00', paidTotal: paid.get(r.id)?.total ?? '0.00',
     totals: totals.get(r.id) ?? { forecast: '0.00', due: '0.00', paid: '0.00', reversed: '0.00' },
   }));
 }
@@ -110,6 +124,40 @@ export async function setEntityValue(ctx: Ctx, id: string, entityId: string, inp
   const data = { partnerMonthlyValue: input.monthlyValue === null ? null : new Prisma.Decimal(input.monthlyValue), partnerNotes: input.notes === undefined ? undefined : input.notes || null };
   await prisma.entity.update({ where: { id: entityId }, data });
   await audit(ctx, { action: 'UPDATE', resource: 'partner', resourceId: id, before: { entityId, ...before }, after: { entityId, ...data } });
+  return { ok: true };
+}
+
+const competenceKey = (y: number, m: number): string => `${y}-${String(m).padStart(2, '0')}`;
+
+/** Pagamentos do parceiro e o resumo por competência (esperado = soma atual dos valores mensais das entidades vinculadas). */
+export async function payments(id: string): Promise<PartnerPaymentsSummary> {
+  const partner = await get(id);
+  const rows = await prisma.partnerPayment.findMany({ where: { partnerId: id }, include: { entity: { select: { name: true, shortName: true } } }, orderBy: [{ competenceYear: 'desc' }, { competenceMonth: 'desc' }, { paidAt: 'desc' }] });
+  const list: PartnerPaymentRow[] = rows.map((r) => ({
+    id: r.id, entityId: r.entityId, entityName: r.entity ? r.entity.shortName ?? r.entity.name : null, competence: competenceKey(r.competenceYear, r.competenceMonth),
+    amount: r.amount.toFixed(2), paidAt: r.paidAt.toISOString().slice(0, 10), notes: r.notes, createdAt: r.createdAt.toISOString(),
+  }));
+  const paid = new Map<string, Prisma.Decimal>([[todayIso().slice(0, 7), new Prisma.Decimal(0)]]);
+  for (const r of rows) { const k = competenceKey(r.competenceYear, r.competenceMonth); paid.set(k, (paid.get(k) ?? new Prisma.Decimal(0)).add(r.amount)); }
+  const expected = new Prisma.Decimal(partner.monthlyTotal);
+  const byMonth = [...paid.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([competence, v]) => ({ competence, expected: expected.toFixed(2), paid: v.toFixed(2), balance: expected.sub(v).toFixed(2) }));
+  return { payments: list, byMonth };
+}
+
+export async function addPayment(ctx: Ctx, id: string, input: z.infer<typeof partnerPaymentSchema>): Promise<{ id: string }> {
+  await get(id);
+  if (input.entityId) { const e = await prisma.entity.findFirst({ where: { id: input.entityId, partnerId: id, deletedAt: null } }); if (!e) throw badRequest('Entidade não vinculada a este parceiro'); }
+  const [y, m] = input.competence.split('-').map(Number) as [number, number];
+  const p = await prisma.partnerPayment.create({ data: { organizationId: currentOrgId(), partnerId: id, entityId: input.entityId ?? null, competenceYear: y, competenceMonth: m, amount: new Prisma.Decimal(input.amount), paidAt: new Date(`${input.paidAt}T00:00:00Z`), notes: input.notes || null, createdByUserId: ctx.user.id.startsWith('apikey:') ? null : ctx.user.id } });
+  await audit(ctx, { action: 'CREATE', resource: 'partner_payment', resourceId: p.id, after: { partnerId: id, entityId: p.entityId, competence: input.competence, amount: input.amount, paidAt: input.paidAt } });
+  return { id: p.id };
+}
+
+export async function removePayment(ctx: Ctx, id: string, paymentId: string): Promise<{ ok: true }> {
+  const before = await prisma.partnerPayment.findFirst({ where: { id: paymentId, partnerId: id } });
+  if (!before) throw notFound('Pagamento não encontrado');
+  await prisma.partnerPayment.delete({ where: { id: paymentId } });
+  await audit(ctx, { action: 'DELETE', resource: 'partner_payment', resourceId: paymentId, before });
   return { ok: true };
 }
 
