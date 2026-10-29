@@ -7,17 +7,16 @@ import { Button, Dialog, Field, Input, Select, Textarea } from '@/components/ui'
 import { errMsg } from './partner-form';
 
 /** Formulário de pagamento feito pelo parceiro (aba Pagamentos do parceiro). */
-export function PaymentForm({ partnerId, entities, onClose, onSaved, title }: { partnerId: string; entities: PartnerStatement['entities']; onClose: () => void; onSaved: () => void; title?: string }) {
+export function PaymentForm({ partnerId, entities, onClose, onSaved, title }: { partnerId: string; entities: PartnerStatement['entities']; onClose: () => void; onSaved: (r: PaymentResult) => void; title?: string }) {
   const today = todayIso();
   const total = entities.reduce((a, e) => a + Number(e.monthlyValue ?? 0), 0).toFixed(2);
-  const [f, setF] = useState({ entityId: '', competence: today.slice(0, 7), amount: total.replace('.', ','), paidAt: today, notes: '' });
+  const [f, setF] = useState({ competence: today.slice(0, 7), amount: total.replace('.', ','), paidAt: today, notes: '' });
   const [error, setError] = useState<string | null>(null);
-  const pickEntity = (entityId: string): void => { const e = entities.find((x) => x.id === entityId); setF({ ...f, entityId, amount: (entityId ? e?.monthlyValue ?? '' : total).replace('.', ',') }); };
-  const m = useMutation({ mutationFn: () => api(`/parceiros/${partnerId}/payments`, { method: 'POST', body: { entityId: f.entityId || null, competence: f.competence, amount: f.amount.trim().replace(/\./g, '').replace(',', '.'), paidAt: f.paidAt, notes: f.notes.trim() || null } }), onSuccess: onSaved, onError: (e) => setError(errMsg(e)) });
+  const m = useMutation({ mutationFn: () => api<PaymentResult>(`/parceiros/${partnerId}/payments`, { method: 'POST', body: { entityId: null, competence: f.competence, amount: f.amount.trim().replace(/\./g, '').replace(',', '.'), paidAt: f.paidAt, notes: f.notes.trim() || null } }), onSuccess: onSaved, onError: (e) => setError(errMsg(e)) });
   return (
     <Dialog open onClose={onClose} title={title ?? 'Registrar pagamento do parceiro'}>
+      <div className="small muted" style={{ marginBottom: 10 }}>Pagamento do parceiro, valendo para as {entities.length} entidade(s) vinculada(s) (mensalidade total {formatBRL(total)}). As notas pendentes da competência dessas entidades recebem baixa automática enquanto o valor pago cobrir.</div>
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Entidade" className="md:col-span-2"><Select value={f.entityId} onChange={(e) => pickEntity(e.target.value)}><option value="">Geral (todas as entidades do parceiro)</option>{entities.map((e) => <option key={e.id} value={e.id}>{e.shortName ?? e.name}{e.monthlyValue ? ` — ${formatBRL(e.monthlyValue)}` : ''}</option>)}</Select></Field>
         <Field label="Competência (mês de referência)"><Input type="month" value={f.competence} onChange={(e) => setF({ ...f, competence: e.target.value })} /></Field>
         <Field label="Valor pago (R$)"><Input value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} inputMode="decimal" placeholder="ex.: 1.500,00" /></Field>
         <Field label="Data do pagamento"><Input type="date" value={f.paidAt} onChange={(e) => setF({ ...f, paidAt: e.target.value })} /></Field>
@@ -29,8 +28,15 @@ export function PaymentForm({ partnerId, entities, onClose, onSaved, title }: { 
   );
 }
 
+export interface PaymentResult { id: string; settled: number; settledAmount: string; pending: number }
+
+/** Mensagem curta para o aviso depois de salvar. */
+export function paymentToast(r: PaymentResult): string {
+  return r.settled ? `Pagamento registrado; ${r.settled} nota(s) baixada(s) (${formatBRL(r.settledAmount)})${r.pending ? `, ${r.pending} pendente(s) não coberta(s)` : ''}` : `Pagamento registrado${r.pending ? `; ${r.pending} nota(s) pendente(s) não coberta(s) pelo valor` : '; nenhuma nota pendente nesta competência'}`;
+}
+
 /** Mesmo formulário a partir da lista de parceiros: escolhe o parceiro e carrega as entidades vinculadas. */
-export function PaymentPicker({ partners, onClose, onSaved }: { partners: PartnerRow[]; onClose: () => void; onSaved: () => void }) {
+export function PaymentPicker({ partners, onClose, onSaved }: { partners: PartnerRow[]; onClose: () => void; onSaved: (r: PaymentResult) => void }) {
   const [partnerId, setPartnerId] = useState('');
   const { data: st } = useQuery({ queryKey: ['partner-statement', partnerId], queryFn: () => api<PartnerStatement>(`/parceiros/${partnerId}/statement`), enabled: Boolean(partnerId) });
   if (partnerId && st) return <PaymentForm key={partnerId} partnerId={partnerId} entities={st.entities} onClose={onClose} onSaved={onSaved} title={`Registrar pagamento — ${st.partner.name}`} />;

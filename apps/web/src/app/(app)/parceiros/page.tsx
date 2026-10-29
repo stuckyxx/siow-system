@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { PARTNER_KIND_LABELS, formatBRL, type PartnerKind, type PartnerRow } from '@siow/shared';
 import { api } from '@/lib/api';
 import { PartnerForm, errMsg } from '@/components/crm/partner-form';
-import { PaymentPicker } from '@/components/crm/partner-payment-form';
+import { PaymentPicker, paymentToast } from '@/components/crm/partner-payment-form';
 import { useAuth } from '@/lib/auth';
 import { Badge, Button, Empty, Input, Stat, Table, Td, Th, useToast } from '@/components/ui';
 
@@ -49,7 +49,7 @@ export default function PartnersPage() {
         )}
       </div>
       {editing && <PartnerForm partner={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={(p) => { setEditing(null); void qc.invalidateQueries({ queryKey: ['partners'] }); if (editing === 'new') router.push(`/parceiros/${p.id}`); }} />}
-      {paying && data && <PaymentPicker partners={data} onClose={() => setPaying(false)} onSaved={() => { setPaying(false); for (const k of ['partners', 'partner-payments', 'partner-statement']) void qc.invalidateQueries({ queryKey: [k] }); showToast('Pagamento registrado'); }} />}
+      {paying && data && <PaymentPicker partners={data} onClose={() => setPaying(false)} onSaved={(r) => { setPaying(false); for (const k of ['partners', 'partner-payments', 'partner-statement']) void qc.invalidateQueries({ queryKey: [k] }); showToast(paymentToast(r)); }} />}
       {toast}
     </div>
   );

@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { CommissionsTable } from '@/components/crm/commissions-table';
 import { Badge, Button, Dialog, Empty, Field, Input, Select, Stat, Table, Tabs, Td, Textarea, Th, useToast } from '@/components/ui';
 import { PartnerForm, errMsg } from '@/components/crm/partner-form';
-import { PaymentForm } from '@/components/crm/partner-payment-form';
+import { PaymentForm, paymentToast } from '@/components/crm/partner-payment-form';
 
 const TABS = [{ key: 'extrato', label: 'Extrato' }, { key: 'regras', label: 'Regras de comissão' }, { key: 'entidades', label: 'Entidades' }, { key: 'oportunidades', label: 'Oportunidades' }, { key: 'pagamentos', label: 'Pagamentos' }];
 
@@ -150,10 +150,10 @@ function PaymentsPanel({ partnerId, entities, onChanged }: { partnerId: string; 
   if (!data) return <div className="small muted">Carregando…</div>;
   return (
     <div>
-      <div className="row between" style={{ marginBottom: 8 }}><span className="small muted">Valores pagos pelo parceiro. O esperado de cada mês é a soma atual dos valores mensais das entidades vinculadas.</span>{can('partners.manage') && <Button size="sm" onClick={() => setAdding(true)}>+ Registrar pagamento</Button>}</div>
+      <div className="row between" style={{ marginBottom: 8 }}><span className="small muted">Valores pagos pelo parceiro (valem para todas as entidades vinculadas). Ao registrar, as notas pendentes da competência recebem baixa no Financeiro. O esperado é a soma atual das mensalidades. Remover um pagamento não reabre as notas.</span>{can('partners.manage') && <Button size="sm" onClick={() => setAdding(true)}>+ Registrar pagamento</Button>}</div>
       <div className="card" style={{ marginBottom: 12 }}><div className="hd"><h2>Por competência</h2></div><div className="bd"><table style={{ width: '100%' }}><thead><tr><th className="l">Competência</th><th className="r">Esperado</th><th className="r">Pago</th><th className="r">Saldo</th></tr></thead><tbody>{data.byMonth.map((m) => <tr key={m.competence}><td>{competenceLabel(m.competence)}</td><td className="r num">{formatBRL(m.expected)}</td><td className="r num">{formatBRL(m.paid)}</td><td className="r num" style={{ color: Number(m.balance) > 0 ? 'var(--warn)' : 'var(--good)' }}>{Number(m.balance) > 0 ? formatBRL(m.balance) : Number(m.balance) < 0 ? `+${formatBRL(m.balance.replace('-', ''))}` : 'quitado'}</td></tr>)}</tbody></table></div></div>
       <div className="card">{data.payments.length === 0 ? <div className="bd"><Empty>Nenhum pagamento registrado</Empty></div> : <div className="tbl"><Table><thead><tr><Th>Competência</Th><Th>Entidade</Th><Th className="r">Valor</Th><Th>Pago em</Th><Th>Observação</Th><Th /></tr></thead><tbody>{data.payments.map((r) => <tr key={r.id}><Td className="num">{competenceLabel(r.competence)}</Td><Td>{r.entityName ?? <span className="muted">Geral</span>}</Td><Td className="r num">{formatBRL(r.amount)}</Td><Td className="num">{formatBrDate(r.paidAt)}</Td><Td className="small">{r.notes ?? ''}</Td><Td className="r">{can('partners.manage') && <Button size="sm" variant="ghost" onClick={() => { if (confirm('Remover este pagamento?')) remove.mutate(r.id); }}>Remover</Button>}</Td></tr>)}</tbody></Table></div>}</div>
-      {adding && <PaymentForm partnerId={partnerId} entities={entities} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChanged(); showToast('Pagamento registrado'); }} />}
+      {adding && <PaymentForm partnerId={partnerId} entities={entities} onClose={() => setAdding(false)} onSaved={(r) => { setAdding(false); onChanged(); showToast(paymentToast(r)); }} />}
       {toast}
     </div>
   );
