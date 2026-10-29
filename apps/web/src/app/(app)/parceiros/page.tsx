@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { PARTNER_KIND_LABELS, formatBRL, type PartnerKind, type PartnerRow } from '@siow/shared';
 import { api } from '@/lib/api';
 import { PartnerForm, errMsg } from '@/components/crm/partner-form';
+import { PaymentPicker, paymentToast } from '@/components/crm/partner-payment-form';
 import { useAuth } from '@/lib/auth';
 import { Badge, Button, Empty, Input, Stat, Table, Td, Th, useToast } from '@/components/ui';
 
@@ -16,13 +17,14 @@ export default function PartnersPage() {
   const [toast, showToast] = useToast();
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<PartnerRow | 'new' | null>(null);
+  const [paying, setPaying] = useState(false);
   const { data } = useQuery({ queryKey: ['partners', q], queryFn: () => api<PartnerRow[]>('/parceiros', { query: { q: q || undefined } }) });
   const recompute = useMutation({ mutationFn: () => api<{ created: number; updated: number; reversed: number }>('/parceiros/commissions/recompute', { method: 'POST' }), onSuccess: (r) => { showToast(`Comissões recalculadas: ${r.created} nova(s), ${r.updated} atualizada(s), ${r.reversed} estornada(s)`); void qc.invalidateQueries({ queryKey: ['partners'] }); }, onError: (e) => showToast(errMsg(e)) });
   const sum = (k: keyof PartnerRow['totals']) => (data ?? []).reduce((a, p) => a + Number(p.totals[k]), 0).toFixed(2);
   return (
     <div>
       <div className="row between"><div><h1>Parceiros e comissões</h1><p className="sub">Representantes, indicadores e empresas parceiras; regras de remuneração e comissões calculadas sobre o Financeiro (recebimento confirmado).</p></div>
-        <div className="row">{can('partners.manage') && <Button variant="secondary" onClick={() => recompute.mutate()} disabled={recompute.isPending}>Recalcular comissões</Button>}{can('partners.manage') && <Button onClick={() => setEditing('new')}>+ Novo parceiro</Button>}</div></div>
+        <div className="row">{can('partners.manage') && <Button variant="secondary" onClick={() => recompute.mutate()} disabled={recompute.isPending}>Recalcular comissões</Button>}{can('partners.manage') && <Button variant="secondary" onClick={() => setPaying(true)} disabled={!data?.length}>+ Registrar pagamento</Button>}{can('partners.manage') && <Button onClick={() => setEditing('new')}>+ Novo parceiro</Button>}</div></div>
       {data && <div className="g5" style={{ margin: '12px 0' }}>
         <Stat label="Previstas" value={formatBRL(sum('forecast'))} hint="notas emitidas ainda não pagas" tone="info" />
         <Stat label="A pagar" value={formatBRL(sum('due'))} hint="recebimento confirmado" tone={Number(sum('due')) > 0 ? 'warn' : 'good'} />
@@ -47,6 +49,7 @@ export default function PartnersPage() {
         )}
       </div>
       {editing && <PartnerForm partner={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={(p) => { setEditing(null); void qc.invalidateQueries({ queryKey: ['partners'] }); if (editing === 'new') router.push(`/parceiros/${p.id}`); }} />}
+      {paying && data && <PaymentPicker partners={data} onClose={() => setPaying(false)} onSaved={(r) => { setPaying(false); for (const k of ['partners', 'partner-payments', 'partner-statement']) void qc.invalidateQueries({ queryKey: [k] }); showToast(paymentToast(r)); }} />}
       {toast}
     </div>
   );

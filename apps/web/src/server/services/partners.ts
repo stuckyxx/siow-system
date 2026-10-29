@@ -11,6 +11,7 @@ import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
 import { badRequest, forbidden, notFound, type Ctx } from '../http.js';
+import { bulkStatus } from './invoices.js';
 
 const include = { user: { select: { name: true } }, _count: { select: { entities: true, contracts: true, opportunities: true, rules: { where: { isActive: true } } } } } satisfies Prisma.PartnerInclude;
 type Row = Prisma.PartnerGetPayload<{ include: typeof include }>;
@@ -144,13 +145,36 @@ export async function payments(id: string): Promise<PartnerPaymentsSummary> {
   return { payments: list, byMonth };
 }
 
-export async function addPayment(ctx: Ctx, id: string, input: z.infer<typeof partnerPaymentSchema>): Promise<{ id: string }> {
-  await get(id);
+/**
+ * Registra o pagamento do parceiro (geral, sem entidade) e dá baixa nas notas pendentes da mesma competência das
+ * entidades vinculadas a ele: cada nota é baixada inteira, na ordem da entidade, enquanto o valor pago cobrir.
+ * A baixa segue o caminho de `bulkStatus` (override manual, eventos, auditoria, recálculo de comissões) e só
+ * acontece se o usuário também puder alterar notas (`invoices.override`).
+ */
+export async function addPayment(ctx: Ctx, id: string, input: z.infer<typeof partnerPaymentSchema>): Promise<{ id: string; settled: number; settledAmount: string; pending: number }> {
+  const partner = await get(id);
   if (input.entityId) { const e = await prisma.entity.findFirst({ where: { id: input.entityId, partnerId: id, deletedAt: null } }); if (!e) throw badRequest('Entidade não vinculada a este parceiro'); }
   const [y, m] = input.competence.split('-').map(Number) as [number, number];
-  const p = await prisma.partnerPayment.create({ data: { organizationId: currentOrgId(), partnerId: id, entityId: input.entityId ?? null, competenceYear: y, competenceMonth: m, amount: new Prisma.Decimal(input.amount), paidAt: new Date(`${input.paidAt}T00:00:00Z`), notes: input.notes || null, createdByUserId: ctx.user.id.startsWith('apikey:') ? null : ctx.user.id } });
-  await audit(ctx, { action: 'CREATE', resource: 'partner_payment', resourceId: p.id, after: { partnerId: id, entityId: p.entityId, competence: input.competence, amount: input.amount, paidAt: input.paidAt } });
-  return { id: p.id };
+  const amount = new Prisma.Decimal(input.amount);
+  const p = await prisma.partnerPayment.create({ data: { organizationId: currentOrgId(), partnerId: id, entityId: input.entityId ?? null, competenceYear: y, competenceMonth: m, amount, paidAt: new Date(`${input.paidAt}T00:00:00Z`), notes: input.notes || null, createdByUserId: ctx.user.id.startsWith('apikey:') ? null : ctx.user.id } });
+  const pendingInvoices = await prisma.invoice.findMany({
+    where: { deletedAt: null, status: 'PENDING', competenceYear: y, competenceMonth: m, entity: { partnerId: id, deletedAt: null }, ...(input.entityId ? { entityId: input.entityId } : {}) },
+    select: { id: true, amount: true, entity: { select: { name: true } } },
+  });
+  pendingInvoices.sort((a, b) => a.entity.name.localeCompare(b.entity.name, 'pt-BR'));
+  const toSettle: string[] = [];
+  let left = amount;
+  for (const inv of pendingInvoices) if (left.gte(inv.amount)) { toSettle.push(inv.id); left = left.sub(inv.amount); }
+  let settled = 0;
+  let settledAmount = new Prisma.Decimal(0);
+  if (toSettle.length && ctx.user.permissions.includes('invoices.override')) {
+    const r = await bulkStatus(ctx, { ids: toSettle, status: 'PAID', paidAt: input.paidAt, justification: `Baixa pelo pagamento do parceiro ${partner.name} (competência ${String(m).padStart(2, '0')}/${y})` });
+    settled = r.updated;
+    const failed = new Set(r.errors.map((e) => e.id));
+    for (const inv of pendingInvoices) if (toSettle.includes(inv.id) && !failed.has(inv.id)) settledAmount = settledAmount.add(inv.amount);
+  }
+  await audit(ctx, { action: 'CREATE', resource: 'partner_payment', resourceId: p.id, after: { partnerId: id, entityId: p.entityId, competence: input.competence, amount: input.amount, paidAt: input.paidAt, settledInvoiceIds: settled ? toSettle : [] } });
+  return { id: p.id, settled, settledAmount: settledAmount.toFixed(2), pending: pendingInvoices.length - settled };
 }
 
 export async function removePayment(ctx: Ctx, id: string, paymentId: string): Promise<{ ok: true }> {

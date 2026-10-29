@@ -3,12 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { COMMISSION_BASES, COMMISSION_BASIS_LABELS, OPPORTUNITY_STATUS_LABELS, PARTNER_KIND_LABELS, formatBRL, formatBrDate, type CommissionBasis, type CommissionRuleRow, type OpportunityStatus, type PartnerKind, type PartnerPaymentsSummary, type PartnerStatement, todayIso } from '@siow/shared';
+import { COMMISSION_BASES, COMMISSION_BASIS_LABELS, OPPORTUNITY_STATUS_LABELS, PARTNER_KIND_LABELS, formatBRL, formatBrDate, type CommissionBasis, type CommissionRuleRow, type OpportunityStatus, type PartnerKind, type PartnerPaymentsSummary, type PartnerStatement } from '@siow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { CommissionsTable } from '@/components/crm/commissions-table';
 import { Badge, Button, Dialog, Empty, Field, Input, Select, Stat, Table, Tabs, Td, Textarea, Th, useToast } from '@/components/ui';
 import { PartnerForm, errMsg } from '@/components/crm/partner-form';
+import { PaymentForm, paymentToast } from '@/components/crm/partner-payment-form';
 
 const TABS = [{ key: 'extrato', label: 'Extrato' }, { key: 'regras', label: 'Regras de comissão' }, { key: 'entidades', label: 'Entidades' }, { key: 'oportunidades', label: 'Oportunidades' }, { key: 'pagamentos', label: 'Pagamentos' }];
 
@@ -149,33 +150,11 @@ function PaymentsPanel({ partnerId, entities, onChanged }: { partnerId: string; 
   if (!data) return <div className="small muted">Carregando…</div>;
   return (
     <div>
-      <div className="row between" style={{ marginBottom: 8 }}><span className="small muted">Valores pagos pelo parceiro. O esperado de cada mês é a soma atual dos valores mensais das entidades vinculadas.</span>{can('partners.manage') && <Button size="sm" onClick={() => setAdding(true)}>+ Registrar pagamento</Button>}</div>
+      <div className="row between" style={{ marginBottom: 8 }}><span className="small muted">Valores pagos pelo parceiro (valem para todas as entidades vinculadas). Ao registrar, as notas pendentes da competência recebem baixa no Financeiro. O esperado é a soma atual das mensalidades. Remover um pagamento não reabre as notas.</span>{can('partners.manage') && <Button size="sm" onClick={() => setAdding(true)}>+ Registrar pagamento</Button>}</div>
       <div className="card" style={{ marginBottom: 12 }}><div className="hd"><h2>Por competência</h2></div><div className="bd"><table style={{ width: '100%' }}><thead><tr><th className="l">Competência</th><th className="r">Esperado</th><th className="r">Pago</th><th className="r">Saldo</th></tr></thead><tbody>{data.byMonth.map((m) => <tr key={m.competence}><td>{competenceLabel(m.competence)}</td><td className="r num">{formatBRL(m.expected)}</td><td className="r num">{formatBRL(m.paid)}</td><td className="r num" style={{ color: Number(m.balance) > 0 ? 'var(--warn)' : 'var(--good)' }}>{Number(m.balance) > 0 ? formatBRL(m.balance) : Number(m.balance) < 0 ? `+${formatBRL(m.balance.replace('-', ''))}` : 'quitado'}</td></tr>)}</tbody></table></div></div>
       <div className="card">{data.payments.length === 0 ? <div className="bd"><Empty>Nenhum pagamento registrado</Empty></div> : <div className="tbl"><Table><thead><tr><Th>Competência</Th><Th>Entidade</Th><Th className="r">Valor</Th><Th>Pago em</Th><Th>Observação</Th><Th /></tr></thead><tbody>{data.payments.map((r) => <tr key={r.id}><Td className="num">{competenceLabel(r.competence)}</Td><Td>{r.entityName ?? <span className="muted">Geral</span>}</Td><Td className="r num">{formatBRL(r.amount)}</Td><Td className="num">{formatBrDate(r.paidAt)}</Td><Td className="small">{r.notes ?? ''}</Td><Td className="r">{can('partners.manage') && <Button size="sm" variant="ghost" onClick={() => { if (confirm('Remover este pagamento?')) remove.mutate(r.id); }}>Remover</Button>}</Td></tr>)}</tbody></Table></div>}</div>
-      {adding && <PaymentForm partnerId={partnerId} entities={entities} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChanged(); showToast('Pagamento registrado'); }} />}
+      {adding && <PaymentForm partnerId={partnerId} entities={entities} onClose={() => setAdding(false)} onSaved={(r) => { setAdding(false); onChanged(); showToast(paymentToast(r)); }} />}
       {toast}
     </div>
-  );
-}
-
-function PaymentForm({ partnerId, entities, onClose, onSaved }: { partnerId: string; entities: PartnerStatement['entities']; onClose: () => void; onSaved: () => void }) {
-  const today = todayIso();
-  const total = entities.reduce((a, e) => a + Number(e.monthlyValue ?? 0), 0).toFixed(2);
-  const [f, setF] = useState({ entityId: '', competence: today.slice(0, 7), amount: total.replace('.', ','), paidAt: today, notes: '' });
-  const [error, setError] = useState<string | null>(null);
-  const pickEntity = (entityId: string): void => { const e = entities.find((x) => x.id === entityId); setF({ ...f, entityId, amount: (entityId ? e?.monthlyValue ?? '' : total).replace('.', ',') }); };
-  const m = useMutation({ mutationFn: () => api(`/parceiros/${partnerId}/payments`, { method: 'POST', body: { entityId: f.entityId || null, competence: f.competence, amount: f.amount.trim().replace(/\./g, '').replace(',', '.'), paidAt: f.paidAt, notes: f.notes.trim() || null } }), onSuccess: onSaved, onError: (e) => setError(errMsg(e)) });
-  return (
-    <Dialog open onClose={onClose} title="Registrar pagamento do parceiro">
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Entidade" className="md:col-span-2"><Select value={f.entityId} onChange={(e) => pickEntity(e.target.value)}><option value="">Geral (todas as entidades do parceiro)</option>{entities.map((e) => <option key={e.id} value={e.id}>{e.shortName ?? e.name}{e.monthlyValue ? ` — ${formatBRL(e.monthlyValue)}` : ''}</option>)}</Select></Field>
-        <Field label="Competência (mês de referência)"><Input type="month" value={f.competence} onChange={(e) => setF({ ...f, competence: e.target.value })} /></Field>
-        <Field label="Valor pago (R$)"><Input value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} inputMode="decimal" placeholder="ex.: 1.500,00" /></Field>
-        <Field label="Data do pagamento"><Input type="date" value={f.paidAt} onChange={(e) => setF({ ...f, paidAt: e.target.value })} /></Field>
-        <Field label="Observação" className="md:col-span-2"><Textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
-      </div>
-      {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
-      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => m.mutate()} disabled={m.isPending || !f.amount.trim() || !f.competence || !f.paidAt}>Salvar</Button></div>
-    </Dialog>
   );
 }
