@@ -36,17 +36,26 @@ async function monthlyFor(ids: string[]): Promise<Map<string, string>> {
   return new Map(groups.map((g) => [g.partnerId!, (g._sum.partnerMonthlyValue ?? new Prisma.Decimal(0)).toFixed(2)]));
 }
 
-/** Total pago por parceiro: na competência atual e no total. */
-async function paidFor(ids: string[]): Promise<Map<string, { month: string; total: string }>> {
-  const out = new Map<string, { month: string; total: string }>();
+const competenceKey = (y: number, m: number): string => `${y}-${String(m).padStart(2, '0')}`;
+
+/** Total pago por parceiro: na competência atual, no exercício atual (com a última competência paga) e no total. */
+async function paidFor(ids: string[]): Promise<Map<string, { month: string; year: string; yearThrough: string | null; total: string }>> {
+  const out = new Map<string, { month: string; year: string; yearThrough: string | null; total: string }>();
   if (!ids.length) return out;
   const [y, m] = todayIso().split('-').map(Number) as [number, number];
-  const [all, month] = await Promise.all([
+  const [all, year] = await Promise.all([
     prisma.partnerPayment.groupBy({ by: ['partnerId'], where: { partnerId: { in: ids } }, _sum: { amount: true } }),
-    prisma.partnerPayment.groupBy({ by: ['partnerId'], where: { partnerId: { in: ids }, competenceYear: y, competenceMonth: m }, _sum: { amount: true } }),
+    prisma.partnerPayment.groupBy({ by: ['partnerId', 'competenceMonth'], where: { partnerId: { in: ids }, competenceYear: y }, _sum: { amount: true } }),
   ]);
-  for (const g of all) out.set(g.partnerId, { month: '0.00', total: (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2) });
-  for (const g of month) out.get(g.partnerId)!.month = (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2);
+  for (const g of all) out.set(g.partnerId, { month: '0.00', year: '0.00', yearThrough: null, total: (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2) });
+  for (const g of year) {
+    const t = out.get(g.partnerId)!;
+    const v = g._sum.amount ?? new Prisma.Decimal(0);
+    t.year = new Prisma.Decimal(t.year).add(v).toFixed(2);
+    if (g.competenceMonth === m) t.month = v.toFixed(2);
+    const k = competenceKey(y, g.competenceMonth);
+    if (!t.yearThrough || k > t.yearThrough) t.yearThrough = k;
+  }
   return out;
 }
 
@@ -57,7 +66,7 @@ async function toRows(rows: Row[]): Promise<PartnerRow[]> {
     id: r.id, name: r.name, kind: r.kind, document: r.document, contactName: r.contactName, email: r.email, phone: r.phone, whatsapp: r.whatsapp,
     userId: r.userId, userName: r.user?.name ?? null, bankInfo: r.bankInfo, notes: r.notes, isActive: r.isActive,
     entityCount: r._count.entities, contractCount: r._count.contracts, opportunityCount: r._count.opportunities, ruleCount: r._count.rules,
-    monthlyTotal: monthly.get(r.id) ?? '0.00', paidThisMonth: paid.get(r.id)?.month ?? '0.00', paidTotal: paid.get(r.id)?.total ?? '0.00',
+    monthlyTotal: monthly.get(r.id) ?? '0.00', paidThisMonth: paid.get(r.id)?.month ?? '0.00', paidThisYear: paid.get(r.id)?.year ?? '0.00', paidThroughThisYear: paid.get(r.id)?.yearThrough ?? null, paidTotal: paid.get(r.id)?.total ?? '0.00',
     totals: totals.get(r.id) ?? { forecast: '0.00', due: '0.00', paid: '0.00', reversed: '0.00' },
   }));
 }
@@ -128,8 +137,6 @@ export async function setEntityValue(ctx: Ctx, id: string, entityId: string, inp
   return { ok: true };
 }
 
-const competenceKey = (y: number, m: number): string => `${y}-${String(m).padStart(2, '0')}`;
-
 /** Pagamentos do parceiro e o resumo por competência (esperado = soma atual dos valores mensais das entidades vinculadas). */
 export async function payments(id: string): Promise<PartnerPaymentsSummary> {
   const partner = await get(id);
@@ -142,7 +149,21 @@ export async function payments(id: string): Promise<PartnerPaymentsSummary> {
   for (const r of rows) { const k = competenceKey(r.competenceYear, r.competenceMonth); paid.set(k, (paid.get(k) ?? new Prisma.Decimal(0)).add(r.amount)); }
   const expected = new Prisma.Decimal(partner.monthlyTotal);
   const byMonth = [...paid.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([competence, v]) => ({ competence, expected: expected.toFixed(2), paid: v.toFixed(2), balance: expected.sub(v).toFixed(2) }));
-  return { payments: list, byMonth };
+  const [cy, cm] = todayIso().split('-').map(Number) as [number, number];
+  const years = new Map<number, { paid: Prisma.Decimal; through: string | null }>([[cy, { paid: new Prisma.Decimal(0), through: null }]]);
+  for (const r of rows) {
+    const t = years.get(r.competenceYear) ?? { paid: new Prisma.Decimal(0), through: null };
+    t.paid = t.paid.add(r.amount);
+    const k = competenceKey(r.competenceYear, r.competenceMonth);
+    if (!t.through || k > t.through) t.through = k;
+    years.set(r.competenceYear, t);
+  }
+  const byYear = [...years.entries()].sort(([a], [b]) => b - a).map(([year, t]) => {
+    const months = year < cy ? 12 : year === cy ? cm : 0;
+    const exp = expected.mul(months);
+    return { year, paid: t.paid.toFixed(2), paidThrough: t.through, months, expected: exp.toFixed(2), balance: exp.sub(t.paid).toFixed(2) };
+  });
+  return { payments: list, byMonth, byYear };
 }
 
 /**
