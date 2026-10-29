@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { PARTNER_KIND_LABELS, formatBRL, type PartnerKind, type PartnerRow } from '@siow/shared';
+import { PARTNER_KIND_LABELS, formatBRL, todayIso, type PartnerKind, type PartnerRow } from '@siow/shared';
 import { api } from '@/lib/api';
 import { PartnerForm, errMsg } from '@/components/crm/partner-form';
 import { PaymentPicker, paymentToast } from '@/components/crm/partner-payment-form';
@@ -20,17 +20,25 @@ export default function PartnersPage() {
   const [paying, setPaying] = useState(false);
   const { data } = useQuery({ queryKey: ['partners', q], queryFn: () => api<PartnerRow[]>('/parceiros', { query: { q: q || undefined } }) });
   const recompute = useMutation({ mutationFn: () => api<{ created: number; updated: number; reversed: number }>('/parceiros/commissions/recompute', { method: 'POST' }), onSuccess: (r) => { showToast(`Comissões recalculadas: ${r.created} nova(s), ${r.updated} atualizada(s), ${r.reversed} estornada(s)`); void qc.invalidateQueries({ queryKey: ['partners'] }); }, onError: (e) => showToast(errMsg(e)) });
-  const sum = (k: keyof PartnerRow['totals']) => (data ?? []).reduce((a, p) => a + Number(p.totals[k]), 0).toFixed(2);
+  // Cartões do exercício atual: previsto = mensalidade × meses até o mês atual; em aberto = previsto − pago (por parceiro, sem negativos).
+  const months = Number(todayIso().slice(5, 7));
+  const rows = data ?? [];
+  const monthly = rows.reduce((a, p) => a + Number(p.monthlyTotal), 0);
+  const expectedYear = monthly * months;
+  const paidYear = rows.reduce((a, p) => a + Number(p.paidThisYear), 0);
+  const openYear = rows.reduce((a, p) => a + Math.max(0, Number(p.monthlyTotal) * months - Number(p.paidThisYear)), 0);
+  const paidMonth = rows.reduce((a, p) => a + Number(p.paidThisMonth), 0);
+  const year = todayIso().slice(0, 4);
   return (
     <div>
       <div className="row between"><div><h1>Parceiros e comissões</h1><p className="sub">Representantes, indicadores e empresas parceiras; regras de remuneração e comissões calculadas sobre o Financeiro (recebimento confirmado).</p></div>
         <div className="row">{can('partners.manage') && <Button variant="secondary" onClick={() => recompute.mutate()} disabled={recompute.isPending}>Recalcular comissões</Button>}{can('partners.manage') && <Button variant="secondary" onClick={() => setPaying(true)} disabled={!data?.length}>+ Registrar pagamento</Button>}{can('partners.manage') && <Button onClick={() => setEditing('new')}>+ Novo parceiro</Button>}</div></div>
       {data && <div className="g5" style={{ margin: '12px 0' }}>
-        <Stat label="Previstas" value={formatBRL(sum('forecast'))} hint="notas emitidas ainda não pagas" tone="info" />
-        <Stat label="A pagar" value={formatBRL(sum('due'))} hint="recebimento confirmado" tone={Number(sum('due')) > 0 ? 'warn' : 'good'} />
-        <Stat label="Pagas" value={formatBRL(sum('paid'))} tone="good" />
-        <Stat label="Estornadas" value={formatBRL(sum('reversed'))} hint="notas canceladas ou que voltaram a pendente" />
-        <Stat label="Valor mensal" value={formatBRL(data.reduce((a, p) => a + Number(p.monthlyTotal), 0).toFixed(2))} hint={`${data.reduce((a, p) => a + p.entityCount, 0)} entidade(s) · pago no mês ${formatBRL(data.reduce((a, p) => a + Number(p.paidThisMonth), 0).toFixed(2))} · no exercício ${formatBRL(data.reduce((a, p) => a + Number(p.paidThisYear), 0).toFixed(2))}`} />
+        <Stat label={`Previsto ${year}`} value={formatBRL(expectedYear.toFixed(2))} hint={`mensalidade total × ${months} ${months === 1 ? 'mês' : 'meses'}`} tone="info" />
+        <Stat label={`Pago ${year}`} value={formatBRL(paidYear.toFixed(2))} hint="pagamentos registrados dos parceiros" tone="good" />
+        <Stat label="Em aberto" value={formatBRL(openYear.toFixed(2))} hint="previsto − pago, por parceiro" tone={openYear > 0 ? 'warn' : 'good'} />
+        <Stat label="Pago no mês" value={formatBRL(paidMonth.toFixed(2))} hint={`de ${formatBRL(monthly.toFixed(2))} previstos no mês`} tone={paidMonth >= monthly && monthly > 0 ? 'good' : undefined} />
+        <Stat label="Valor mensal" value={formatBRL(monthly.toFixed(2))} hint={`${rows.reduce((a, p) => a + p.entityCount, 0)} entidade(s) vinculada(s)`} />
       </div>}
       <div className="row" style={{ marginBottom: 10 }}><Input placeholder="Buscar parceiro" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 260 }} /></div>
       <div className="card">
