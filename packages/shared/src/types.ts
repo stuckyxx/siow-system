@@ -357,6 +357,9 @@ export interface PartnerRow {
   monthlyTotal: string;
   /** total pago pelo parceiro na competência atual e no total (decimal strings) */
   paidThisMonth: string;
+  /** exercício atual: total pago e última competência com pagamento (AAAA-MM) */
+  paidThisYear: string;
+  paidThroughThisYear: string | null;
   paidTotal: string;
   totals: { forecast: string; due: string; paid: string; reversed: string };
 }
@@ -371,6 +374,8 @@ export interface PartnerPaymentsSummary {
   payments: PartnerPaymentRow[];
   /** por competência (AAAA-MM, mais recente primeiro): esperado = soma dos valores mensais atuais */
   byMonth: Array<{ competence: string; expected: string; paid: string; balance: string }>;
+  /** por exercício (mais recente primeiro): pago no ano, até qual competência, esperado (mensalidade × meses até o mês atual) e saldo */
+  byYear: Array<{ year: number; paid: string; paidThrough: string | null; months: number; expected: string; balance: string }>;
 }
 export interface PartnerStatement {
   partner: PartnerRow;
