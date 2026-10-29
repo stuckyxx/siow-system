@@ -3,12 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { COMMISSION_BASES, COMMISSION_BASIS_LABELS, OPPORTUNITY_STATUS_LABELS, PARTNER_KIND_LABELS, formatBRL, formatBrDate, type CommissionBasis, type CommissionRuleRow, type OpportunityStatus, type PartnerKind, type PartnerPaymentsSummary, type PartnerStatement, todayIso } from '@siow/shared';
+import { COMMISSION_BASES, COMMISSION_BASIS_LABELS, OPPORTUNITY_STATUS_LABELS, PARTNER_KIND_LABELS, formatBRL, formatBrDate, type CommissionBasis, type CommissionRuleRow, type OpportunityStatus, type PartnerKind, type PartnerPaymentsSummary, type PartnerStatement } from '@siow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { CommissionsTable } from '@/components/crm/commissions-table';
 import { Badge, Button, Dialog, Empty, Field, Input, Select, Stat, Table, Tabs, Td, Textarea, Th, useToast } from '@/components/ui';
 import { PartnerForm, errMsg } from '@/components/crm/partner-form';
+import { PaymentForm } from '@/components/crm/partner-payment-form';
 
 const TABS = [{ key: 'extrato', label: 'Extrato' }, { key: 'regras', label: 'Regras de comissão' }, { key: 'entidades', label: 'Entidades' }, { key: 'oportunidades', label: 'Oportunidades' }, { key: 'pagamentos', label: 'Pagamentos' }];
 
@@ -155,27 +156,5 @@ function PaymentsPanel({ partnerId, entities, onChanged }: { partnerId: string; 
       {adding && <PaymentForm partnerId={partnerId} entities={entities} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChanged(); showToast('Pagamento registrado'); }} />}
       {toast}
     </div>
-  );
-}
-
-function PaymentForm({ partnerId, entities, onClose, onSaved }: { partnerId: string; entities: PartnerStatement['entities']; onClose: () => void; onSaved: () => void }) {
-  const today = todayIso();
-  const total = entities.reduce((a, e) => a + Number(e.monthlyValue ?? 0), 0).toFixed(2);
-  const [f, setF] = useState({ entityId: '', competence: today.slice(0, 7), amount: total.replace('.', ','), paidAt: today, notes: '' });
-  const [error, setError] = useState<string | null>(null);
-  const pickEntity = (entityId: string): void => { const e = entities.find((x) => x.id === entityId); setF({ ...f, entityId, amount: (entityId ? e?.monthlyValue ?? '' : total).replace('.', ',') }); };
-  const m = useMutation({ mutationFn: () => api(`/parceiros/${partnerId}/payments`, { method: 'POST', body: { entityId: f.entityId || null, competence: f.competence, amount: f.amount.trim().replace(/\./g, '').replace(',', '.'), paidAt: f.paidAt, notes: f.notes.trim() || null } }), onSuccess: onSaved, onError: (e) => setError(errMsg(e)) });
-  return (
-    <Dialog open onClose={onClose} title="Registrar pagamento do parceiro">
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Entidade" className="md:col-span-2"><Select value={f.entityId} onChange={(e) => pickEntity(e.target.value)}><option value="">Geral (todas as entidades do parceiro)</option>{entities.map((e) => <option key={e.id} value={e.id}>{e.shortName ?? e.name}{e.monthlyValue ? ` — ${formatBRL(e.monthlyValue)}` : ''}</option>)}</Select></Field>
-        <Field label="Competência (mês de referência)"><Input type="month" value={f.competence} onChange={(e) => setF({ ...f, competence: e.target.value })} /></Field>
-        <Field label="Valor pago (R$)"><Input value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} inputMode="decimal" placeholder="ex.: 1.500,00" /></Field>
-        <Field label="Data do pagamento"><Input type="date" value={f.paidAt} onChange={(e) => setF({ ...f, paidAt: e.target.value })} /></Field>
-        <Field label="Observação" className="md:col-span-2"><Textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
-      </div>
-      {error && <div className="alert crit" style={{ marginTop: 10 }}>{error}</div>}
-      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => m.mutate()} disabled={m.isPending || !f.amount.trim() || !f.competence || !f.paidAt}>Salvar</Button></div>
-    </Dialog>
   );
 }
