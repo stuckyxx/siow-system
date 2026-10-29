@@ -675,6 +675,7 @@ export const partnerPaymentSchema = z.object({
   paidAt: isoDate,
   notes: z.string().max(500).nullable().optional(),
 });
+export const updatePartnerPaymentSchema = partnerPaymentSchema.omit({ entityId: true }).partial();
 export const partnerEntityValueSchema = z.object({ monthlyValue: decimalString.nullable(), notes: z.string().max(500).nullable().optional() });
 
 // ---------- Licitações (Fase 5) ----------

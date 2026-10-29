@@ -6,7 +6,7 @@
 import { Prisma } from '@siow/db';
 import { todayIso, type PartnerPaymentRow, type PartnerPaymentsSummary, type PartnerRow, type PartnerStatement } from '@siow/shared';
 import type { z } from 'zod';
-import type { linkPartnerEntitiesSchema, partnerEntityValueSchema, partnerPaymentSchema, partnerSchema, updatePartnerSchema } from '@siow/shared';
+import type { linkPartnerEntitiesSchema, partnerEntityValueSchema, partnerPaymentSchema, updatePartnerPaymentSchema, partnerSchema, updatePartnerSchema } from '@siow/shared';
 import { prisma } from '../db.js';
 import { currentOrgId } from '../tenant.js';
 import { audit } from '../audit.js';
@@ -196,6 +196,19 @@ export async function addPayment(ctx: Ctx, id: string, input: z.infer<typeof par
   }
   await audit(ctx, { action: 'CREATE', resource: 'partner_payment', resourceId: p.id, after: { partnerId: id, entityId: p.entityId, competence: input.competence, amount: input.amount, paidAt: input.paidAt, settledInvoiceIds: settled ? toSettle : [] } });
   return { id: p.id, settled, settledAmount: settledAmount.toFixed(2), pending: pendingInvoices.length - settled };
+}
+
+/** Edita competência, valor, data e observação de um pagamento. Não mexe nas notas já baixadas. */
+export async function updatePayment(ctx: Ctx, id: string, paymentId: string, input: z.infer<typeof updatePartnerPaymentSchema>): Promise<{ ok: true }> {
+  const before = await prisma.partnerPayment.findFirst({ where: { id: paymentId, partnerId: id } });
+  if (!before) throw notFound('Pagamento não encontrado');
+  const [y, m] = input.competence ? (input.competence.split('-').map(Number) as [number, number]) : [undefined, undefined];
+  const after = await prisma.partnerPayment.update({
+    where: { id: paymentId },
+    data: { competenceYear: y, competenceMonth: m, amount: input.amount !== undefined ? new Prisma.Decimal(input.amount) : undefined, paidAt: input.paidAt ? new Date(`${input.paidAt}T00:00:00Z`) : undefined, notes: input.notes === undefined ? undefined : input.notes || null },
+  });
+  await audit(ctx, { action: 'UPDATE', resource: 'partner_payment', resourceId: paymentId, before, after });
+  return { ok: true };
 }
 
 export async function removePayment(ctx: Ctx, id: string, paymentId: string): Promise<{ ok: true }> {
